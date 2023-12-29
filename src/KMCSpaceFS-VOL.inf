@@ -1,0 +1,93 @@
+;;;
+;;; KMCSpaceFS
+;;;
+;;;
+;;; Copyright (c) 2023- Anthony Kerr
+;;;
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = Volume
+ClassGuid   = {129C80C9-67D2-4C0F-9F5D-5D56784C6FAF}
+Provider    = %Me%
+DriverVer   = 12/29/2023,0.0.0.1
+CatalogFile = KMCSpaceFS.cat
+PnpLockdown = 1
+
+[DestinationDirs]
+KMCSpaceFS.DriverFiles = 12 ;%windir%\system32\drivers
+
+[Manufacturer]
+%Me% = Standard,NTamd64,NTx86,NTarm,NTarm64
+
+[Standard.NTamd64]
+%VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
+%ControllerName% = KMCSpaceFS_Install, ROOT\KMCSpaceFS
+
+[Standard.NTx86]
+%VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
+%ControllerName% = KMCSpaceFS_Install, ROOT\KMCSpaceFS
+
+[Standard.NTarm]
+%VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
+%ControllerName% = KMCSpaceFS_Install, ROOT\KMCSpaceFS
+
+[Standard.NTarm64]
+%VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
+%ControllerName% = KMCSpaceFS_Install, ROOT\KMCSpaceFS
+
+[KMCSpaceFS_Install]
+OptionDesc = %ServiceDescription%
+CopyFiles  = KMCSpaceFS.DriverFiles
+
+[KMCSpaceFS_Install.Services]
+AddService = %ServiceName%,2,KMCSpaceFS.Service
+
+;
+; Services Section
+;
+
+[KMCSpaceFS.Service]
+DisplayName    = %ServiceName%
+Description    = %ServiceDescription%
+ServiceBinary  = %12%\%DriverName%.sys ;%windir%\system32\drivers\
+ServiceType    = 1
+StartType      = 1                     ;SERVICE_SYSTEM_START
+ErrorControl   = 1
+LoadOrderGroup = "File System"
+
+;
+; Copy Files
+;
+
+[KMCSpaceFS.DriverFiles]
+%DriverName%.sys
+
+[SourceDisksFiles]
+KMCSpaceFS.sys = 1,,
+
+[SourceDisksNames.x86]
+1 = %DiskId1%,,,\x86
+
+[SourceDisksNames.amd64]
+1 = %DiskId1%,,,\x64
+
+[SourceDisksNames.arm]
+1 = %DiskId1%,,,\arm
+
+[SourceDisksNames.arm64]
+1 = %DiskId1%,,,\aarch64
+
+;;
+;; String Section
+;;
+
+[Strings]
+Me                 = "Anthony Kerr"
+ServiceDescription = "KMCSpaceFS Driver"
+ServiceName        = "cspacefs"
+DriverName 	       = "KMCSpaceFS"
+DiskId1            = "KMCSpaceFS Device Installation Disk"
+VolumeName         = "KMCSpaceFS Volume"
+ControllerName     = "KMCSpaceFS Controller"
+REG_EXPAND_SZ      = 0x00020000
