@@ -8,7 +8,7 @@
 [Version]
 Signature   = "$Windows NT$"
 Class       = Volume
-ClassGuid   = {129C80C9-67D2-4C0F-9F5D-5D56784C6FAF}
+ClassGuid   = {71a27cdd-812a-11d0-bec7-08002be2092f}
 Provider    = %Me%
 DriverVer   = 12/29/2023,0.0.1.0
 CatalogFile = KMCSpaceFS.cat
