@@ -437,6 +437,8 @@ _Function_class_(DRIVER_INITIALIZE)
 NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
 	NTSTATUS Status;
+	UNICODE_STRING device_nameW;
+	UNICODE_STRING dosdevice_nameW;
 	control_device_extension* cde;
 	bus_device_extension* bde;
 	HANDLE regh;
@@ -506,7 +508,12 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
 	*/
 
-	Status = IoCreateDevice(DriverObject, 0, &device_name, FILE_DEVICE_DISK_FILE_SYSTEM, 0, FALSE, &DriverObject->DeviceObject);
+	device_nameW.Buffer = (WCHAR*)device_name;
+	device_nameW.Length = device_nameW.MaximumLength = sizeof(device_name) - sizeof(WCHAR);
+	dosdevice_nameW.Buffer = (WCHAR*)dosdevice_name;
+	dosdevice_nameW.Length = dosdevice_nameW.MaximumLength = sizeof(dosdevice_name) - sizeof(WCHAR);
+
+	Status = IoCreateDevice(DriverObject, 0, &device_nameW, FILE_DEVICE_DISK_FILE_SYSTEM, 0, FALSE, &DriverObject->DeviceObject);
 	if (!NT_SUCCESS(Status))
 	{
 		ERR("IoCreateDevice returned %08lx\n", Status);
@@ -522,11 +529,10 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 
 	devobj->Flags &= ~DO_DEVICE_INITIALIZING;
 
-	Status = IoCreateSymbolicLink(&dosdevice_name, &device_name);
+	Status = IoCreateSymbolicLink(&dosdevice_nameW, &device_nameW);
 	if (!NT_SUCCESS(Status))
 	{
 		ERR("IoCreateSymbolicLink returned %08lx\n", Status);
-		IoDeleteDevice(DriverObject->DeviceObject);
 		return Status;
 	}
 
@@ -535,8 +541,6 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	if (!NT_SUCCESS(Status))
 	{
 		ERR("ZwCreateKey returned %08lx\n", Status);
-		IoDeleteSymbolicLink(&dosdevice_name);
-		IoDeleteDevice(DriverObject->DeviceObject);
 		return Status;
 	}
 
@@ -546,8 +550,6 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	if (!NT_SUCCESS(Status))
 	{
 		ERR("IoCreateDevice returned %08lx\n", Status);
-		IoDeleteSymbolicLink(&dosdevice_name);
-		IoDeleteDevice(DriverObject->DeviceObject);
 		return Status;
 	}
 
@@ -561,9 +563,6 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	if (!NT_SUCCESS(Status))
 	{
 		ERR("IoReportDetectedDevice returned %08lx\n", Status);
-		IoDeleteSymbolicLink(&dosdevice_name);
-		IoDeleteDevice(DriverObject->DeviceObject);
-		IoDeleteDevice(busobj);
 		return Status;
 	}
 
