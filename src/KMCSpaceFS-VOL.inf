@@ -22,19 +22,19 @@ KMCSpaceFS.DriverFiles = 12 ;%windir%\system32\drivers
 
 [Standard.NTamd64]
 %VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
-%ControllerName% = KMCSpaceFS_Install, ROOT\KMCSpaceFS
+%ControllerName% = KMCSpaceFS_Install, ROOT\CSpaceFS
 
 [Standard.NTx86]
 %VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
-%ControllerName% = KMCSpaceFS_Install, ROOT\KMCSpaceFS
+%ControllerName% = KMCSpaceFS_Install, ROOT\CSpaceFS
 
 [Standard.NTarm]
 %VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
-%ControllerName% = KMCSpaceFS_Install, ROOT\KMCSpaceFS
+%ControllerName% = KMCSpaceFS_Install, ROOT\CSpaceFS
 
 [Standard.NTarm64]
 %VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
-%ControllerName% = KMCSpaceFS_Install, ROOT\KMCSpaceFS
+%ControllerName% = KMCSpaceFS_Install, ROOT\CSpaceFS
 
 [KMCSpaceFS_Install]
 OptionDesc = %ServiceDescription%
