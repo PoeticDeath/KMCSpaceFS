@@ -437,6 +437,7 @@ _Function_class_(DRIVER_INITIALIZE)
 NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
 	NTSTATUS Status;
+	PDEVICE_OBJECT DeviceObject;
 	UNICODE_STRING device_nameW;
 	UNICODE_STRING dosdevice_nameW;
 	control_device_extension* cde;
@@ -513,14 +514,14 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	dosdevice_nameW.Buffer = (WCHAR*)dosdevice_name;
 	dosdevice_nameW.Length = dosdevice_nameW.MaximumLength = sizeof(dosdevice_name) - sizeof(WCHAR);
 
-	Status = IoCreateDevice(DriverObject, 0, &device_nameW, FILE_DEVICE_DISK_FILE_SYSTEM, 0, FALSE, &DriverObject->DeviceObject);
+	Status = IoCreateDevice(DriverObject, 0, &device_nameW, FILE_DEVICE_DISK_FILE_SYSTEM, 0, FALSE, &DeviceObject);
 	if (!NT_SUCCESS(Status))
 	{
 		ERR("IoCreateDevice returned %08lx\n", Status);
 		return Status;
 	}
 
-	devobj = DriverObject->DeviceObject;
+	devobj = DeviceObject;
 	cde = (control_device_extension*)devobj->DeviceExtension;
 
 	RtlZeroMemory(cde, sizeof(control_device_extension));
