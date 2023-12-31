@@ -49,6 +49,8 @@ extern uint32_t debug_log_level;
 
 #define MSG(fn, s, level, ...) (!log_started || level <= debug_log_level) ? _debug_message(fn, s, ##__VA_ARGS__) : (void)0
 void _debug_message(_In_ const char* func, _In_ char* s, ...) __attribute__((format(printf, 2, 3)));
+#else
+#define MSG(s, ...) do { } while(0)
 #endif
 
 #define TRACE(s, ...) do { } while(0)
@@ -58,6 +60,7 @@ void _debug_message(_In_ const char* func, _In_ char* s, ...) __attribute__((for
 #define ALLOC_TAG 0x7442484D //'MHBt'
 #define UNUSED(x) (void)(x)
 #define VCB_TYPE_CONTROL 2
+#define VCB_TYPE_BUS     5
 
 typedef struct
 {
@@ -76,6 +79,14 @@ typedef struct
 {
 	uint32_t type;
 } control_device_extension;
+
+typedef struct
+{
+    uint32_t type;
+    PDEVICE_OBJECT buspdo;
+    PDEVICE_OBJECT attached_device;
+    UNICODE_STRING bus_name;
+} bus_device_extension;
 
 // in registry.c
 void read_registry(PUNICODE_STRING regpath, bool refresh);

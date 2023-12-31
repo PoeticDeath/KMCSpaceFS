@@ -34,6 +34,9 @@
 static const WCHAR device_name[] = { '\\','K','M','C','S','p','a','c','e','F','S',0};
 static const WCHAR dosdevice_name[] = { '\\','D','o','s','D','e','v','i','c','e','s','\\','K','M','C','S','p','a','c','e','F','S',0};
 
+// {12950673-B60F-4F05-A947-9A61685B3639}
+DEFINE_GUID(KMCSpaceFSBusInterface, 0x12950673, 0xb60f, 0x4f05, 0xa9, 0x47, 0x9a, 0x61, 0x68, 0x5b, 0x36, 0x39);
+
 PDRIVER_OBJECT drvobj;
 PDEVICE_OBJECT devobj, busobj;
 LIST_ENTRY uid_map_list, gid_map_list;
@@ -43,6 +46,7 @@ uint32_t mount_readonly = 0;
 uint32_t no_pnp = 0;
 bool log_started = false;
 UNICODE_STRING log_device, log_file, registry_path;
+ERESOURCE boot_lock;
 
 typedef struct
 {
@@ -434,8 +438,9 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 {
 	NTSTATUS Status;
 	control_device_extension* cde;
+	bus_device_extension* bde;
 	HANDLE regh;
-	OBJECT_ATTRIBUTES oa;
+	OBJECT_ATTRIBUTES oa, system_thread_attributes;
 	ULONG dispos;
 
 #ifdef _DEBUG
@@ -504,6 +509,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	Status = IoCreateDevice(DriverObject, 0, &device_name, FILE_DEVICE_DISK_FILE_SYSTEM, 0, FALSE, &DriverObject->DeviceObject);
 	if (!NT_SUCCESS(Status))
 	{
+		ERR("IoCreateDevice returned %08lx\n", Status);
 		return Status;
 	}
 
@@ -519,6 +525,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	Status = IoCreateSymbolicLink(&dosdevice_name, &device_name);
 	if (!NT_SUCCESS(Status))
 	{
+		ERR("IoCreateSymbolicLink returned %08lx\n", Status);
 		IoDeleteDevice(DriverObject->DeviceObject);
 		return Status;
 	}
@@ -527,6 +534,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	Status = ZwCreateKey(&regh, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_NOTIFY, &oa, 0, NULL, REG_OPTION_NON_VOLATILE, &dispos);
 	if (!NT_SUCCESS(Status))
 	{
+		ERR("ZwCreateKey returned %08lx\n", Status);
 		IoDeleteSymbolicLink(&dosdevice_name);
 		IoDeleteDevice(DriverObject->DeviceObject);
 		return Status;
@@ -534,5 +542,52 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 
 	watch_registry(regh);
 
-	return Status;
+	Status = IoCreateDevice(DriverObject, sizeof(bus_device_extension), NULL, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, false, &busobj);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("IoCreateDevice returned %08lx\n", Status);
+		IoDeleteSymbolicLink(&dosdevice_name);
+		IoDeleteDevice(DriverObject->DeviceObject);
+		return Status;
+	}
+
+	bde = (bus_device_extension*)busobj->DeviceExtension;
+
+	RtlZeroMemory(bde, sizeof(bus_device_extension));
+
+	bde->type = VCB_TYPE_BUS;
+
+	Status = IoReportDetectedDevice(drvobj, InterfaceTypeUndefined, 0xFFFFFFFF, 0xFFFFFFFF, NULL, NULL, 0, &bde->bus_name);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("IoReportDetectedDevice returned %08lx\n", Status);
+		IoDeleteSymbolicLink(&dosdevice_name);
+		IoDeleteDevice(DriverObject->DeviceObject);
+		IoDeleteDevice(busobj);
+		return Status;
+	}
+
+	Status = IoRegisterDeviceInterface(bde->buspdo, &KMCSpaceFSBusInterface, NULL, &bde->bus_name);
+	if (!NT_SUCCESS(Status))
+	{
+		WARN("IoRegisterDeviceInterface returned %08lx\n", Status);
+	}
+
+	bde->attached_device = IoAttachDeviceToDeviceStack(busobj, bde->buspdo);
+
+	busobj->Flags &= ~DO_DEVICE_INITIALIZING;
+
+	Status = IoSetDeviceInterfaceState(&bde->bus_name, true);
+	if (!NT_SUCCESS(Status))
+	{
+		WARN("IoSetDeviceInterfaceState returned %08lx\n", Status);
+	}
+
+	IoInvalidateDeviceRelations(bde->buspdo, BusRelations);
+
+	InitializeObjectAttributes(&system_thread_attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
+
+	ExInitializeResourceLite(&boot_lock);
+
+	return STATUS_SUCCESS;
 }
