@@ -514,7 +514,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	dosdevice_nameW.Buffer = (WCHAR*)dosdevice_name;
 	dosdevice_nameW.Length = dosdevice_nameW.MaximumLength = sizeof(dosdevice_name) - sizeof(WCHAR);
 
-	Status = IoCreateDevice(DriverObject, 0, &device_nameW, FILE_DEVICE_DISK_FILE_SYSTEM, 0, FALSE, &DeviceObject);
+	Status = IoCreateDevice(DriverObject, sizeof(control_device_extension), &device_nameW, FILE_DEVICE_DISK_FILE_SYSTEM, FILE_DEVICE_SECURE_OPEN, false, &DeviceObject);
 	if (!NT_SUCCESS(Status))
 	{
 		ERR("IoCreateDevice returned %08lx\n", Status);
@@ -528,7 +528,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 
 	cde->type = VCB_TYPE_CONTROL;
 
-	devobj->Flags &= ~DO_DEVICE_INITIALIZING;
+	DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
 	Status = IoCreateSymbolicLink(&dosdevice_nameW, &device_nameW);
 	if (!NT_SUCCESS(Status))
@@ -560,7 +560,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 
 	bde->type = VCB_TYPE_BUS;
 
-	Status = IoReportDetectedDevice(drvobj, InterfaceTypeUndefined, 0xFFFFFFFF, 0xFFFFFFFF, NULL, NULL, 0, &bde->bus_name);
+	Status = IoReportDetectedDevice(drvobj, InterfaceTypeUndefined, 0xFFFFFFFF, 0xFFFFFFFF, NULL, NULL, 0, &bde->buspdo);
 	if (!NT_SUCCESS(Status))
 	{
 		ERR("IoReportDetectedDevice returned %08lx\n", Status);
