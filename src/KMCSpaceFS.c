@@ -464,7 +464,8 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	ver.dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOW);
 
 	Status = RtlGetVersion(&ver);
-	if (!NT_SUCCESS(Status)) {
+	if (!NT_SUCCESS(Status))
+	{
 		ERR("RtlGetVersion returned %08lx\n", Status);
 		return Status;
 	}
