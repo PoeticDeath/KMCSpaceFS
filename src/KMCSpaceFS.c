@@ -46,6 +46,8 @@ uint32_t mount_readonly = 0;
 uint32_t no_pnp = 0;
 bool log_started = false;
 UNICODE_STRING log_device, log_file, registry_path;
+ERESOURCE pdo_list_lock;
+LIST_ENTRY pdo_list;
 ERESOURCE boot_lock;
 
 typedef struct
@@ -53,6 +55,17 @@ typedef struct
 	KEVENT Event;
 	IO_STATUS_BLOCK iosb;
 } read_context;
+
+bool is_top_level(_In_ PIRP Irp)
+{
+	if (!IoGetTopLevelIrp())
+	{
+		IoSetTopLevelIrp(Irp);
+		return true;
+	}
+
+	return false;
+}
 
 #ifdef _DEBUG
 PFILE_OBJECT comfo = NULL;
@@ -495,6 +508,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_WRITE]                    = Write;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION]        = QueryInformation;
 	DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION]          = SetInformation;
+	DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
 	DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;
 	DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
@@ -506,10 +520,8 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = QuerySecurity;
 	DriverObject->MajorFunction[IRP_MJ_SET_SECURITY]             = SetSecurity;
 	DriverObject->MajorFunction[IRP_MJ_POWER]                    = Power;
-	DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL]           = SystemControl;
+	DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL]           = SystemControl;*/
 	DriverObject->MajorFunction[IRP_MJ_PNP]                      = Pnp;
-	DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
-	*/
 
 	device_nameW.Buffer = (WCHAR*)device_name;
 	device_nameW.Length = device_nameW.MaximumLength = sizeof(device_name) - sizeof(WCHAR);
@@ -538,6 +550,10 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 		ERR("IoCreateSymbolicLink returned %08lx\n", Status);
 		return Status;
 	}
+
+	ExInitializeResourceLite(&pdo_list_lock);
+
+	InitializeListHead(&pdo_list);
 
 	InitializeObjectAttributes(&oa, RegistryPath, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
 	Status = ZwCreateKey(&regh, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_NOTIFY, &oa, 0, NULL, REG_OPTION_NON_VOLATILE, &dispos);
