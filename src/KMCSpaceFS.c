@@ -589,5 +589,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 
 	ExInitializeResourceLite(&boot_lock);
 
+	IoRegisterFileSystem(DeviceObject);
+
 	return STATUS_SUCCESS;
 }
