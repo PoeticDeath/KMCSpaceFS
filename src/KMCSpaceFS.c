@@ -49,6 +49,7 @@ UNICODE_STRING log_device, log_file, registry_path;
 ERESOURCE pdo_list_lock;
 LIST_ENTRY pdo_list;
 ERESOURCE boot_lock;
+bool is_windows_8;
 
 typedef struct
 {
@@ -458,6 +459,17 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	HANDLE regh;
 	OBJECT_ATTRIBUTES oa, system_thread_attributes;
 	ULONG dispos;
+	RTL_OSVERSIONINFOW ver;
+
+	ver.dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOW);
+
+	Status = RtlGetVersion(&ver);
+	if (!NT_SUCCESS(Status)) {
+		ERR("RtlGetVersion returned %08lx\n", Status);
+		return Status;
+	}
+
+	is_windows_8 = ver.dwMajorVersion > 6 || (ver.dwMajorVersion == 6 && ver.dwMinorVersion >= 2);
 
 #ifdef _DEBUG
 	ExInitializeResourceLite(&log_lock);
