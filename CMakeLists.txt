@@ -6,6 +6,7 @@ project(KMCSpaceFS VERSION 0.0.1)
 
 set(SRC_FILES
     src/KMCSpaceFS.c
+    src/registry.c
     ${CMAKE_CURRENT_BINARY_DIR}/KMCSpaceFS.rc)
 
 if(MSVC) # cmake bug 15170
