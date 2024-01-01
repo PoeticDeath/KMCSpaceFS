@@ -48,6 +48,8 @@ bool log_started = false;
 UNICODE_STRING log_device, log_file, registry_path;
 ERESOURCE pdo_list_lock;
 LIST_ENTRY pdo_list;
+HANDLE degraded_wait_handle = NULL, mountmgr_thread_handle = NULL;
+bool degraded_wait = true;
 ERESOURCE boot_lock;
 bool is_windows_8;
 
@@ -496,6 +498,30 @@ end:
 }
 #endif
 
+_Function_class_(KSTART_ROUTINE)
+static void __stdcall degraded_wait_thread(_In_ void* context)
+{
+	KTIMER timer;
+	LARGE_INTEGER delay;
+
+	UNUSED(context);
+
+	KeInitializeTimer(&timer);
+
+	delay.QuadPart = -30000000; // wait three seconds
+	KeSetTimer(&timer, delay, NULL);
+	KeWaitForSingleObject(&timer, Executive, KernelMode, false, NULL);
+
+	TRACE("timer expired\n");
+
+	degraded_wait = false;
+
+	ZwClose(degraded_wait_handle);
+	degraded_wait_handle = NULL;
+
+	PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
 _Function_class_(DRIVER_INITIALIZE)
 NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
@@ -665,6 +691,12 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	IoInvalidateDeviceRelations(bde->buspdo, BusRelations);
 
 	InitializeObjectAttributes(&system_thread_attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
+
+	Status = PsCreateSystemThread(&degraded_wait_handle, 0, &system_thread_attributes, NULL, NULL, degraded_wait_thread, NULL);
+	if (!NT_SUCCESS(Status))
+	{
+		WARN("PsCreateSystemThread returned %08lx\n", Status);
+	}
 
 	ExInitializeResourceLite(&boot_lock);
 
