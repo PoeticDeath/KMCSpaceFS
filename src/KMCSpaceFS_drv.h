@@ -66,6 +66,18 @@ void _debug_message(_In_ const char* func, _In_ char* s, ...) __attribute__((for
 #define VCB_TYPE_PDO     4
 #define VCB_TYPE_BUS     5
 
+#if defined(_MSC_VER) || defined(__clang__)
+#define try __try
+#define except __except
+#define finally __finally
+#define leave __leave
+#else
+#define try if (1)
+#define except(x) if (0 && (x))
+#define finally if (1)
+#define leave
+#endif
+
 typedef struct
 {
     uint64_t index;
@@ -232,6 +244,17 @@ typedef struct pdo_device_extension
     LIST_ENTRY list_entry;
 } pdo_device_extension;
 
+_Post_satisfies_(return >= n)
+__inline static uint64_t sector_align(_In_ uint64_t n, _In_ uint64_t a)
+{
+    if (n & (a - 1))
+    {
+        n = (n + a) & ~(a - 1);
+    }
+
+    return n;
+}
+
 // in registry.c
 void read_registry(PUNICODE_STRING regpath, bool refresh);
 NTSTATUS registry_load_volume_options(device_extension* Vcb);
@@ -267,3 +290,4 @@ typedef NTSTATUS(__stdcall* tIoUnregisterPlugPlayNotificationEx)(PVOID Notificat
 // in KMCSpaceFS.c
 bool is_top_level(_In_ PIRP Irp);
 NTSTATUS dev_ioctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ ULONG ControlCode, _In_reads_bytes_opt_(InputBufferSize) PVOID InputBuffer, _In_ ULONG InputBufferSize, _Out_writes_bytes_opt_(OutputBufferSize) PVOID OutputBuffer, _In_ ULONG OutputBufferSize, _In_ bool Override, _Out_opt_ IO_STATUS_BLOCK* iosb);
+NTSTATUS sync_read_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT FileObject, _In_ uint64_t StartingOffset, _In_ ULONG Length, _Out_writes_bytes_(Length) PUCHAR Buffer, _In_ bool override);

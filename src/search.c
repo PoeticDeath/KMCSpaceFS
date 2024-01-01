@@ -34,6 +34,122 @@ DEFINE_GUID(GUID_IO_VOLUME_FVE_STATUS_CHANGE, 0x062998b2, 0xee1f, 0x4b6a, 0xb8, 
 
 extern PDEVICE_OBJECT devobj;
 
+static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNICODE_STRING devpath, DWORD disk_num, DWORD part_num, uint64_t length, bool fve_callback)
+{
+    NTSTATUS Status;
+    ULONG toread;
+    uint8_t* data = NULL, *table = NULL;
+    uint32_t sector_size;
+    bool ret = true;
+
+    TRACE("%.*S\n", (int)(devpath->Length / sizeof(WCHAR)), devpath->Buffer);
+
+    sector_size = DeviceObject->SectorSize;
+
+    if (sector_size == 0)
+    {
+        DISK_GEOMETRY geometry;
+        IO_STATUS_BLOCK iosb;
+
+        Status = dev_ioctl(DeviceObject, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, &geometry, sizeof(DISK_GEOMETRY), true, &iosb);
+        if (!NT_SUCCESS(Status))
+        {
+            ERR("%.*S had a sector size of 0, and IOCTL_DISK_GET_DRIVE_GEOMETRY returned %08lx\n", (int)(devpath->Length / sizeof(WCHAR)), devpath->Buffer, Status);
+            goto deref;
+        }
+
+        if (iosb.Information < sizeof(DISK_GEOMETRY))
+        {
+            ERR("%.*S: IOCTL_DISK_GET_DRIVE_GEOMETRY returned %Iu bytes, expected %Iu\n", (int)(devpath->Length / sizeof(WCHAR)), devpath->Buffer, iosb.Information, sizeof(DISK_GEOMETRY));
+        }
+
+        sector_size = geometry.BytesPerSector;
+
+        if (sector_size == 0)
+        {
+            ERR("%.*S had a sector size of 0\n", (int)(devpath->Length / sizeof(WCHAR)), devpath->Buffer);
+            goto deref;
+        }
+    }
+
+    toread = (ULONG)sector_align(512, sector_size);
+    data = ExAllocatePoolWithTag(NonPagedPool, toread, ALLOC_TAG);
+    if (!data)
+    {
+        ERR("out of memory\n");
+        goto deref;
+    }
+
+    Status = sync_read_phys(DeviceObject, FileObject, 0, toread, data, true);
+    if (NT_SUCCESS(Status))
+    {
+        unsigned long sectorsize = 1 << (9 + (data[0] & 0xff));
+        unsigned long tablesize = 1 + (data[4] & 0xff) + ((data[3] & 0xff) << 8) + ((data[2] & 0xff) << 16) + ((data[1] & 0xff) << 24);
+        unsigned long long extratablesize = (unsigned long long)sectorsize * tablesize;
+
+        table = ExAllocatePoolWithTag(NonPagedPool, extratablesize, ALLOC_TAG);
+        if (!table)
+		{
+			ERR("out of memory\n");
+			goto deref;
+		}
+
+        Status = sync_read_phys(DeviceObject, FileObject, 0, extratablesize, table, true);
+        if (NT_SUCCESS(Status))
+        {
+            unsigned long long filenamesend = 5, tableend = 0, loc = 0;
+            bool found = false;
+
+            for (filenamesend = 5; filenamesend < extratablesize; filenamesend++)
+            {
+                if ((table[filenamesend] & 0xff) == 255)
+                {
+                    if ((table[min(filenamesend + 1, extratablesize)] & 0xff) == 254)
+                    {
+                        found = true;
+                        break;
+                    }
+                    else
+                    {
+                        if (loc == 0)
+                        {
+                            tableend = filenamesend;
+                        }
+
+                        // if following check is not enough to block the driver from loading unnecessarily,
+                        // then we can add a check to make sure all bytes between loc and i equal a vaild path.
+                        // if that is not enough, then nothing will be.
+
+                        loc = filenamesend;
+                    }
+                }
+                if (filenamesend - loc > 256 && loc > 0)
+                {
+                    break;
+                }
+            }
+
+            if (found)
+            {
+                DeviceObject->Flags &= ~DO_VERIFY_VOLUME;
+                //add_volume_device(sb, devpath, length, disk_num, part_num);
+            }
+        }
+    }
+
+deref:
+    if (data)
+    {
+        ExFreePool(data);
+    }
+    if (table)
+    {
+		ExFreePool(table);
+	}
+
+    return ret;
+}
+
 NTSTATUS remove_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath)
 {
     NTSTATUS Status;
@@ -163,7 +279,7 @@ void disk_arrival(PUNICODE_STRING devpath)
         TRACE("DeviceType = %lu, DeviceNumber = %lu, PartitionNumber = %lu\n", sdn.DeviceType, sdn.DeviceNumber, sdn.PartitionNumber);
     }
 
-    //test_vol(devobj, fileobj, devpath, sdn.DeviceNumber, sdn.PartitionNumber, gli.Length.QuadPart, false);
+    test_vol(devobj, fileobj, devpath, sdn.DeviceNumber, sdn.PartitionNumber, gli.Length.QuadPart, false);
 
 end:
     ObDereferenceObject(fileobj);
@@ -489,7 +605,7 @@ bool volume_arrival(PUNICODE_STRING devpath, bool fve_callback)
         ExReleaseResourceLite(&pdo_list_lock);
     }
 
-    //ret = test_vol(devobj, fileobj, devpath, sdn.DeviceNumber, sdn.PartitionNumber, gli.Length.QuadPart, fve_callback);
+    ret = test_vol(devobj, fileobj, devpath, sdn.DeviceNumber, sdn.PartitionNumber, gli.Length.QuadPart, fve_callback);
 
 end:
     ObDereferenceObject(fileobj);

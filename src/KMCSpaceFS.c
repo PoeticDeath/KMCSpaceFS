@@ -502,6 +502,126 @@ end:
 }
 #endif
 
+_Function_class_(IO_COMPLETION_ROUTINE)
+static NTSTATUS __stdcall read_completion(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp, _In_ PVOID conptr)
+{
+	read_context* context = conptr;
+
+	UNUSED(DeviceObject);
+
+	context->iosb = Irp->IoStatus;
+	KeSetEvent(&context->Event, 0, false);
+
+	return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
+NTSTATUS sync_read_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT FileObject, _In_ uint64_t StartingOffset, _In_ ULONG Length, _Out_writes_bytes_(Length) PUCHAR Buffer, _In_ bool override)
+{
+	IO_STATUS_BLOCK IoStatus;
+	LARGE_INTEGER Offset;
+	PIRP Irp;
+	PIO_STACK_LOCATION IrpSp;
+	NTSTATUS Status;
+	read_context context;
+
+	RtlZeroMemory(&context, sizeof(read_context));
+	KeInitializeEvent(&context.Event, NotificationEvent, false);
+
+	Offset.QuadPart = (LONGLONG)StartingOffset;
+
+	Irp = IoAllocateIrp(DeviceObject->StackSize, false);
+
+	if (!Irp)
+	{
+		ERR("IoAllocateIrp failed\n");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	Irp->Flags |= IRP_NOCACHE;
+	IrpSp = IoGetNextIrpStackLocation(Irp);
+	IrpSp->MajorFunction = IRP_MJ_READ;
+	IrpSp->FileObject = FileObject;
+
+	if (override)
+	{
+		IrpSp->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
+	}
+
+	if (DeviceObject->Flags & DO_BUFFERED_IO)
+	{
+		Irp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPool, Length, ALLOC_TAG);
+		if (!Irp->AssociatedIrp.SystemBuffer)
+		{
+			ERR("out of memory\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+
+		Irp->Flags |= IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER | IRP_INPUT_OPERATION;
+
+		Irp->UserBuffer = Buffer;
+	}
+	else if (DeviceObject->Flags & DO_DIRECT_IO)
+	{
+		Irp->MdlAddress = IoAllocateMdl(Buffer, Length, false, false, NULL);
+		if (!Irp->MdlAddress)
+		{
+			ERR("IoAllocateMdl failed\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+
+		Status = STATUS_SUCCESS;
+
+		try
+		{
+			MmProbeAndLockPages(Irp->MdlAddress, KernelMode, IoWriteAccess);
+		} except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			Status = GetExceptionCode();
+		}
+
+		if (!NT_SUCCESS(Status))
+		{
+			ERR("MmProbeAndLockPages threw exception %08lx\n", Status);
+			IoFreeMdl(Irp->MdlAddress);
+			goto exit;
+		}
+	}
+	else
+	{
+		Irp->UserBuffer = Buffer;
+	}
+
+	IrpSp->Parameters.Read.Length = Length;
+	IrpSp->Parameters.Read.ByteOffset = Offset;
+
+	Irp->UserIosb = &IoStatus;
+
+	Irp->UserEvent = &context.Event;
+
+	IoSetCompletionRoutine(Irp, read_completion, &context, true, true, true);
+
+	Status = IoCallDriver(DeviceObject, Irp);
+
+	if (Status == STATUS_PENDING)
+	{
+		KeWaitForSingleObject(&context.Event, Executive, KernelMode, false, NULL);
+		Status = context.iosb.Status;
+	}
+
+	if (DeviceObject->Flags & DO_DIRECT_IO)
+	{
+		MmUnlockPages(Irp->MdlAddress);
+		IoFreeMdl(Irp->MdlAddress);
+	}
+
+exit:
+	IoFreeIrp(Irp);
+
+	return Status;
+}
+
 NTSTATUS dev_ioctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ ULONG ControlCode, _In_reads_bytes_opt_(InputBufferSize) PVOID InputBuffer, _In_ ULONG InputBufferSize, _Out_writes_bytes_opt_(OutputBufferSize) PVOID OutputBuffer, _In_ ULONG OutputBufferSize, _In_ bool Override, _Out_opt_ IO_STATUS_BLOCK* iosb)
 {
 	PIRP Irp;
