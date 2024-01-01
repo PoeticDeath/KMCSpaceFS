@@ -68,6 +68,55 @@ bool is_top_level(_In_ PIRP Irp)
 	return false;
 }
 
+_Function_class_(DRIVER_UNLOAD)
+static void __stdcall DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
+{
+	UNICODE_STRING dosdevice_nameW;
+
+	TRACE("(%p)\n", DriverObject);
+
+	dosdevice_nameW.Buffer = (WCHAR*)dosdevice_name;
+	dosdevice_nameW.Length = dosdevice_nameW.MaximumLength = sizeof(dosdevice_name) - sizeof(WCHAR);
+
+	IoDeleteSymbolicLink(&dosdevice_nameW);
+	IoDeleteDevice(DriverObject->DeviceObject);
+
+	// FIXME - free volumes and their devpaths
+
+#ifdef _DEBUG
+	if (comfo)
+	{
+		ObDereferenceObject(comfo);
+	}
+
+	if (log_handle)
+	{
+		ZwClose(log_handle);
+	}
+#endif
+
+	ExDeleteResourceLite(&pdo_list_lock);
+
+	if (log_device.Buffer)
+	{
+		ExFreePool(log_device.Buffer);
+	}
+
+	if (log_file.Buffer)
+	{
+		ExFreePool(log_file.Buffer);
+	}
+
+	if (registry_path.Buffer)
+	{
+		ExFreePool(registry_path.Buffer);
+	}
+
+#ifdef _DEBUG
+	ExDeleteResourceLite(&log_lock);
+#endif
+}
+
 #ifdef _DEBUG
 PFILE_OBJECT comfo = NULL;
 PDEVICE_OBJECT comdo = NULL;
@@ -510,10 +559,9 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 
 	drvobj = DriverObject;
 
-	/*
 	DriverObject->DriverUnload = DriverUnload;
 
-	DriverObject->DriverExtension->AddDevice = AddDevice;
+	/*DriverObject->DriverExtension->AddDevice = AddDevice;
 
 	DriverObject->MajorFunction[IRP_MJ_CREATE]                   = Create;
 	DriverObject->MajorFunction[IRP_MJ_CLOSE]                    = Close;
