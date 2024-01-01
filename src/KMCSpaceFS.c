@@ -46,10 +46,14 @@ uint32_t mount_readonly = 0;
 uint32_t no_pnp = 0;
 bool log_started = false;
 UNICODE_STRING log_device, log_file, registry_path;
+tIoUnregisterPlugPlayNotificationEx fIoUnregisterPlugPlayNotificationEx;
+void* notification_entry = NULL, * notification_entry2 = NULL, * notification_entry3 = NULL;
 ERESOURCE pdo_list_lock;
 LIST_ENTRY pdo_list;
 HANDLE degraded_wait_handle = NULL, mountmgr_thread_handle = NULL;
 bool degraded_wait = true;
+KEVENT mountmgr_thread_event;
+bool shutting_down = false;
 ERESOURCE boot_lock;
 bool is_windows_8;
 
@@ -498,6 +502,42 @@ end:
 }
 #endif
 
+NTSTATUS dev_ioctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ ULONG ControlCode, _In_reads_bytes_opt_(InputBufferSize) PVOID InputBuffer, _In_ ULONG InputBufferSize, _Out_writes_bytes_opt_(OutputBufferSize) PVOID OutputBuffer, _In_ ULONG OutputBufferSize, _In_ bool Override, _Out_opt_ IO_STATUS_BLOCK* iosb)
+{
+	PIRP Irp;
+	KEVENT Event;
+	NTSTATUS Status;
+	PIO_STACK_LOCATION IrpSp;
+	IO_STATUS_BLOCK IoStatus;
+
+	KeInitializeEvent(&Event, NotificationEvent, false);
+
+	Irp = IoBuildDeviceIoControlRequest(ControlCode, DeviceObject, InputBuffer, InputBufferSize, OutputBuffer, OutputBufferSize, false, &Event, &IoStatus);
+
+	if (!Irp) return STATUS_INSUFFICIENT_RESOURCES;
+
+	if (Override)
+	{
+		IrpSp = IoGetNextIrpStackLocation(Irp);
+		IrpSp->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
+	}
+
+	Status = IoCallDriver(DeviceObject, Irp);
+
+	if (Status == STATUS_PENDING)
+	{
+		KeWaitForSingleObject(&Event, Executive, KernelMode, false, NULL);
+		Status = IoStatus.Status;
+	}
+
+	if (iosb)
+	{
+		*iosb = IoStatus;
+	}
+
+	return Status;
+}
+
 _Function_class_(KSTART_ROUTINE)
 static void __stdcall degraded_wait_thread(_In_ void* context)
 {
@@ -699,6 +739,32 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	}
 
 	ExInitializeResourceLite(&boot_lock);
+
+	Status = IoRegisterPlugPlayNotification(EventCategoryDeviceInterfaceChange, PNPNOTIFY_DEVICE_INTERFACE_INCLUDE_EXISTING_INTERFACES, (PVOID)&GUID_DEVINTERFACE_VOLUME, DriverObject, volume_notification, NULL, &notification_entry2);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("IoRegisterPlugPlayNotification returned %08lx\n", Status);
+	}
+
+	Status = IoRegisterPlugPlayNotification(EventCategoryDeviceInterfaceChange, PNPNOTIFY_DEVICE_INTERFACE_INCLUDE_EXISTING_INTERFACES, (PVOID)&GUID_DEVINTERFACE_HIDDEN_VOLUME, DriverObject, volume_notification, NULL, &notification_entry3);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("IoRegisterPlugPlayNotification returned %08lx\n", Status);
+	}
+
+	Status = IoRegisterPlugPlayNotification(EventCategoryDeviceInterfaceChange, PNPNOTIFY_DEVICE_INTERFACE_INCLUDE_EXISTING_INTERFACES, (PVOID)&GUID_DEVINTERFACE_DISK, DriverObject, pnp_notification, DriverObject, &notification_entry);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("IoRegisterPlugPlayNotification returned %08lx\n", Status);
+	}
+
+	KeInitializeEvent(&mountmgr_thread_event, NotificationEvent, false);
+
+	Status = PsCreateSystemThread(&mountmgr_thread_handle, 0, &system_thread_attributes, NULL, NULL, mountmgr_thread, NULL);
+	if (!NT_SUCCESS(Status))
+	{
+		WARN("PsCreateSystemThread returned %08lx\n", Status);
+	}
 
 	IoRegisterFileSystem(DeviceObject);
 

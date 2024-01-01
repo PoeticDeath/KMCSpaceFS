@@ -127,6 +127,28 @@ typedef struct _file_ref
 
 typedef struct
 {
+    PDEVICE_OBJECT devobj;
+    PFILE_OBJECT fileobj;
+    DEV_ITEM devitem;
+    bool removable;
+    bool seeding;
+    bool readonly;
+    bool reloc;
+    bool trim;
+    bool can_flush;
+    ULONG change_count;
+    ULONG disk_num;
+    ULONG part_num;
+    uint64_t stats[5];
+    bool stats_changed;
+    LIST_ENTRY space;
+    LIST_ENTRY list_entry;
+    ULONG num_trim_entries;
+    LIST_ENTRY trim_list;
+} device;
+
+typedef struct
+{
     bool readonly;
     uint32_t flush_interval;
 } mount_options;
@@ -138,6 +160,7 @@ typedef struct _device_extension
     PVPB Vpb;
     PDEVICE_OBJECT devobj;
     struct _volume_device_extension* vde;
+    LIST_ENTRY devices;
     bool readonly;
     bool removing;
     LONG page_file_count;
@@ -222,3 +245,25 @@ NTSTATUS __stdcall Pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 
 NTSTATUS pnp_surprise_removal(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS pnp_query_remove_device(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+
+// in search.c
+NTSTATUS remove_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath);
+
+_Function_class_(KSTART_ROUTINE)
+void __stdcall mountmgr_thread(_In_ void* context);
+
+_Function_class_(DRIVER_NOTIFICATION_CALLBACK_ROUTINE)
+NTSTATUS __stdcall pnp_notification(PVOID NotificationStructure, PVOID Context);
+
+void disk_arrival(PUNICODE_STRING devpath);
+bool volume_arrival(PUNICODE_STRING devpath, bool fve_callback);
+void volume_removal(PUNICODE_STRING devpath);
+
+_Function_class_(DRIVER_NOTIFICATION_CALLBACK_ROUTINE)
+NTSTATUS __stdcall volume_notification(PVOID NotificationStructure, PVOID Context);
+
+typedef NTSTATUS(__stdcall* tIoUnregisterPlugPlayNotificationEx)(PVOID NotificationEntry);
+
+// in KMCSpaceFS.c
+bool is_top_level(_In_ PIRP Irp);
+NTSTATUS dev_ioctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ ULONG ControlCode, _In_reads_bytes_opt_(InputBufferSize) PVOID InputBuffer, _In_ ULONG InputBufferSize, _Out_writes_bytes_opt_(OutputBufferSize) PVOID OutputBuffer, _In_ ULONG OutputBufferSize, _In_ bool Override, _Out_opt_ IO_STATUS_BLOCK* iosb);
