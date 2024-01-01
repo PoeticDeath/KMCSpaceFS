@@ -156,12 +156,6 @@ typedef struct
     LIST_ENTRY list_entry;
     ULONG num_trim_entries;
     LIST_ENTRY trim_list;
-
-    unsigned long sectorsize;
-    unsigned long tablesize;
-    unsigned long long extratablesize;
-    unsigned long long filenamesend;
-    unsigned long long tableend;
 } device;
 
 typedef struct

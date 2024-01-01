@@ -31,8 +31,8 @@
 
 #include <ntstrsafe.h>
 
-static const WCHAR device_name[] = { '\\','C','S','p','a','c','e','F','S',0};
-static const WCHAR dosdevice_name[] = { '\\','D','o','s','D','e','v','i','c','e','s','\\','C','S','p','a','c','e','F','S',0};
+static const WCHAR device_name[] = {'\\','C','S','p','a','c','e','F','S',0};
+static const WCHAR dosdevice_name[] = {'\\','D','o','s','D','e','v','i','c','e','s','\\','C','S','p','a','c','e','F','S',0};
 
 // {12950673-B60F-4F05-A947-9A61685B3639}
 DEFINE_GUID(KMCSpaceFSBusInterface, 0x12950673, 0xb60f, 0x4f05, 0xa9, 0x47, 0x9a, 0x61, 0x68, 0x5b, 0x36, 0x39);

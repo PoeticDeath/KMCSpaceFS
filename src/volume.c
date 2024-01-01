@@ -413,7 +413,7 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
         {
             device* dev = CONTAINING_RECORD(le, device, list_entry);
 
-            if (!dev->devobj && (dev->sectorsize == sectorsize) && (dev->tablesize == tablesize) && (dev->filenamesend == filenamesend) && (dev->tableend = tableend))
+            if (!dev->devobj)
             {
                 dev->devobj = DeviceObject;
                 dev->disk_num = disk_num;
