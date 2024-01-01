@@ -223,7 +223,7 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
     volume_child* vc;
     PFILE_OBJECT FileObject;
     UNICODE_STRING devpath2;
-    bool inserted = false, new_pdo = false;
+    bool new_pdo = false;
     pdo_device_extension* pdode = NULL;
     PDEVICE_OBJECT pdo = NULL;
     bool process_drive_letters = false;
@@ -394,11 +394,6 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
     vc->disk_num = disk_num;
     vc->part_num = part_num;
     vc->had_drive_letter = false;
-
-    if (!inserted)
-    {
-        InsertTailList(&pdode->children, &vc->list_entry);
-    }
 
     pdode->children_loaded++;
 
