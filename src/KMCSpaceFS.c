@@ -622,6 +622,155 @@ exit:
 	return Status;
 }
 
+static bool is_device_removable(_In_ PDEVICE_OBJECT devobj)
+{
+	NTSTATUS Status;
+	STORAGE_HOTPLUG_INFO shi;
+
+	Status = dev_ioctl(devobj, IOCTL_STORAGE_GET_HOTPLUG_INFO, NULL, 0, &shi, sizeof(STORAGE_HOTPLUG_INFO), true, NULL);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("dev_ioctl returned %08lx\n", Status);
+		return false;
+	}
+
+	return shi.MediaRemovable != 0 ? true : false;
+}
+
+static ULONG get_device_change_count(_In_ PDEVICE_OBJECT devobj)
+{
+	NTSTATUS Status;
+	ULONG cc;
+	IO_STATUS_BLOCK iosb;
+
+	Status = dev_ioctl(devobj, IOCTL_STORAGE_CHECK_VERIFY, NULL, 0, &cc, sizeof(ULONG), true, &iosb);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("dev_ioctl returned %08lx\n", Status);
+		return 0;
+	}
+
+	if (iosb.Information < sizeof(ULONG))
+	{
+		ERR("iosb.Information was too short\n");
+		return 0;
+	}
+
+	return cc;
+}
+
+void init_device(_In_ device_extension* Vcb, _Inout_ device* dev, _In_ bool get_nums)
+{
+	NTSTATUS Status;
+	ULONG aptelen;
+	ATA_PASS_THROUGH_EX* apte;
+	STORAGE_PROPERTY_QUERY spq;
+	DEVICE_TRIM_DESCRIPTOR dtd;
+
+	dev->removable = is_device_removable(dev->devobj);
+	dev->change_count = dev->removable ? get_device_change_count(dev->devobj) : 0;
+
+	if (get_nums)
+	{
+		STORAGE_DEVICE_NUMBER sdn;
+
+		Status = dev_ioctl(dev->devobj, IOCTL_STORAGE_GET_DEVICE_NUMBER, NULL, 0, &sdn, sizeof(STORAGE_DEVICE_NUMBER), true, NULL);
+		if (!NT_SUCCESS(Status))
+		{
+			WARN("IOCTL_STORAGE_GET_DEVICE_NUMBER returned %08lx\n", Status);
+			dev->disk_num = 0xffffffff;
+			dev->part_num = 0xffffffff;
+		}
+		else
+		{
+			dev->disk_num = sdn.DeviceNumber;
+			dev->part_num = sdn.PartitionNumber;
+		}
+	}
+
+	dev->trim = false;
+	dev->readonly = false;
+	dev->reloc = false;
+	dev->num_trim_entries = 0;
+	dev->stats_changed = false;
+	InitializeListHead(&dev->trim_list);
+
+	if (!dev->readonly)
+	{
+		Status = dev_ioctl(dev->devobj, IOCTL_DISK_IS_WRITABLE, NULL, 0, NULL, 0, true, NULL);
+		if (Status == STATUS_MEDIA_WRITE_PROTECTED)
+		{
+			dev->readonly = true;
+		}
+	}
+
+	aptelen = sizeof(ATA_PASS_THROUGH_EX) + 512;
+	apte = ExAllocatePoolWithTag(NonPagedPool, aptelen, ALLOC_TAG);
+	if (!apte)
+	{
+		ERR("out of memory\n");
+		return;
+	}
+
+	RtlZeroMemory(apte, aptelen);
+
+	apte->Length = sizeof(ATA_PASS_THROUGH_EX);
+	apte->AtaFlags = ATA_FLAGS_DATA_IN;
+	apte->DataTransferLength = aptelen - sizeof(ATA_PASS_THROUGH_EX);
+	apte->TimeOutValue = 3;
+	apte->DataBufferOffset = apte->Length;
+	apte->CurrentTaskFile[6] = IDE_COMMAND_IDENTIFY;
+
+	Status = dev_ioctl(dev->devobj, IOCTL_ATA_PASS_THROUGH, apte, aptelen, apte, aptelen, true, NULL);
+
+	if (!NT_SUCCESS(Status))
+	{
+		TRACE("IOCTL_ATA_PASS_THROUGH returned %08lx for IDENTIFY DEVICE\n", Status);
+	}
+	else
+	{
+		IDENTIFY_DEVICE_DATA* idd = (IDENTIFY_DEVICE_DATA*)((uint8_t*)apte + sizeof(ATA_PASS_THROUGH_EX));
+
+		if (idd->CommandSetSupport.FlushCache)
+		{
+			dev->can_flush = true;
+			TRACE("FLUSH CACHE supported\n");
+		}
+		else
+		{
+			TRACE("FLUSH CACHE not supported\n");
+		}
+	}
+
+	ExFreePool(apte);
+
+#ifdef DEBUG_TRIM_EMULATION
+	dev->trim = true;
+	Vcb->trim = true;
+#else
+	spq.PropertyId = StorageDeviceTrimProperty;
+	spq.QueryType = PropertyStandardQuery;
+	spq.AdditionalParameters[0] = 0;
+
+	Status = dev_ioctl(dev->devobj, IOCTL_STORAGE_QUERY_PROPERTY, &spq, sizeof(STORAGE_PROPERTY_QUERY), &dtd, sizeof(DEVICE_TRIM_DESCRIPTOR), true, NULL);
+	if (NT_SUCCESS(Status))
+	{
+		if (dtd.TrimEnabled)
+		{
+			dev->trim = true;
+			Vcb->trim = true;
+			TRACE("TRIM supported\n");
+		}
+		else
+		{
+			TRACE("TRIM not supported\n");
+		}
+	}
+#endif
+
+	RtlZeroMemory(dev->stats, sizeof(uint64_t) * 5);
+}
+
 NTSTATUS dev_ioctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ ULONG ControlCode, _In_reads_bytes_opt_(InputBufferSize) PVOID InputBuffer, _In_ ULONG InputBufferSize, _Out_writes_bytes_opt_(OutputBufferSize) PVOID OutputBuffer, _In_ ULONG OutputBufferSize, _In_ bool Override, _Out_opt_ IO_STATUS_BLOCK* iosb)
 {
 	PIRP Irp;
@@ -680,6 +829,123 @@ static void __stdcall degraded_wait_thread(_In_ void* context)
 	degraded_wait_handle = NULL;
 
 	PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+_Function_class_(DRIVER_ADD_DEVICE)
+NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
+{
+	LIST_ENTRY* le;
+	NTSTATUS Status;
+	pdo_device_extension* pdode = NULL;
+	PDEVICE_OBJECT voldev;
+	volume_device_extension* vde;
+	UNICODE_STRING volname;
+
+	TRACE("(%p, %p)\n", DriverObject, PhysicalDeviceObject);
+
+	UNUSED(DriverObject);
+
+	ExAcquireResourceSharedLite(&pdo_list_lock, true);
+
+	le = pdo_list.Flink;
+	while (le != &pdo_list)
+	{
+		pdo_device_extension* pdode2 = CONTAINING_RECORD(le, pdo_device_extension, list_entry);
+
+		if (pdode2->pdo == PhysicalDeviceObject)
+		{
+			pdode = pdode2;
+			break;
+		}
+
+		le = le->Flink;
+	}
+
+	if (!pdode)
+	{
+		WARN("unrecognized PDO %p\n", PhysicalDeviceObject);
+		Status = STATUS_NOT_SUPPORTED;
+		goto end;
+	}
+
+	ExAcquireResourceExclusiveLite(&pdode->child_lock, true);
+
+	if (pdode->vde)
+	{ // if already done, return success
+		Status = STATUS_SUCCESS;
+		goto end2;
+	}
+
+	volname.Length = volname.MaximumLength = 22 * sizeof(WCHAR);
+	volname.Buffer = ExAllocatePoolWithTag(PagedPool, volname.MaximumLength, ALLOC_TAG); // FIXME - when do we free this?
+	if (!volname.Buffer)
+	{
+		ERR("out of memory\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end2;
+	}
+
+	RtlCopyMemory(volname.Buffer, L"\\Device\\CSpaceFS{129}", 22 * sizeof(WCHAR));
+
+	Status = IoCreateDevice(drvobj, sizeof(volume_device_extension), &volname, FILE_DEVICE_DISK, is_windows_8 ? FILE_DEVICE_ALLOW_APPCONTAINER_TRAVERSAL : 0, false, &voldev);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("IoCreateDevice returned %08lx\n", Status);
+		goto end2;
+	}
+
+	voldev->SectorSize = PhysicalDeviceObject->SectorSize;
+	voldev->Flags |= DO_DIRECT_IO;
+
+	vde = voldev->DeviceExtension;
+	vde->type = VCB_TYPE_VOLUME;
+	vde->name = volname;
+	vde->device = voldev;
+	vde->mounted_device = NULL;
+	vde->pdo = PhysicalDeviceObject;
+	vde->pdode = pdode;
+	vde->removing = false;
+	vde->dead = false;
+	vde->open_count = 0;
+
+	Status = IoRegisterDeviceInterface(PhysicalDeviceObject, &GUID_DEVINTERFACE_VOLUME, NULL, &vde->bus_name);
+	if (!NT_SUCCESS(Status))
+	{
+		WARN("IoRegisterDeviceInterface returned %08lx\n", Status);
+	}
+
+	vde->attached_device = IoAttachDeviceToDeviceStack(voldev, PhysicalDeviceObject);
+
+	pdode->vde = vde;
+
+	if (pdode->removable)
+	{
+		voldev->Characteristics |= FILE_REMOVABLE_MEDIA;
+	}
+
+	//if ()
+	//{
+	//	voldev->Flags |= DO_SYSTEM_BOOT_PARTITION;
+	//	PhysicalDeviceObject->Flags |= DO_SYSTEM_BOOT_PARTITION;
+	//}
+
+	voldev->Flags &= ~DO_DEVICE_INITIALIZING;
+
+	Status = IoSetDeviceInterfaceState(&vde->bus_name, true);
+	if (!NT_SUCCESS(Status))
+	{
+		WARN("IoSetDeviceInterfaceState returned %08lx\n", Status);
+	}
+
+	Status = STATUS_SUCCESS;
+
+end2:
+	ExReleaseResourceLite(&pdode->child_lock);
+
+end:
+	ExReleaseResourceLite(&pdo_list_lock);
+
+	return Status;
 }
 
 _Function_class_(DRIVER_INITIALIZE)
@@ -747,9 +1013,9 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 
 	DriverObject->DriverUnload = DriverUnload;
 
-	/*DriverObject->DriverExtension->AddDevice = AddDevice;
+	DriverObject->DriverExtension->AddDevice = AddDevice;
 
-	DriverObject->MajorFunction[IRP_MJ_CREATE]                   = Create;
+	/*DriverObject->MajorFunction[IRP_MJ_CREATE]                   = Create;
 	DriverObject->MajorFunction[IRP_MJ_CLOSE]                    = Close;
 	DriverObject->MajorFunction[IRP_MJ_READ]                     = Read;
 	DriverObject->MajorFunction[IRP_MJ_WRITE]                    = Write;

@@ -9,6 +9,7 @@ set(SRC_FILES
     src/registry.c
     src/pnp.c
     src/search.c
+    src/volume.c
     ${CMAKE_CURRENT_BINARY_DIR}/KMCSpaceFS.rc)
 
 if(MSVC) # cmake bug 15170

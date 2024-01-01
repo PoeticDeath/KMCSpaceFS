@@ -143,7 +143,6 @@ typedef struct
     PFILE_OBJECT fileobj;
     DEV_ITEM devitem;
     bool removable;
-    bool seeding;
     bool readonly;
     bool reloc;
     bool trim;
@@ -157,6 +156,12 @@ typedef struct
     LIST_ENTRY list_entry;
     ULONG num_trim_entries;
     LIST_ENTRY trim_list;
+
+    unsigned long sectorsize;
+    unsigned long tablesize;
+    unsigned long long extratablesize;
+    unsigned long long filenamesend;
+    unsigned long long tableend;
 } device;
 
 typedef struct
@@ -174,6 +179,7 @@ typedef struct _device_extension
     struct _volume_device_extension* vde;
     LIST_ENTRY devices;
     bool readonly;
+    bool trim;
     bool removing;
     LONG page_file_count;
     file_ref* root_fileref;
@@ -198,19 +204,22 @@ typedef struct
 
 typedef struct
 {
-    uint64_t devid;
-    uint64_t generation;
     PDEVICE_OBJECT devobj;
     PFILE_OBJECT fileobj;
     UNICODE_STRING pnp_name;
     uint64_t size;
-    bool seeding;
     bool had_drive_letter;
     void* notification_entry;
     ULONG disk_num;
     ULONG part_num;
     bool boot_volume;
     LIST_ENTRY list_entry;
+
+    unsigned long sectorsize;
+    unsigned long tablesize;
+    unsigned long long extratablesize;
+    unsigned long long filenamesend;
+    unsigned long long tableend;
 } volume_child;
 
 typedef struct _volume_device_extension
@@ -240,6 +249,12 @@ typedef struct pdo_device_extension
     uint64_t children_loaded;
     ERESOURCE child_lock;
     LIST_ENTRY children;
+
+    unsigned long sectorsize;
+    unsigned long tablesize;
+    unsigned long long extratablesize;
+    unsigned long long filenamesend;
+    unsigned long long tableend;
 
     LIST_ENTRY list_entry;
 } pdo_device_extension;
@@ -291,3 +306,21 @@ typedef NTSTATUS(__stdcall* tIoUnregisterPlugPlayNotificationEx)(PVOID Notificat
 bool is_top_level(_In_ PIRP Irp);
 NTSTATUS dev_ioctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ ULONG ControlCode, _In_reads_bytes_opt_(InputBufferSize) PVOID InputBuffer, _In_ ULONG InputBufferSize, _Out_writes_bytes_opt_(OutputBufferSize) PVOID OutputBuffer, _In_ ULONG OutputBufferSize, _In_ bool Override, _Out_opt_ IO_STATUS_BLOCK* iosb);
 NTSTATUS sync_read_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT FileObject, _In_ uint64_t StartingOffset, _In_ ULONG Length, _Out_writes_bytes_(Length) PUCHAR Buffer, _In_ bool override);
+void init_device(_In_ device_extension* Vcb, _Inout_ device* dev, _In_ bool get_nums);
+
+_Function_class_(DRIVER_ADD_DEVICE)
+NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject);
+
+// in volume.c
+NTSTATUS vol_create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+NTSTATUS vol_close(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+NTSTATUS vol_read(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+NTSTATUS vol_write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+NTSTATUS vol_device_control(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsigned long long extratablesize, unsigned long long filenamesend, unsigned long long tableend, PUNICODE_STRING devpath, uint64_t length, ULONG disk_num, ULONG part_num);
+NTSTATUS mountmgr_add_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath);
+
+_Function_class_(DRIVER_NOTIFICATION_CALLBACK_ROUTINE)
+NTSTATUS __stdcall pnp_removal(PVOID NotificationStructure, PVOID Context);
+
+void free_vol(volume_device_extension* vde);

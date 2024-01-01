@@ -132,7 +132,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
             if (found)
             {
                 DeviceObject->Flags &= ~DO_VERIFY_VOLUME;
-                //add_volume_device(sb, devpath, length, disk_num, part_num);
+                add_volume_device(sectorsize, tablesize, extratablesize, filenamesend, tableend, devpath, length, disk_num, part_num);
             }
         }
     }
@@ -378,11 +378,11 @@ void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lo
                                     name.Buffer = mdn2->Name;
                                     name.Length = name.MaximumLength = mdn2->NameLength;
 
-                                    //Status = mountmgr_add_drive_letter(mountmgr, &name);
-                                    //if (!NT_SUCCESS(Status))
-                                    //{
-                                    //    WARN("mountmgr_add_drive_letter returned %08lx\n", Status);
-                                    //}
+                                    Status = mountmgr_add_drive_letter(mountmgr, &name);
+                                    if (!NT_SUCCESS(Status))
+                                    {
+                                        WARN("mountmgr_add_drive_letter returned %08lx\n", Status);
+                                    }
                                 }
 
                                 ExFreePool(mdn2);
