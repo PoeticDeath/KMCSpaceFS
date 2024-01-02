@@ -42,7 +42,8 @@ static bool is_uuid(ULONG namelen, WCHAR* name)
     return true;
 }
 
-typedef struct {
+typedef struct
+{
     UNICODE_STRING name;
     LIST_ENTRY list_entry;
 } key_name;

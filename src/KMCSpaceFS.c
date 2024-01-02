@@ -845,7 +845,7 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
 	UNICODE_STRING arc_name_us;
 	WCHAR* anp;
 
-	static const WCHAR arc_name_prefix[] = L"\\ArcName\\KMCSpaceFS(";
+	static const WCHAR arc_name_prefix[] = L"\\ArcName\\CSpaceFS(";
 
 	WCHAR arc_name[(sizeof(arc_name_prefix) / sizeof(WCHAR)) - 1 + 37];
 
