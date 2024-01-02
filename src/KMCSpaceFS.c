@@ -576,7 +576,8 @@ NTSTATUS sync_read_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT File
 		try
 		{
 			MmProbeAndLockPages(Irp->MdlAddress, KernelMode, IoWriteAccess);
-		} except(EXCEPTION_EXECUTE_HANDLER)
+		}
+		except(EXCEPTION_EXECUTE_HANDLER)
 		{
 			Status = GetExceptionCode();
 		}
@@ -966,11 +967,11 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
 		voldev->Characteristics |= FILE_REMOVABLE_MEDIA;
 	}
 
-	//if (RtlCompareMemory(&boot_uuid, &pdode->KMCSFS.uuid, sizeof(KMCSpaceFS_UUID)) == sizeof(KMCSpaceFS_UUID))
-	//{
-	//	voldev->Flags |= DO_SYSTEM_BOOT_PARTITION;
-	//	PhysicalDeviceObject->Flags |= DO_SYSTEM_BOOT_PARTITION;
-	//}
+	if (RtlCompareMemory(&boot_uuid, &pdode->KMCSFS.uuid, sizeof(KMCSpaceFS_UUID)) == sizeof(KMCSpaceFS_UUID))
+	{
+		voldev->Flags |= DO_SYSTEM_BOOT_PARTITION;
+		PhysicalDeviceObject->Flags |= DO_SYSTEM_BOOT_PARTITION;
+	}
 
 	voldev->Flags &= ~DO_DEVICE_INITIALIZING;
 
@@ -1196,6 +1197,8 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	}
 
 	IoRegisterFileSystem(DeviceObject);
+
+	check_system_root();
 
 	return STATUS_SUCCESS;
 }

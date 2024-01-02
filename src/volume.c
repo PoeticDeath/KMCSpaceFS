@@ -453,11 +453,11 @@ void add_volume_device(KMCSpaceFS KMCSFS, PUNICODE_STRING devpath, uint64_t leng
 
     if (new_pdo)
     {
-        //if (RtlCompareMemory(&KMCSFS.uuid, &boot_uuid, sizeof(KMCSpaceFS_UUID)) == sizeof(KMCSpaceFS_UUID))
-        //{
-        //    boot_add_device(pdo);
-        //} else
-        if (no_pnp)
+        if (RtlCompareMemory(&KMCSFS.uuid, &boot_uuid, sizeof(KMCSpaceFS_UUID)) == sizeof(KMCSpaceFS_UUID))
+        {
+            boot_add_device(pdo);
+        }
+        else if (no_pnp)
         {
             AddDevice(drvobj, pdo);
         }

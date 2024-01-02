@@ -314,3 +314,8 @@ _Function_class_(DRIVER_NOTIFICATION_CALLBACK_ROUTINE)
 NTSTATUS __stdcall pnp_removal(PVOID NotificationStructure, PVOID Context);
 
 void free_vol(volume_device_extension* vde);
+
+// in boot.c
+void check_system_root();
+void boot_add_device(DEVICE_OBJECT* pdo);
+extern KMCSpaceFS_UUID boot_uuid;
