@@ -129,7 +129,9 @@ static NTSTATUS bus_query_device_relations(PIRP Irp)
         pdo_device_extension* pdode = CONTAINING_RECORD(le, pdo_device_extension, list_entry);
 
         if (!pdode->dont_report)
+        {
             num_children++;
+        }
 
         le = le->Flink;
     }
