@@ -297,6 +297,7 @@ bool is_top_level(_In_ PIRP Irp);
 NTSTATUS dev_ioctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ ULONG ControlCode, _In_reads_bytes_opt_(InputBufferSize) PVOID InputBuffer, _In_ ULONG InputBufferSize, _Out_writes_bytes_opt_(OutputBufferSize) PVOID OutputBuffer, _In_ ULONG OutputBufferSize, _In_ bool Override, _Out_opt_ IO_STATUS_BLOCK* iosb);
 NTSTATUS sync_read_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT FileObject, _In_ uint64_t StartingOffset, _In_ ULONG Length, _Out_writes_bytes_(Length) PUCHAR Buffer, _In_ bool override);
 void init_device(_In_ device_extension* Vcb, _Inout_ device* dev, _In_ bool get_nums);
+NTSTATUS get_device_pnp_name(_In_ PDEVICE_OBJECT DeviceObject, _Out_ PUNICODE_STRING pnp_name, _Out_ const GUID** guid);
 
 _Function_class_(DRIVER_ADD_DEVICE)
 NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject);
@@ -319,3 +320,8 @@ void free_vol(volume_device_extension* vde);
 void check_system_root();
 void boot_add_device(DEVICE_OBJECT* pdo);
 extern KMCSpaceFS_UUID boot_uuid;
+
+// in devctrl.c
+_Dispatch_type_(IRP_MJ_DEVICE_CONTROL)
+_Function_class_(DRIVER_DISPATCH)
+NTSTATUS __stdcall DeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);

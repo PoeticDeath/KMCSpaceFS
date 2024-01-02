@@ -39,7 +39,8 @@ DEFINE_GUID(KMCSpaceFSBusInterface, 0x12950673, 0xb60f, 0x4f05, 0xa9, 0x47, 0x9a
 
 PDRIVER_OBJECT drvobj;
 PDEVICE_OBJECT devobj, busobj;
-LIST_ENTRY uid_map_list, gid_map_list;
+LIST_ENTRY VcbList;
+ERESOURCE global_loading_lock;
 uint32_t debug_log_level = 0;
 uint32_t mount_flush_interval = 30;
 uint32_t mount_readonly = 0;
@@ -501,6 +502,97 @@ end:
 	ExReleaseResourceLite(&log_lock);
 }
 #endif
+
+static NTSTATUS get_device_pnp_name_guid(_In_ PDEVICE_OBJECT DeviceObject, _Out_ PUNICODE_STRING pnp_name, _In_ const GUID* guid)
+{
+	NTSTATUS Status;
+	WCHAR* list = NULL, * s;
+
+	Status = IoGetDeviceInterfaces((PVOID)guid, NULL, 0, &list);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("IoGetDeviceInterfaces returned %08lx\n", Status);
+		return Status;
+	}
+
+	s = list;
+	while (s[0] != 0)
+	{
+		PFILE_OBJECT FileObject;
+		PDEVICE_OBJECT devobj;
+		UNICODE_STRING name;
+
+		name.Length = name.MaximumLength = (USHORT)wcslen(s) * sizeof(WCHAR);
+		name.Buffer = s;
+
+		if (NT_SUCCESS(IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &FileObject, &devobj)))
+		{
+			if (DeviceObject == devobj || DeviceObject == FileObject->DeviceObject)
+			{
+				ObDereferenceObject(FileObject);
+
+				pnp_name->Buffer = ExAllocatePoolWithTag(PagedPool, name.Length, ALLOC_TAG);
+				if (!pnp_name->Buffer)
+				{
+					ERR("out of memory\n");
+					Status = STATUS_INSUFFICIENT_RESOURCES;
+					goto end;
+				}
+
+				RtlCopyMemory(pnp_name->Buffer, name.Buffer, name.Length);
+				pnp_name->Length = pnp_name->MaximumLength = name.Length;
+
+				Status = STATUS_SUCCESS;
+				goto end;
+			}
+
+			ObDereferenceObject(FileObject);
+		}
+
+		s = &s[wcslen(s) + 1];
+	}
+
+	pnp_name->Length = pnp_name->MaximumLength = 0;
+	pnp_name->Buffer = 0;
+
+	Status = STATUS_NOT_FOUND;
+
+end:
+	if (list)
+	{
+		ExFreePool(list);
+	}
+
+	return Status;
+}
+
+NTSTATUS get_device_pnp_name(_In_ PDEVICE_OBJECT DeviceObject, _Out_ PUNICODE_STRING pnp_name, _Out_ const GUID** guid)
+{
+	NTSTATUS Status;
+
+	Status = get_device_pnp_name_guid(DeviceObject, pnp_name, &GUID_DEVINTERFACE_VOLUME);
+	if (NT_SUCCESS(Status))
+	{
+		*guid = &GUID_DEVINTERFACE_VOLUME;
+		return Status;
+	}
+
+	Status = get_device_pnp_name_guid(DeviceObject, pnp_name, &GUID_DEVINTERFACE_HIDDEN_VOLUME);
+	if (NT_SUCCESS(Status))
+	{
+		*guid = &GUID_DEVINTERFACE_HIDDEN_VOLUME;
+		return Status;
+	}
+
+	Status = get_device_pnp_name_guid(DeviceObject, pnp_name, &GUID_DEVINTERFACE_DISK);
+	if (NT_SUCCESS(Status))
+	{
+		*guid = &GUID_DEVINTERFACE_DISK;
+		return Status;
+	}
+
+	return STATUS_NOT_FOUND;
+}
 
 _Function_class_(IO_COMPLETION_ROUTINE)
 static NTSTATUS __stdcall read_completion(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp, _In_ PVOID conptr)
@@ -1070,7 +1162,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	//DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;
 	//////DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
 	//DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL]      = FileSystemControl;
-	///DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
+	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
 	//DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;
 	//DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL]             = LockControl;
 	//DriverObject->MajorFunction[IRP_MJ_CLEANUP]                  = Cleanup;
@@ -1108,6 +1200,8 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 		return Status;
 	}
 
+	InitializeListHead(&VcbList);
+	ExInitializeResourceLite(&global_loading_lock);
 	ExInitializeResourceLite(&pdo_list_lock);
 
 	InitializeListHead(&pdo_list);
