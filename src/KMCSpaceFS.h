@@ -7,6 +7,11 @@
 
 typedef struct
 {
+	uint8_t uuid[16];
+} KMCSpaceFS_UUID;
+
+typedef struct
+{
     uint64_t dev_id;
     uint64_t num_bytes;
     uint64_t bytes_used;

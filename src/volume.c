@@ -249,6 +249,71 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
         le = le->Flink;
     }
 
+    wchar_t PhysicalDeviceName[64];
+    swprintf(PhysicalDeviceName, L"\\DosDevices\\PhysicalDrive%d", disk_num);
+    UNICODE_STRING PDN;
+    RtlInitUnicodeString(&PDN, PhysicalDeviceName);
+    Status = IoGetDeviceObjectPointer(&PDN, FILE_READ_DATA, &FileObject, &DeviceObject);
+    if (!NT_SUCCESS(Status))
+	{
+		ERR("IoGetDeviceObjectPointer returned %08lx\n", Status);
+		ExReleaseResourceLite(&pdo_list_lock);
+		return;
+	}
+    uint8_t* GUIDPT = NULL;
+    GUIDPT = ExAllocatePoolWithTag(NonPagedPool, 16384, ALLOC_TAG);
+    if (!GUIDPT)
+    {
+        ERR("out of memory\n");
+        ExReleaseResourceLite(&pdo_list_lock);
+        return;
+    }
+    Status = sync_read_phys(DeviceObject, FileObject, 1024, 16384, GUIDPT, true);
+    if (!NT_SUCCESS(Status))
+	{
+		ERR("sync_read_phys returned %08lx\n", Status);
+		ExFreePool(GUIDPT);
+		ExReleaseResourceLite(&pdo_list_lock);
+		return;
+	}
+    KMCSpaceFS_UUID uuid;
+    for (int i = 0; i < 16; i++)
+    {
+        int o;
+        switch (i) // uuid is mixed endian
+        {
+        case 0:
+			o = 3;
+			break;
+        case 1:
+            o = 2;
+            break;
+        case 2:
+            o = 1;
+            break;
+        case 3:
+            o = 0;
+            break;
+        case 4:
+			o = 5;
+			break;
+        case 5:
+			o = 4;
+			break;
+        case 6:
+            o = 7;
+            break;
+		case 7:
+			o = 6;
+			break;
+        default:
+            o = i;
+			break;
+        }
+        uuid.uuid[i] = GUIDPT[128 * (part_num - 1) + 16 + o];
+    }
+    ExFreePool(GUIDPT);
+
     Status = IoGetDeviceObjectPointer(devpath, FILE_READ_ATTRIBUTES, &FileObject, &DeviceObject);
     if (!NT_SUCCESS(Status))
     {
@@ -298,6 +363,7 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
 
         pdode->type = VCB_TYPE_PDO;
         pdode->pdo = pdo;
+        pdode->uuid = uuid;
         pdode->sectorsize = sectorsize;
         pdode->tablesize = tablesize;
         pdode->extratablesize = extratablesize;
@@ -349,6 +415,7 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
         goto fail;
     }
 
+    vc->uuid = uuid;
     vc->sectorsize = sectorsize;
     vc->tablesize = tablesize;
     vc->extratablesize = extratablesize;

@@ -66,6 +66,8 @@ void _debug_message(_In_ const char* func, _In_ char* s, ...) __attribute__((for
 #define VCB_TYPE_PDO     4
 #define VCB_TYPE_BUS     5
 
+#define hex_digit(c) ((c) <= 9) ? ((c) + '0') : ((c) - 10 + 'a')
+
 #if defined(_MSC_VER) || defined(__clang__)
 #define try __try
 #define except __except
@@ -198,6 +200,7 @@ typedef struct
 
 typedef struct
 {
+    KMCSpaceFS_UUID uuid;
     PDEVICE_OBJECT devobj;
     PFILE_OBJECT fileobj;
     UNICODE_STRING pnp_name;
@@ -234,6 +237,7 @@ typedef struct _volume_device_extension
 typedef struct pdo_device_extension
 {
     uint32_t type;
+    KMCSpaceFS_UUID uuid;
     volume_device_extension* vde;
     PDEVICE_OBJECT pdo;
     bool removable;

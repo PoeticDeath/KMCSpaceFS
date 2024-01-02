@@ -257,11 +257,26 @@ static NTSTATUS bus_pnp(bus_device_extension* bde, PIRP Irp)
 
 static NTSTATUS pdo_query_device_id(pdo_device_extension* pdode, PIRP Irp)
 {
-    WCHAR name[100], *out;
+    WCHAR name[100], *noff, *out;
+    int i;
 
     static const WCHAR pref[] = L"CSpaceFS\\";
 
     RtlCopyMemory(name, pref, sizeof(pref) - sizeof(WCHAR));
+
+    noff = &name[(sizeof(pref) / sizeof(WCHAR)) - 1];
+    for (i = 0; i < 16; i++)
+    {
+        *noff = hex_digit(pdode->uuid.uuid[i] >> 4); noff++;
+        *noff = hex_digit(pdode->uuid.uuid[i] & 0xf); noff++;
+
+        if (i == 3 || i == 5 || i == 7 || i == 9)
+        {
+            *noff = '-';
+            noff++;
+        }
+    }
+    *noff = 0;
 
     out = ExAllocatePoolWithTag(PagedPool, (wcslen(name) + 1) * sizeof(WCHAR), ALLOC_TAG);
     if (!out)
