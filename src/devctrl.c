@@ -35,6 +35,142 @@ static NTSTATUS is_writable(device_extension* Vcb)
     return Vcb->readonly ? STATUS_MEDIA_WRITE_PROTECTED : STATUS_SUCCESS;
 }
 
+static NTSTATUS query_filesystems(void* data, ULONG length)
+{
+    NTSTATUS Status;
+    LIST_ENTRY* le, * le2;
+    KMCSpaceFS_FileSystem* csfs = NULL;
+    ULONG itemsize;
+
+    ExAcquireResourceSharedLite(&global_loading_lock, true);
+
+    if (IsListEmpty(&VcbList))
+    {
+        if (length < sizeof(KMCSpaceFS_FileSystem))
+        {
+            Status = STATUS_BUFFER_OVERFLOW;
+            goto end;
+        }
+        else
+        {
+            RtlZeroMemory(data, sizeof(KMCSpaceFS_FileSystem));
+            Status = STATUS_SUCCESS;
+            goto end;
+        }
+    }
+
+    le = VcbList.Flink;
+
+    while (le != &VcbList)
+    {
+        device_extension* Vcb = CONTAINING_RECORD(le, device_extension, list_entry);
+        KMCSpaceFS_FileSystem_Device* csfsd;
+
+        if (csfs)
+        {
+            csfs->next_entry = itemsize;
+            csfs = (KMCSpaceFS_FileSystem*)((uint8_t*)csfs + itemsize);
+        }
+        else
+        {
+            csfs = data;
+        }
+
+        if (length < offsetof(KMCSpaceFS_FileSystem, device))
+        {
+            Status = STATUS_BUFFER_OVERFLOW;
+            goto end;
+        }
+
+        itemsize = offsetof(KMCSpaceFS_FileSystem, device);
+        length -= offsetof(KMCSpaceFS_FileSystem, device);
+
+        csfs->next_entry = 0;
+        RtlCopyMemory(&csfs->uuid, &Vcb->vde->pdode->KMCSFS.uuid, sizeof(KMCSpaceFS_UUID));
+
+        ExAcquireResourceSharedLite(&Vcb->tree_lock, true);
+
+        csfs->num_devices = (uint32_t)1;
+
+        csfsd = NULL;
+
+        le2 = Vcb->devices.Flink;
+        while (le2 != &Vcb->devices)
+        {
+            device* dev = CONTAINING_RECORD(le2, device, list_entry);
+            MOUNTDEV_NAME mdn;
+
+            if (csfsd)
+            {
+                csfsd = (KMCSpaceFS_FileSystem_Device*)((uint8_t*)csfsd + offsetof(KMCSpaceFS_FileSystem_Device, name[0]) + csfsd->name_length);
+            }
+            else
+            {
+                csfsd = &csfs->device;
+            }
+
+            if (length < offsetof(KMCSpaceFS_FileSystem_Device, name[0]))
+            {
+                ExReleaseResourceLite(&Vcb->tree_lock);
+                Status = STATUS_BUFFER_OVERFLOW;
+                goto end;
+            }
+
+            itemsize += (ULONG)offsetof(KMCSpaceFS_FileSystem_Device, name[0]);
+            length -= (ULONG)offsetof(KMCSpaceFS_FileSystem_Device, name[0]);
+
+            RtlCopyMemory(&csfsd->uuid, &Vcb->vde->pdode->KMCSFS.uuid, sizeof(KMCSpaceFS_UUID));
+
+            if (dev->devobj)
+            {
+                Status = dev_ioctl(dev->devobj, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, &mdn, sizeof(MOUNTDEV_NAME), true, NULL);
+                if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW)
+                {
+                    ExReleaseResourceLite(&Vcb->tree_lock);
+                    ERR("IOCTL_MOUNTDEV_QUERY_DEVICE_NAME returned %08lx\n", Status);
+                    goto end;
+                }
+
+                if (mdn.NameLength > length)
+                {
+                    ExReleaseResourceLite(&Vcb->tree_lock);
+                    Status = STATUS_BUFFER_OVERFLOW;
+                    goto end;
+                }
+
+                Status = dev_ioctl(dev->devobj, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, &csfsd->name_length, (ULONG)offsetof(MOUNTDEV_NAME, Name[0]) + mdn.NameLength, true, NULL);
+                if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW)
+                {
+                    ExReleaseResourceLite(&Vcb->tree_lock);
+                    ERR("IOCTL_MOUNTDEV_QUERY_DEVICE_NAME returned %08lx\n", Status);
+                    goto end;
+                }
+
+                itemsize += csfsd->name_length;
+                length -= csfsd->name_length;
+            }
+            else
+            {
+                csfsd->missing = true;
+                csfsd->name_length = 0;
+            }
+
+            le2 = le2->Flink;
+        }
+
+        ExReleaseResourceLite(&Vcb->tree_lock);
+
+        le = le->Flink;
+    }
+
+    Status = STATUS_SUCCESS;
+
+end:
+    ExReleaseResourceLite(&global_loading_lock);
+
+    return Status;
+}
+
 static NTSTATUS probe_volume(void* data, ULONG length, KPROCESSOR_MODE processor_mode)
 {
     MOUNTDEV_NAME* mdn = (MOUNTDEV_NAME*)data;
@@ -124,9 +260,9 @@ static NTSTATUS control_ioctl(PIRP Irp)
 
     switch (IrpSp->Parameters.DeviceIoControl.IoControlCode)
     {
-    //case IOCTL_KMCSPACEFS_QUERY_FILESYSTEMS:
-    //    Status = query_filesystems(map_user_buffer(Irp, NormalPagePriority), IrpSp->Parameters.FileSystemControl.OutputBufferLength);
-    //    break;
+    case IOCTL_KMCSPACEFS_QUERY_FILESYSTEMS:
+        Status = query_filesystems(map_user_buffer(Irp, NormalPagePriority), IrpSp->Parameters.FileSystemControl.OutputBufferLength);
+        break;
 
     case IOCTL_KMCSPACEFS_PROBE_VOLUME:
         Status = probe_volume(Irp->AssociatedIrp.SystemBuffer, IrpSp->Parameters.FileSystemControl.InputBufferLength, Irp->RequestorMode);

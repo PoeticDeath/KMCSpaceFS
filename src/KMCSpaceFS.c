@@ -1151,16 +1151,16 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 
 	DriverObject->DriverExtension->AddDevice = AddDevice;
 
-	////DriverObject->MajorFunction[IRP_MJ_CREATE]                   = Create;
+	///DriverObject->MajorFunction[IRP_MJ_CREATE]                   = Create;
 	//DriverObject->MajorFunction[IRP_MJ_CLOSE]                    = Close;
 	//DriverObject->MajorFunction[IRP_MJ_READ]                     = Read;
 	//DriverObject->MajorFunction[IRP_MJ_WRITE]                    = Write;
 	//DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION]        = QueryInformation;
 	//DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION]          = SetInformation;
 	//DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
-	/////DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
+	////DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
 	//DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;
-	//////DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
+	/////DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
 	//DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL]      = FileSystemControl;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
 	//DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;

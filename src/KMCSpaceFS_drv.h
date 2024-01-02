@@ -185,6 +185,7 @@ typedef struct _device_extension
     bool need_write;
     _Has_lock_level_(tree_lock) ERESOURCE tree_lock;
     PFILE_OBJECT root_file;
+    LIST_ENTRY list_entry;
 } device_extension;
 
 typedef struct
@@ -248,6 +249,18 @@ typedef struct pdo_device_extension
 
     LIST_ENTRY list_entry;
 } pdo_device_extension;
+
+static __inline void* map_user_buffer(PIRP Irp, ULONG priority)
+{
+    if (!Irp->MdlAddress)
+    {
+        return Irp->UserBuffer;
+    }
+    else
+    {
+        return MmGetSystemAddressForMdlSafe(Irp->MdlAddress, priority);
+    }
+}
 
 _Post_satisfies_(return >= n)
 __inline static uint64_t sector_align(_In_ uint64_t n, _In_ uint64_t a)
