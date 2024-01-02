@@ -1015,25 +1015,25 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 
 	DriverObject->DriverExtension->AddDevice = AddDevice;
 
-	/*DriverObject->MajorFunction[IRP_MJ_CREATE]                   = Create;
-	DriverObject->MajorFunction[IRP_MJ_CLOSE]                    = Close;
-	DriverObject->MajorFunction[IRP_MJ_READ]                     = Read;
-	DriverObject->MajorFunction[IRP_MJ_WRITE]                    = Write;
-	DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION]        = QueryInformation;
-	DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION]          = SetInformation;
-	DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
-	DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
-	DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;
-	DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
-	DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL]      = FileSystemControl;
-	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
-	DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;
-	DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL]             = LockControl;
-	DriverObject->MajorFunction[IRP_MJ_CLEANUP]                  = Cleanup;
-	DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = QuerySecurity;
-	DriverObject->MajorFunction[IRP_MJ_SET_SECURITY]             = SetSecurity;
-	DriverObject->MajorFunction[IRP_MJ_POWER]                    = Power;
-	DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL]           = SystemControl;*/
+	////DriverObject->MajorFunction[IRP_MJ_CREATE]                   = Create;
+	//DriverObject->MajorFunction[IRP_MJ_CLOSE]                    = Close;
+	//DriverObject->MajorFunction[IRP_MJ_READ]                     = Read;
+	//DriverObject->MajorFunction[IRP_MJ_WRITE]                    = Write;
+	//DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION]        = QueryInformation;
+	//DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION]          = SetInformation;
+	//DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
+	/////DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
+	//DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;
+	//////DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
+	//DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL]      = FileSystemControl;
+	///DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
+	//DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;
+	//DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL]             = LockControl;
+	//DriverObject->MajorFunction[IRP_MJ_CLEANUP]                  = Cleanup;
+	//DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = QuerySecurity;
+	//DriverObject->MajorFunction[IRP_MJ_SET_SECURITY]             = SetSecurity;
+	//DriverObject->MajorFunction[IRP_MJ_POWER]                    = Power;
+	//DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL]           = SystemControl;
 	DriverObject->MajorFunction[IRP_MJ_PNP]                      = Pnp;
 
 	device_nameW.Buffer = (WCHAR*)device_name;
