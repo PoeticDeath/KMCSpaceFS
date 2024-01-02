@@ -287,7 +287,7 @@ end:
     ExReleaseResourceLite(&boot_lock);
 }
 
-void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lock) _Releases_exclusive_lock_(_Curr_->child_lock) _In_ volume_device_extension* vde, _In_ volume_child* vc, _In_ bool skip_dev)
+void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->pdode->child_lock) _Releases_exclusive_lock_(_Curr_->pdode->child_lock) _In_ volume_device_extension* vde, _In_ volume_child* vc, _In_ bool skip_dev)
 {
     NTSTATUS Status;
     pdo_device_extension* pdode = vde->pdode;
