@@ -200,7 +200,6 @@ typedef struct
 
 typedef struct
 {
-    KMCSpaceFS_UUID uuid;
     PDEVICE_OBJECT devobj;
     PFILE_OBJECT fileobj;
     UNICODE_STRING pnp_name;
@@ -212,11 +211,7 @@ typedef struct
     bool boot_volume;
     LIST_ENTRY list_entry;
 
-    unsigned long sectorsize;
-    unsigned long tablesize;
-    unsigned long long extratablesize;
-    unsigned long long filenamesend;
-    unsigned long long tableend;
+    KMCSpaceFS KMCSFS;
 } volume_child;
 
 typedef struct _volume_device_extension
@@ -237,7 +232,6 @@ typedef struct _volume_device_extension
 typedef struct pdo_device_extension
 {
     uint32_t type;
-    KMCSpaceFS_UUID uuid;
     volume_device_extension* vde;
     PDEVICE_OBJECT pdo;
     bool removable;
@@ -248,11 +242,7 @@ typedef struct pdo_device_extension
     ERESOURCE child_lock;
     LIST_ENTRY children;
 
-    unsigned long sectorsize;
-    unsigned long tablesize;
-    unsigned long long extratablesize;
-    unsigned long long filenamesend;
-    unsigned long long tableend;
+    KMCSpaceFS KMCSFS;
 
     LIST_ENTRY list_entry;
 } pdo_device_extension;
@@ -315,7 +305,7 @@ NTSTATUS vol_close(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 NTSTATUS vol_read(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 NTSTATUS vol_write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 NTSTATUS vol_device_control(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
-void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsigned long long extratablesize, unsigned long long filenamesend, unsigned long long tableend, PUNICODE_STRING devpath, uint64_t length, ULONG disk_num, ULONG part_num);
+void add_volume_device(KMCSpaceFS KMCSFS, PUNICODE_STRING devpath, uint64_t length, ULONG disk_num, ULONG part_num);
 NTSTATUS mountmgr_add_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath);
 
 _Function_class_(DRIVER_NOTIFICATION_CALLBACK_ROUTINE)

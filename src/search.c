@@ -83,28 +83,98 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
     Status = sync_read_phys(DeviceObject, FileObject, 0, toread, data, true);
     if (NT_SUCCESS(Status))
     {
-        unsigned long sectorsize = 1 << (9 + (data[0] & 0xff));
-        unsigned long tablesize = 1 + (data[4] & 0xff) + ((data[3] & 0xff) << 8) + ((data[2] & 0xff) << 16) + ((data[1] & 0xff) << 24);
-        unsigned long long extratablesize = (unsigned long long)sectorsize * tablesize;
+        KMCSpaceFS KMCSFS;
 
-        table = ExAllocatePoolWithTag(NonPagedPool, extratablesize, ALLOC_TAG);
+        wchar_t PhysicalDeviceName[64];
+        swprintf(PhysicalDeviceName, L"\\DosDevices\\PhysicalDrive%d", disk_num);
+        UNICODE_STRING PDN;
+        RtlInitUnicodeString(&PDN, PhysicalDeviceName);
+        PFILE_OBJECT DriveFileObject;
+		PDEVICE_OBJECT DriveDeviceObject;
+        Status = IoGetDeviceObjectPointer(&PDN, FILE_READ_DATA, &DriveFileObject, &DriveDeviceObject);
+        if (!NT_SUCCESS(Status))
+        {
+            ERR("IoGetDeviceObjectPointer returned %08lx\n", Status);
+            ExReleaseResourceLite(&pdo_list_lock);
+            return;
+        }
+        uint8_t* GUIDPT = NULL;
+        GUIDPT = ExAllocatePoolWithTag(NonPagedPool, 16384, ALLOC_TAG);
+        if (!GUIDPT)
+        {
+            ERR("out of memory\n");
+            ExReleaseResourceLite(&pdo_list_lock);
+            return;
+        }
+        Status = sync_read_phys(DriveDeviceObject, DriveFileObject, 1024, 16384, GUIDPT, true);
+        if (!NT_SUCCESS(Status))
+        {
+            ERR("sync_read_phys returned %08lx\n", Status);
+            ExFreePool(GUIDPT);
+            ExReleaseResourceLite(&pdo_list_lock);
+            return;
+        }
+        for (int i = 0; i < 16; i++)
+        {
+            int o;
+            switch (i) // uuid is mixed endian
+            {
+            case 0:
+                o = 3;
+                break;
+            case 1:
+                o = 2;
+                break;
+            case 2:
+                o = 1;
+                break;
+            case 3:
+                o = 0;
+                break;
+            case 4:
+                o = 5;
+                break;
+            case 5:
+                o = 4;
+                break;
+            case 6:
+                o = 7;
+                break;
+            case 7:
+                o = 6;
+                break;
+            default:
+                o = i;
+                break;
+            }
+            KMCSFS.uuid.uuid[i] = GUIDPT[128 * (part_num - 1) + 16 + o];
+        }
+        ExFreePool(GUIDPT);
+
+        KMCSFS.sectorsize = 1 << (9 + (data[0] & 0xff));
+        KMCSFS.tablesize = 1 + (data[4] & 0xff) + ((data[3] & 0xff) << 8) + ((data[2] & 0xff) << 16) + ((data[1] & 0xff) << 24);
+        KMCSFS.extratablesize = (unsigned long long)KMCSFS.sectorsize * KMCSFS.tablesize;
+
+        table = ExAllocatePoolWithTag(NonPagedPool, KMCSFS.extratablesize, ALLOC_TAG);
         if (!table)
 		{
 			ERR("out of memory\n");
 			goto deref;
 		}
 
-        Status = sync_read_phys(DeviceObject, FileObject, 0, extratablesize, table, true);
+        Status = sync_read_phys(DeviceObject, FileObject, 0, KMCSFS.extratablesize, table, true);
         if (NT_SUCCESS(Status))
         {
-            unsigned long long filenamesend = 5, tableend = 0, loc = 0;
+            KMCSFS.filenamesend = 5;
+            KMCSFS.tableend = 0;
+            unsigned long long loc = 0;
             bool found = false;
 
-            for (filenamesend = 5; filenamesend < extratablesize; filenamesend++)
+            for (KMCSFS.filenamesend = 5; KMCSFS.filenamesend < KMCSFS.extratablesize; KMCSFS.filenamesend++)
             {
-                if ((table[filenamesend] & 0xff) == 255)
+                if ((table[KMCSFS.filenamesend] & 0xff) == 255)
                 {
-                    if ((table[min(filenamesend + 1, extratablesize)] & 0xff) == 254)
+                    if ((table[min(KMCSFS.filenamesend + 1, KMCSFS.extratablesize)] & 0xff) == 254)
                     {
                         found = true;
                         break;
@@ -113,17 +183,17 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
                     {
                         if (loc == 0)
                         {
-                            tableend = filenamesend;
+                            KMCSFS.tableend = KMCSFS.filenamesend;
                         }
 
                         // if following check is not enough to block the driver from loading unnecessarily,
                         // then we can add a check to make sure all bytes between loc and i equal a vaild path.
                         // if that is not enough, then nothing will be.
 
-                        loc = filenamesend;
+                        loc = KMCSFS.filenamesend;
                     }
                 }
-                if (filenamesend - loc > 256 && loc > 0)
+                if (KMCSFS.filenamesend - loc > 256 && loc > 0)
                 {
                     break;
                 }
@@ -132,7 +202,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
             if (found)
             {
                 DeviceObject->Flags &= ~DO_VERIFY_VOLUME;
-                add_volume_device(sectorsize, tablesize, extratablesize, filenamesend, tableend, devpath, length, disk_num, part_num);
+                add_volume_device(KMCSFS, devpath, length, disk_num, part_num);
             }
         }
     }

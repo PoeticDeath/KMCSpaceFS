@@ -78,11 +78,7 @@ typedef struct
     LIST_ENTRY list_entry;
     UNICODE_STRING name;
     NTSTATUS Status;
-    unsigned long sectorsize;
-    unsigned long tablesize;
-    unsigned long long extratablesize;
-    unsigned long long filenamesend;
-    unsigned long long tableend;
+    KMCSpaceFS KMCSFS;
 } drive_letter_removal;
 
 static void drive_letter_callback2(pdo_device_extension* pdode, PDEVICE_OBJECT mountmgr)
@@ -143,6 +139,8 @@ static void drive_letter_callback2(pdo_device_extension* pdode, PDEVICE_OBJECT m
         RtlCopyMemory(dlr->name.Buffer, L"\\??", 3 * sizeof(WCHAR));
         RtlCopyMemory(&dlr->name.Buffer[3], vc->pnp_name.Buffer, vc->pnp_name.Length);
 
+        dlr->KMCSFS = vc->KMCSFS;
+
         InsertTailList(&dlrlist, &dlr->list_entry);
 
         le = le->Flink;
@@ -179,7 +177,7 @@ static void drive_letter_callback2(pdo_device_extension* pdode, PDEVICE_OBJECT m
         {
             volume_child* vc = CONTAINING_RECORD(le, volume_child, list_entry);
 
-            if ((vc->sectorsize == dlr->sectorsize) && (vc->tablesize == dlr->tablesize) && (vc->filenamesend == dlr->filenamesend) && (vc->tableend = dlr->tableend))
+            if (RtlCompareMemory(&vc->KMCSFS.uuid, &dlr->KMCSFS.uuid, sizeof(KMCSpaceFS_UUID)) == sizeof(KMCSpaceFS_UUID))
             {
                 vc->had_drive_letter = NT_SUCCESS(dlr->Status);
                 break;
@@ -216,7 +214,7 @@ static void __stdcall drive_letter_callback(pdo_device_extension* pdode)
     ObDereferenceObject(mountmgrfo);
 }
 
-void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsigned long long extratablesize, unsigned long long filenamesend, unsigned long long tableend, PUNICODE_STRING devpath, uint64_t length, ULONG disk_num, ULONG part_num) {
+void add_volume_device(KMCSpaceFS KMCSFS, PUNICODE_STRING devpath, uint64_t length, ULONG disk_num, ULONG part_num) {
     NTSTATUS Status;
     LIST_ENTRY* le;
     PDEVICE_OBJECT DeviceObject;
@@ -240,7 +238,7 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
     {
         pdo_device_extension* pdode2 = CONTAINING_RECORD(le, pdo_device_extension, list_entry);
 
-        if ((pdode2->sectorsize == sectorsize) && (pdode2->tablesize == tablesize) && (pdode2->filenamesend == filenamesend) && (pdode2->tableend = tableend))
+        if (RtlCompareMemory(&pdode2->KMCSFS.uuid, &KMCSFS.uuid, sizeof(KMCSpaceFS_UUID)) == sizeof(KMCSpaceFS_UUID))
         {
             pdode = pdode2;
             break;
@@ -248,71 +246,6 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
 
         le = le->Flink;
     }
-
-    wchar_t PhysicalDeviceName[64];
-    swprintf(PhysicalDeviceName, L"\\DosDevices\\PhysicalDrive%d", disk_num);
-    UNICODE_STRING PDN;
-    RtlInitUnicodeString(&PDN, PhysicalDeviceName);
-    Status = IoGetDeviceObjectPointer(&PDN, FILE_READ_DATA, &FileObject, &DeviceObject);
-    if (!NT_SUCCESS(Status))
-	{
-		ERR("IoGetDeviceObjectPointer returned %08lx\n", Status);
-		ExReleaseResourceLite(&pdo_list_lock);
-		return;
-	}
-    uint8_t* GUIDPT = NULL;
-    GUIDPT = ExAllocatePoolWithTag(NonPagedPool, 16384, ALLOC_TAG);
-    if (!GUIDPT)
-    {
-        ERR("out of memory\n");
-        ExReleaseResourceLite(&pdo_list_lock);
-        return;
-    }
-    Status = sync_read_phys(DeviceObject, FileObject, 1024, 16384, GUIDPT, true);
-    if (!NT_SUCCESS(Status))
-	{
-		ERR("sync_read_phys returned %08lx\n", Status);
-		ExFreePool(GUIDPT);
-		ExReleaseResourceLite(&pdo_list_lock);
-		return;
-	}
-    KMCSpaceFS_UUID uuid;
-    for (int i = 0; i < 16; i++)
-    {
-        int o;
-        switch (i) // uuid is mixed endian
-        {
-        case 0:
-			o = 3;
-			break;
-        case 1:
-            o = 2;
-            break;
-        case 2:
-            o = 1;
-            break;
-        case 3:
-            o = 0;
-            break;
-        case 4:
-			o = 5;
-			break;
-        case 5:
-			o = 4;
-			break;
-        case 6:
-            o = 7;
-            break;
-		case 7:
-			o = 6;
-			break;
-        default:
-            o = i;
-			break;
-        }
-        uuid.uuid[i] = GUIDPT[128 * (part_num - 1) + 16 + o];
-    }
-    ExFreePool(GUIDPT);
 
     Status = IoGetDeviceObjectPointer(devpath, FILE_READ_ATTRIBUTES, &FileObject, &DeviceObject);
     if (!NT_SUCCESS(Status))
@@ -363,12 +296,7 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
 
         pdode->type = VCB_TYPE_PDO;
         pdode->pdo = pdo;
-        pdode->uuid = uuid;
-        pdode->sectorsize = sectorsize;
-        pdode->tablesize = tablesize;
-        pdode->extratablesize = extratablesize;
-        pdode->filenamesend = filenamesend;
-        pdode->tableend = tableend;
+        pdode->KMCSFS = KMCSFS;
 
         ExInitializeResourceLite(&pdode->child_lock);
         InitializeListHead(&pdode->children);
@@ -376,7 +304,7 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
         pdode->children_loaded = 0;
 
         pdo->Flags &= ~DO_DEVICE_INITIALIZING;
-        pdo->SectorSize = (USHORT)sectorsize;
+        pdo->SectorSize = (USHORT)KMCSFS.sectorsize;
 
         ExAcquireResourceExclusiveLite(&pdode->child_lock, true);
 
@@ -392,7 +320,7 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
         {
             volume_child* vc2 = CONTAINING_RECORD(le, volume_child, list_entry);
 
-            if ((vc2->sectorsize == sectorsize) && (vc2->tablesize == tablesize) && (vc2->filenamesend == filenamesend) && (vc2->tableend = tableend))
+            if (RtlCompareMemory(&vc2->KMCSFS.uuid, &KMCSFS.uuid, sizeof(KMCSpaceFS_UUID)) == sizeof(KMCSpaceFS_UUID))
             {
                 // duplicate, ignore
                 ExReleaseResourceLite(&pdode->child_lock);
@@ -415,12 +343,7 @@ void add_volume_device(unsigned long sectorsize, unsigned long tablesize, unsign
         goto fail;
     }
 
-    vc->uuid = uuid;
-    vc->sectorsize = sectorsize;
-    vc->tablesize = tablesize;
-    vc->extratablesize = extratablesize;
-    vc->filenamesend = filenamesend;
-    vc->tableend = tableend;
+    vc->KMCSFS = KMCSFS;
     vc->notification_entry = NULL;
     vc->boot_volume = false;
 

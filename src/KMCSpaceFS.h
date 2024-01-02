@@ -25,3 +25,13 @@ typedef struct
     uint8_t seek_speed;
     uint8_t bandwidth;
 } DEV_ITEM;
+
+typedef struct
+{
+    KMCSpaceFS_UUID uuid;
+    unsigned long sectorsize;
+    unsigned long long tablesize;
+    unsigned long long extratablesize;
+    unsigned long long filenamesend;
+    unsigned long long tableend;
+} KMCSpaceFS;
