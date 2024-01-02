@@ -34,6 +34,87 @@ DEFINE_GUID(GUID_IO_VOLUME_FVE_STATUS_CHANGE, 0x062998b2, 0xee1f, 0x4b6a, 0xb8, 
 
 extern PDEVICE_OBJECT devobj;
 
+static bool fs_ignored(KMCSpaceFS_UUID* uuid)
+{
+    UNICODE_STRING path, ignoreus;
+    NTSTATUS Status;
+    OBJECT_ATTRIBUTES oa;
+    KEY_VALUE_FULL_INFORMATION* kvfi;
+    ULONG dispos, retlen, kvfilen, i, j;
+    HANDLE h;
+    bool ret = false;
+
+    path.Length = path.MaximumLength = registry_path.Length + (37 * sizeof(WCHAR));
+
+    path.Buffer = ExAllocatePoolWithTag(PagedPool, path.Length, ALLOC_TAG);
+    if (!path.Buffer)
+    {
+        ERR("out of memory\n");
+        return false;
+    }
+
+    RtlCopyMemory(path.Buffer, registry_path.Buffer, registry_path.Length);
+
+    i = registry_path.Length / sizeof(WCHAR);
+
+    path.Buffer[i] = '\\';
+    i++;
+
+    for (j = 0; j < 16; j++)
+    {
+        path.Buffer[i] = hex_digit((uuid->uuid[j] & 0xF0) >> 4);
+        path.Buffer[i + 1] = hex_digit(uuid->uuid[j] & 0xF);
+
+        i += 2;
+
+        if (j == 3 || j == 5 || j == 7 || j == 9)
+        {
+            path.Buffer[i] = '-';
+            i++;
+        }
+    }
+
+    InitializeObjectAttributes(&oa, &path, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+
+    Status = ZwCreateKey(&h, KEY_QUERY_VALUE, &oa, 0, NULL, REG_OPTION_NON_VOLATILE, &dispos);
+
+    if (!NT_SUCCESS(Status))
+    {
+        TRACE("ZwCreateKey returned %08lx\n", Status);
+        ExFreePool(path.Buffer);
+        return false;
+    }
+
+    RtlInitUnicodeString(&ignoreus, L"Ignore");
+
+    kvfilen = (ULONG)offsetof(KEY_VALUE_FULL_INFORMATION, Name[0]) + (255 * sizeof(WCHAR));
+    kvfi = ExAllocatePoolWithTag(PagedPool, kvfilen, ALLOC_TAG);
+    if (!kvfi)
+    {
+        ERR("out of memory\n");
+        ZwClose(h);
+        ExFreePool(path.Buffer);
+        return false;
+    }
+
+    Status = ZwQueryValueKey(h, &ignoreus, KeyValueFullInformation, kvfi, kvfilen, &retlen);
+    if (NT_SUCCESS(Status))
+    {
+        if (kvfi->Type == REG_DWORD && kvfi->DataLength >= sizeof(uint32_t))
+        {
+            uint32_t* pr = (uint32_t*)((uint8_t*)kvfi + kvfi->DataOffset);
+
+            ret = *pr;
+        }
+    }
+
+    ZwClose(h);
+    ExFreePool(kvfi);
+    ExFreePool(path.Buffer);
+
+    return ret;
+}
+
 static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNICODE_STRING devpath, DWORD disk_num, DWORD part_num, uint64_t length, bool fve_callback)
 {
     NTSTATUS Status;
@@ -199,7 +280,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
                 }
             }
 
-            if (found)
+            if (!fs_ignored(&KMCSFS.uuid) && found)
             {
                 DeviceObject->Flags &= ~DO_VERIFY_VOLUME;
                 add_volume_device(KMCSFS, devpath, length, disk_num, part_num);

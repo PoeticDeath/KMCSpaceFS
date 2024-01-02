@@ -836,10 +836,18 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
 {
 	LIST_ENTRY* le;
 	NTSTATUS Status;
+	UNICODE_STRING volname;
+	ULONG i;
+	WCHAR* s;
 	pdo_device_extension* pdode = NULL;
 	PDEVICE_OBJECT voldev;
 	volume_device_extension* vde;
-	UNICODE_STRING volname;
+	UNICODE_STRING arc_name_us;
+	WCHAR* anp;
+
+	static const WCHAR arc_name_prefix[] = L"\\ArcName\\KMCSpaceFS(";
+
+	WCHAR arc_name[(sizeof(arc_name_prefix) / sizeof(WCHAR)) - 1 + 37];
 
 	TRACE("(%p, %p)\n", DriverObject, PhysicalDeviceObject);
 
@@ -876,8 +884,9 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
 		goto end2;
 	}
 
-	volname.Length = volname.MaximumLength = 22 * sizeof(WCHAR);
+	volname.Length = volname.MaximumLength = (sizeof(KMCSPACEFS_VOLUME_PREFIX) - sizeof(WCHAR)) + ((36 + 1) * sizeof(WCHAR));
 	volname.Buffer = ExAllocatePoolWithTag(PagedPool, volname.MaximumLength, ALLOC_TAG); // FIXME - when do we free this?
+
 	if (!volname.Buffer)
 	{
 		ERR("out of memory\n");
@@ -885,13 +894,47 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
 		goto end2;
 	}
 
-	RtlCopyMemory(volname.Buffer, L"\\Device\\CSpaceFS{129}", 22 * sizeof(WCHAR));
+	RtlCopyMemory(volname.Buffer, KMCSPACEFS_VOLUME_PREFIX, sizeof(KMCSPACEFS_VOLUME_PREFIX) - sizeof(WCHAR));
+	RtlCopyMemory(arc_name, arc_name_prefix, sizeof(arc_name_prefix) - sizeof(WCHAR));
+
+	anp = &arc_name[(sizeof(arc_name_prefix) / sizeof(WCHAR)) - 1];
+	s = &volname.Buffer[(sizeof(KMCSPACEFS_VOLUME_PREFIX) / sizeof(WCHAR)) - 1];
+
+	for (i = 0; i < 16; i++)
+	{
+		*s = *anp = hex_digit(pdode->KMCSFS.uuid.uuid[i] >> 4);
+		s++;
+		anp++;
+
+		*s = *anp = hex_digit(pdode->KMCSFS.uuid.uuid[i] & 0xf);
+		s++;
+		anp++;
+
+		if (i == 3 || i == 5 || i == 7 || i == 9)
+		{
+			*s = *anp = '-';
+			s++;
+			anp++;
+		}
+	}
+
+	*s = '}';
+	*anp = ')';
 
 	Status = IoCreateDevice(drvobj, sizeof(volume_device_extension), &volname, FILE_DEVICE_DISK, is_windows_8 ? FILE_DEVICE_ALLOW_APPCONTAINER_TRAVERSAL : 0, false, &voldev);
 	if (!NT_SUCCESS(Status))
 	{
 		ERR("IoCreateDevice returned %08lx\n", Status);
 		goto end2;
+	}
+
+	arc_name_us.Buffer = arc_name;
+	arc_name_us.Length = arc_name_us.MaximumLength = sizeof(arc_name);
+
+	Status = IoCreateSymbolicLink(&arc_name_us, &volname);
+	if (!NT_SUCCESS(Status))
+	{
+		WARN("IoCreateSymbolicLink returned %08lx\n", Status);
 	}
 
 	voldev->SectorSize = PhysicalDeviceObject->SectorSize;
@@ -923,7 +966,7 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
 		voldev->Characteristics |= FILE_REMOVABLE_MEDIA;
 	}
 
-	//if ()
+	//if (RtlCompareMemory(&boot_uuid, &pdode->KMCSFS.uuid, sizeof(KMCSpaceFS_UUID)) == sizeof(KMCSpaceFS_UUID))
 	//{
 	//	voldev->Flags |= DO_SYSTEM_BOOT_PARTITION;
 	//	PhysicalDeviceObject->Flags |= DO_SYSTEM_BOOT_PARTITION;

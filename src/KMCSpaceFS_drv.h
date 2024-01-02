@@ -66,6 +66,8 @@ void _debug_message(_In_ const char* func, _In_ char* s, ...) __attribute__((for
 #define VCB_TYPE_PDO     4
 #define VCB_TYPE_BUS     5
 
+#define KMCSPACEFS_VOLUME_PREFIX L"\\Device\\KMCSpaceFS{"
+
 #define hex_digit(c) ((c) <= 9) ? ((c) + '0') : ((c) - 10 + 'a')
 
 #if defined(_MSC_VER) || defined(__clang__)
