@@ -34,4 +34,5 @@ typedef struct
     unsigned long long extratablesize;
     unsigned long long filenamesend;
     unsigned long long tableend;
+    unsigned long long size;
 } KMCSpaceFS;

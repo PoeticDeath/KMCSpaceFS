@@ -594,6 +594,496 @@ NTSTATUS get_device_pnp_name(_In_ PDEVICE_OBJECT DeviceObject, _Out_ PUNICODE_ST
 	return STATUS_NOT_FOUND;
 }
 
+// simplified version of FsRtlAreNamesEqual, which can be a bottleneck!
+static bool compare_strings(const UNICODE_STRING* us1, const UNICODE_STRING* us2)
+{
+	if (us1->Length != us2->Length)
+	{
+		return false;
+	}
+
+	WCHAR* s1 = us1->Buffer;
+	WCHAR* s2 = us2->Buffer;
+
+	for (unsigned int i = 0; i < us1->Length / sizeof(WCHAR); i++)
+	{
+		WCHAR c1 = *s1;
+		WCHAR c2 = *s2;
+
+		if (c1 != c2)
+		{
+			if (c1 >= 'a' && c1 <= 'z')
+			{
+				c1 = c1 - 'a' + 'A';
+			}
+
+			if (c2 >= 'a' && c2 <= 'z')
+			{
+				c2 = c2 - 'a' + 'A';
+			}
+
+			if (c1 != c2)
+			{
+				return false;
+			}
+		}
+
+		s1++;
+		s2++;
+	}
+
+	return true;
+}
+
+#define INIT_UNICODE_STRING(var, val) UNICODE_STRING us##var; us##var.Buffer = (WCHAR*)val; us##var.Length = us##var.MaximumLength = sizeof(val) - sizeof(WCHAR);
+
+// This function exists because we have to lie about our FS type in certain situations.
+// MPR!MprGetConnection queries the FS type, and compares it to a whitelist. If it doesn't match,
+// it will return ERROR_NO_NET_OR_BAD_PATH, which prevents UAC from working.
+// The command mklink refuses to create hard links on anything other than NTFS, so we have to
+// blacklist cmd.exe too.
+
+static bool lie_about_fs_type()
+{
+	NTSTATUS Status;
+	PROCESS_BASIC_INFORMATION pbi;
+	PPEB peb;
+	LIST_ENTRY* le;
+	ULONG retlen;
+#ifdef _AMD64_
+	ULONG_PTR wow64info;
+#endif
+
+	INIT_UNICODE_STRING(mpr, L"MPR.DLL");
+	INIT_UNICODE_STRING(cmd, L"CMD.EXE");
+	INIT_UNICODE_STRING(fsutil, L"FSUTIL.EXE");
+	INIT_UNICODE_STRING(storsvc, L"STORSVC.DLL");
+	INIT_UNICODE_STRING(javaw, L"JAVAW.EXE");
+
+	/* Not doing a Volkswagen, honest! Some IFS tests won't run if not recognized FS. */
+	INIT_UNICODE_STRING(ifstest, L"IFSTEST.EXE");
+
+	if (!PsGetCurrentProcess())
+	{
+		return false;
+	}
+
+#ifdef _AMD64_
+	Status = ZwQueryInformationProcess(NtCurrentProcess(), ProcessWow64Information, &wow64info, sizeof(wow64info), NULL);
+
+	if (NT_SUCCESS(Status) && wow64info != 0)
+	{
+		return true;
+	}
+#endif
+
+	Status = ZwQueryInformationProcess(NtCurrentProcess(), ProcessBasicInformation, &pbi, sizeof(pbi), &retlen);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("ZwQueryInformationProcess returned %08lx\n", Status);
+		return false;
+	}
+
+	if (!pbi.PebBaseAddress)
+	{
+		return false;
+	}
+
+	peb = pbi.PebBaseAddress;
+
+	if (!peb->Ldr)
+	{
+		return false;
+	}
+
+	le = peb->Ldr->InMemoryOrderModuleList.Flink;
+	while (le != &peb->Ldr->InMemoryOrderModuleList)
+	{
+		LDR_DATA_TABLE_ENTRY* entry = CONTAINING_RECORD(le, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
+		bool blacklist = false;
+
+		if (entry->FullDllName.Length >= usmpr.Length)
+		{
+			UNICODE_STRING name;
+
+			name.Buffer = &entry->FullDllName.Buffer[(entry->FullDllName.Length - usmpr.Length) / sizeof(WCHAR)];
+			name.Length = name.MaximumLength = usmpr.Length;
+
+			blacklist = compare_strings(&name, &usmpr);
+		}
+
+		if (!blacklist && entry->FullDllName.Length >= uscmd.Length)
+		{
+			UNICODE_STRING name;
+
+			name.Buffer = &entry->FullDllName.Buffer[(entry->FullDllName.Length - uscmd.Length) / sizeof(WCHAR)];
+			name.Length = name.MaximumLength = uscmd.Length;
+
+			blacklist = compare_strings(&name, &uscmd);
+		}
+
+		if (!blacklist && entry->FullDllName.Length >= usfsutil.Length)
+		{
+			UNICODE_STRING name;
+
+			name.Buffer = &entry->FullDllName.Buffer[(entry->FullDllName.Length - usfsutil.Length) / sizeof(WCHAR)];
+			name.Length = name.MaximumLength = usfsutil.Length;
+
+			blacklist = compare_strings(&name, &usfsutil);
+		}
+
+		if (!blacklist && entry->FullDllName.Length >= usstorsvc.Length)
+		{
+			UNICODE_STRING name;
+
+			name.Buffer = &entry->FullDllName.Buffer[(entry->FullDllName.Length - usstorsvc.Length) / sizeof(WCHAR)];
+			name.Length = name.MaximumLength = usstorsvc.Length;
+
+			blacklist = compare_strings(&name, &usstorsvc);
+		}
+
+		if (!blacklist && entry->FullDllName.Length >= usjavaw.Length)
+		{
+			UNICODE_STRING name;
+
+			name.Buffer = &entry->FullDllName.Buffer[(entry->FullDllName.Length - usjavaw.Length) / sizeof(WCHAR)];
+			name.Length = name.MaximumLength = usjavaw.Length;
+
+			blacklist = compare_strings(&name, &usjavaw);
+		}
+
+		if (!blacklist && entry->FullDllName.Length >= usifstest.Length)
+		{
+			UNICODE_STRING name;
+
+			name.Buffer = &entry->FullDllName.Buffer[(entry->FullDllName.Length - usifstest.Length) / sizeof(WCHAR)];
+			name.Length = name.MaximumLength = usifstest.Length;
+
+			blacklist = compare_strings(&name, &usifstest);
+		}
+
+		if (blacklist)
+		{
+			void** frames;
+			ULONG i, num_frames;
+
+			frames = ExAllocatePoolWithTag(PagedPool, 256 * sizeof(void*), ALLOC_TAG);
+			if (!frames)
+			{
+				ERR("out of memory\n");
+				return false;
+			}
+
+			num_frames = RtlWalkFrameChain(frames, 256, 1);
+
+			for (i = 0; i < num_frames; i++)
+			{
+				// entry->Reserved3[1] appears to be the image size
+				if (frames[i] >= entry->DllBase && (ULONG_PTR)frames[i] <= (ULONG_PTR)entry->DllBase + (ULONG_PTR)entry->Reserved3[1])
+				{
+					ExFreePool(frames);
+					return true;
+				}
+			}
+
+			ExFreePool(frames);
+		}
+
+		le = le->Flink;
+	}
+
+	return false;
+}
+
+static void calculate_total_space(_In_ device_extension* Vcb, _Out_ uint64_t* totalsize, _Out_ uint64_t* freespace)
+{
+	*totalsize = Vcb->vde->pdode->KMCSFS.size - (Vcb->vde->pdode->KMCSFS.tablesize * Vcb->vde->pdode->KMCSFS.sectorsize);
+	*freespace = *totalsize;//
+}
+
+_Dispatch_type_(IRP_MJ_QUERY_VOLUME_INFORMATION)
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	PIO_STACK_LOCATION IrpSp;
+	NTSTATUS Status;
+	ULONG BytesCopied = 0;
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+	bool top_level;
+
+	FsRtlEnterFileSystem();
+
+	TRACE("query volume information\n");
+	top_level = is_top_level(Irp);
+
+	if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		Status = STATUS_INVALID_DEVICE_REQUEST;
+		goto end;
+	}
+	else if (!Vcb || Vcb->type != VCB_TYPE_FS)
+	{
+		Status = STATUS_INVALID_PARAMETER;
+		goto end;
+	}
+
+	IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+	Status = STATUS_NOT_IMPLEMENTED;
+
+	switch (IrpSp->Parameters.QueryVolume.FsInformationClass)
+	{
+	case FileFsAttributeInformation:
+	{
+		FILE_FS_ATTRIBUTE_INFORMATION* data = Irp->AssociatedIrp.SystemBuffer;
+		bool overflow = false;
+		static const WCHAR ntfs[] = L"NTFS";
+		static const WCHAR KMCSpaceFS[] = L"KMCSpaceFS";
+		const WCHAR* fs_name;
+		ULONG fs_name_len, orig_fs_name_len;
+
+		if (Irp->RequestorMode == UserMode && lie_about_fs_type())
+		{
+			fs_name = ntfs;
+			orig_fs_name_len = fs_name_len = sizeof(ntfs) - sizeof(WCHAR);
+		}
+		else
+		{
+			fs_name = KMCSpaceFS;
+			orig_fs_name_len = fs_name_len = sizeof(KMCSpaceFS) - sizeof(WCHAR);
+		}
+
+		TRACE("FileFsAttributeInformation\n");
+
+		if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_ATTRIBUTE_INFORMATION) - sizeof(WCHAR) + fs_name_len)
+		{
+			if (IrpSp->Parameters.QueryVolume.Length > sizeof(FILE_FS_ATTRIBUTE_INFORMATION) - sizeof(WCHAR))
+			{
+				fs_name_len = IrpSp->Parameters.QueryVolume.Length - sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + sizeof(WCHAR);
+			}
+			else
+			{
+				fs_name_len = 0;
+			}
+
+			overflow = true;
+		}
+
+		data->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_CASE_SENSITIVE_SEARCH | FILE_UNICODE_ON_DISK | FILE_NAMED_STREAMS | FILE_SUPPORTS_HARD_LINKS | FILE_PERSISTENT_ACLS | FILE_SUPPORTS_REPARSE_POINTS | FILE_SUPPORTS_SPARSE_FILES | FILE_SUPPORTS_OBJECT_IDS | FILE_SUPPORTS_OPEN_BY_FILE_ID | FILE_SUPPORTS_BLOCK_REFCOUNTING | FILE_SUPPORTS_POSIX_UNLINK_RENAME;
+		if (Vcb->readonly)
+		{
+			data->FileSystemAttributes |= FILE_READ_ONLY_VOLUME;
+		}
+
+		// should also be FILE_FILE_COMPRESSION when supported
+		data->MaximumComponentNameLength = 255; // FIXME - check
+		data->FileSystemNameLength = orig_fs_name_len;
+		RtlCopyMemory(data->FileSystemName, fs_name, fs_name_len);
+
+		BytesCopied = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) - sizeof(WCHAR) + fs_name_len;
+		Status = overflow ? STATUS_BUFFER_OVERFLOW : STATUS_SUCCESS;
+		break;
+	}
+
+	case FileFsDeviceInformation:
+	{
+		FILE_FS_DEVICE_INFORMATION* ffdi = Irp->AssociatedIrp.SystemBuffer;
+
+		TRACE("FileFsDeviceInformation\n");
+
+		ffdi->DeviceType = FILE_DEVICE_DISK;
+
+		ExAcquireResourceSharedLite(&Vcb->tree_lock, true);
+		ffdi->Characteristics = Vcb->Vpb->RealDevice->Characteristics;
+		ExReleaseResourceLite(&Vcb->tree_lock);
+
+		if (Vcb->readonly)
+		{
+			ffdi->Characteristics |= FILE_READ_ONLY_DEVICE;
+		}
+		else
+		{
+			ffdi->Characteristics &= ~FILE_READ_ONLY_DEVICE;
+		}
+
+		BytesCopied = sizeof(FILE_FS_DEVICE_INFORMATION);
+		Status = STATUS_SUCCESS;
+
+		break;
+	}
+
+	case FileFsFullSizeInformation:
+	{
+		FILE_FS_FULL_SIZE_INFORMATION* ffsi = Irp->AssociatedIrp.SystemBuffer;
+
+		TRACE("FileFsFullSizeInformation\n");
+
+		calculate_total_space(Vcb, (uint64_t*)&ffsi->TotalAllocationUnits.QuadPart, (uint64_t*)&ffsi->ActualAvailableAllocationUnits.QuadPart);
+		ffsi->CallerAvailableAllocationUnits.QuadPart = ffsi->ActualAvailableAllocationUnits.QuadPart;
+		ffsi->SectorsPerAllocationUnit = Vcb->vde->pdode->KMCSFS.sectorsize / 512;
+		ffsi->BytesPerSector = 512;
+
+		BytesCopied = sizeof(FILE_FS_FULL_SIZE_INFORMATION);
+		Status = STATUS_SUCCESS;
+
+		break;
+	}
+
+	case FileFsObjectIdInformation:
+	{
+		FILE_FS_OBJECTID_INFORMATION* ffoi = Irp->AssociatedIrp.SystemBuffer;
+
+		TRACE("FileFsObjectIdInformation\n");
+
+		RtlCopyMemory(ffoi->ObjectId, &Vcb->vde->pdode->KMCSFS.uuid.uuid[0], sizeof(UCHAR) * 16);
+		RtlZeroMemory(ffoi->ExtendedInfo, sizeof(ffoi->ExtendedInfo));
+
+		BytesCopied = sizeof(FILE_FS_OBJECTID_INFORMATION);
+		Status = STATUS_SUCCESS;
+
+		break;
+	}
+
+	case FileFsSizeInformation:
+	{
+		FILE_FS_SIZE_INFORMATION* ffsi = Irp->AssociatedIrp.SystemBuffer;
+
+		TRACE("FileFsSizeInformation\n");
+
+		calculate_total_space(Vcb, (uint64_t*)&ffsi->TotalAllocationUnits.QuadPart, (uint64_t*)&ffsi->AvailableAllocationUnits.QuadPart);
+		ffsi->SectorsPerAllocationUnit = Vcb->vde->pdode->KMCSFS.sectorsize / 512;
+		ffsi->BytesPerSector = 512;
+
+		BytesCopied = sizeof(FILE_FS_SIZE_INFORMATION);
+		Status = STATUS_SUCCESS;
+
+		break;
+	}
+
+	/*case FileFsVolumeInformation:
+	{
+		FILE_FS_VOLUME_INFORMATION* data = Irp->AssociatedIrp.SystemBuffer;
+		FILE_FS_VOLUME_INFORMATION ffvi;
+		bool overflow = false;
+		ULONG label_len, orig_label_len;
+
+		TRACE("FileFsVolumeInformation\n");
+		TRACE("max length = %lu\n", IrpSp->Parameters.QueryVolume.Length);
+
+		ExAcquireResourceSharedLite(&Vcb->tree_lock, true);
+
+		Status = utf8_to_utf16(NULL, 0, &label_len, Vcb->superblock.label, (ULONG)strlen(Vcb->superblock.label));
+		if (!NT_SUCCESS(Status))
+		{
+			ERR("utf8_to_utf16 returned %08lx\n", Status);
+			ExReleaseResourceLite(&Vcb->tree_lock);
+			break;
+		}
+
+		orig_label_len = label_len;
+
+		if (IrpSp->Parameters.QueryVolume.Length < offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel) + label_len) {
+			if (IrpSp->Parameters.QueryVolume.Length > offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel))
+			{
+				label_len = IrpSp->Parameters.QueryVolume.Length - offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel);
+			}
+			else
+			{
+				label_len = 0;
+			}
+
+			overflow = true;
+		}
+
+		TRACE("label_len = %lu\n", label_len);
+
+		RtlZeroMemory(&ffvi, offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel));
+
+		ffvi.VolumeSerialNumber = Vcb->vde->pdode->KMCSFS.uuid.uuid[12] << 24 | Vcb->vde->pdode->KMCSFS.uuid.uuid[13] << 16 | Vcb->vde->pdode->KMCSFS.uuid.uuid[14] << 8 | Vcb->vde->pdode->KMCSFS.uuid.uuid[15];
+		ffvi.VolumeLabelLength = orig_label_len;
+
+		RtlCopyMemory(data, &ffvi, min(offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel), IrpSp->Parameters.QueryVolume.Length));
+
+		if (label_len > 0)
+		{
+			ULONG bytecount;
+
+			Status = utf8_to_utf16(&data->VolumeLabel[0], label_len, &bytecount, Vcb->superblock.label, (ULONG)strlen(Vcb->superblock.label));
+			if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW)
+			{
+				ERR("utf8_to_utf16 returned %08lx\n", Status);
+				ExReleaseResourceLite(&Vcb->tree_lock);
+				break;
+			}
+
+			TRACE("label = %.*S\n", (int)(label_len / sizeof(WCHAR)), data->VolumeLabel);
+		}
+
+		ExReleaseResourceLite(&Vcb->tree_lock);
+
+		BytesCopied = offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel) + label_len;
+		Status = overflow ? STATUS_BUFFER_OVERFLOW : STATUS_SUCCESS;
+		break;
+	}*/
+
+#ifdef _MSC_VER // not in mingw yet
+	case FileFsSectorSizeInformation:
+	{
+		FILE_FS_SECTOR_SIZE_INFORMATION* data = Irp->AssociatedIrp.SystemBuffer;
+
+		data->LogicalBytesPerSector = 512;
+		data->PhysicalBytesPerSectorForAtomicity = Vcb->vde->pdode->KMCSFS.sectorsize;
+		data->PhysicalBytesPerSectorForPerformance = Vcb->vde->pdode->KMCSFS.sectorsize;
+		data->FileSystemEffectivePhysicalBytesPerSectorForAtomicity = Vcb->vde->pdode->KMCSFS.sectorsize;
+		data->ByteOffsetForSectorAlignment = 0;
+		data->ByteOffsetForPartitionAlignment = 0;
+
+		data->Flags = SSINFO_FLAGS_ALIGNED_DEVICE | SSINFO_FLAGS_PARTITION_ALIGNED_ON_DEVICE;
+
+		if (Vcb->trim && !Vcb->options.no_trim)
+		{
+			data->Flags |= SSINFO_FLAGS_TRIM_ENABLED;
+		}
+
+		BytesCopied = sizeof(FILE_FS_SECTOR_SIZE_INFORMATION);
+		Status = STATUS_SUCCESS;
+
+		break;
+	}
+#endif
+
+	default:
+		Status = STATUS_INVALID_PARAMETER;
+		WARN("unknown FsInformationClass %u\n", IrpSp->Parameters.QueryVolume.FsInformationClass);
+		break;
+	}
+
+	if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW)
+	{
+		Irp->IoStatus.Information = 0;
+	}
+	else
+	{
+		Irp->IoStatus.Information = BytesCopied;
+	}
+
+end:
+	Irp->IoStatus.Status = Status;
+
+	IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
+
+	TRACE("query volume information returning %08lx\n", Status);
+
+	FsRtlExitFileSystem();
+
+	return Status;
+}
+
 _Function_class_(IO_COMPLETION_ROUTINE)
 static NTSTATUS __stdcall read_completion(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp, _In_ PVOID conptr)
 {
@@ -1158,9 +1648,9 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	//DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION]        = QueryInformation;
 	//DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION]          = SetInformation;
 	//DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
-	////DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
+	DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
 	//DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;
-	/////DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
+	///DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
 	//DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL]      = FileSystemControl;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
 	//DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;
