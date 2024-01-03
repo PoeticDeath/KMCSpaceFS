@@ -18,6 +18,23 @@ extern LIST_ENTRY pdo_list;
 extern UNICODE_STRING registry_path;
 extern tIoUnregisterPlugPlayNotificationEx fIoUnregisterPlugPlayNotificationEx;
 
+NTSTATUS vol_create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+    volume_device_extension* vde = DeviceObject->DeviceExtension;
+
+    TRACE("(%p, %p)\n", DeviceObject, Irp);
+
+    if (vde->removing)
+    {
+        return STATUS_DEVICE_NOT_READY;
+    }
+
+    Irp->IoStatus.Information = FILE_OPENED;
+    InterlockedIncrement(&vde->open_count);
+
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS vol_query_device_name(volume_device_extension* vde, PIRP Irp)
 {
     PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);

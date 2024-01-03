@@ -59,6 +59,7 @@ void _debug_message(_In_ const char* func, _In_ char* s, ...) __attribute__((for
 #define ERR(s, ...) DbgPrint("KMCSpaceFS ERR : %s : " s, funcname, ##__VA_ARGS__)
 
 #define ALLOC_TAG 0x7442484D //'MHBt'
+#define KMCSpaceFS_NODE_TYPE_CCB 0x2295
 #define UNUSED(x) (void)(x)
 #define VCB_TYPE_FS      1
 #define VCB_TYPE_CONTROL 2
@@ -81,6 +82,15 @@ void _debug_message(_In_ const char* func, _In_ char* s, ...) __attribute__((for
 #define finally if (1)
 #define leave
 #endif
+
+typedef struct _fcb_nonpaged
+{
+    FAST_MUTEX HeaderMutex;
+    SECTION_OBJECT_POINTERS segment_object;
+    ERESOURCE resource;
+    ERESOURCE paging_resource;
+    ERESOURCE dir_children_lock;
+} fcb_nonpaged;
 
 typedef struct
 {
@@ -141,6 +151,16 @@ typedef struct _file_ref
     LIST_ENTRY list_entry_dirty;
 } file_ref;
 
+typedef struct _ccb
+{
+    USHORT NodeType;
+    CSHORT NodeSize;
+    ULONG disposition;
+    ULONG options;
+    ACCESS_MASK access;
+    bool manage_volume_privilege;
+} ccb;
+
 typedef struct
 {
     PDEVICE_OBJECT devobj;
@@ -180,8 +200,11 @@ typedef struct _device_extension
     bool trim;
     bool removing;
     LONG page_file_count;
+    fcb* volume_fcb;
     file_ref* root_fileref;
     LONG open_files;
+    ERESOURCE fileref_lock;
+    ERESOURCE load_lock;
     bool need_write;
     _Has_lock_level_(tree_lock) ERESOURCE tree_lock;
     PFILE_OBJECT root_file;
@@ -338,3 +361,8 @@ extern KMCSpaceFS_UUID boot_uuid;
 _Dispatch_type_(IRP_MJ_DEVICE_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall DeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+
+// in create.c
+_Dispatch_type_(IRP_MJ_CREATE)
+_Function_class_(DRIVER_DISPATCH)
+NTSTATUS __stdcall Create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);

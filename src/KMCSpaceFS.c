@@ -1151,7 +1151,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 
 	DriverObject->DriverExtension->AddDevice = AddDevice;
 
-	///DriverObject->MajorFunction[IRP_MJ_CREATE]                   = Create;
+	DriverObject->MajorFunction[IRP_MJ_CREATE]                   = Create;
 	//DriverObject->MajorFunction[IRP_MJ_CLOSE]                    = Close;
 	//DriverObject->MajorFunction[IRP_MJ_READ]                     = Read;
 	//DriverObject->MajorFunction[IRP_MJ_WRITE]                    = Write;
