@@ -158,7 +158,7 @@ static NTSTATUS vol_get_disk_extents(volume_device_extension* vde, PIRP Irp)
     LIST_ENTRY* le;
     ULONG num_extents = 0, i, max_extents = 1;
     NTSTATUS Status;
-    VOLUME_DISK_EXTENTS* ext, * ext3;
+    VOLUME_DISK_EXTENTS* ext, *ext3;
 
     if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(VOLUME_DISK_EXTENTS))
     {
@@ -906,7 +906,7 @@ void add_volume_device(KMCSpaceFS KMCSFS, PUNICODE_STRING devpath, uint64_t leng
 
         ExInitializeResourceLite(&pdode->child_lock);
         InitializeListHead(&pdode->children);
-        pdode->num_children = 0;
+        pdode->num_children = 1;
         pdode->children_loaded = 0;
 
         pdo->Flags &= ~DO_DEVICE_INITIALIZING;
@@ -990,6 +990,8 @@ void add_volume_device(KMCSpaceFS KMCSFS, PUNICODE_STRING devpath, uint64_t leng
     vc->disk_num = disk_num;
     vc->part_num = part_num;
     vc->had_drive_letter = false;
+
+    InsertTailList(&pdode->children, &vc->list_entry);
 
     pdode->children_loaded++;
 

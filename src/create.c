@@ -17,7 +17,7 @@ typedef struct _FILE_TIMESTAMPS
     LARGE_INTEGER LastAccessTime;
     LARGE_INTEGER LastWriteTime;
     LARGE_INTEGER ChangeTime;
-} FILE_TIMESTAMPS, * PFILE_TIMESTAMPS;
+} FILE_TIMESTAMPS, *PFILE_TIMESTAMPS;
 
 static const GUID GUID_ECP_ATOMIC_CREATE = {0x4720bd83, 0x52ac, 0x4104, {0xa1, 0x30, 0xd1, 0xec, 0x6a, 0x8c, 0xc8, 0xe5}};
 static const GUID GUID_ECP_QUERY_ON_CREATE = {0x1aca62e9, 0xabb4, 0x4ff2, {0xbb, 0x5c, 0x1c, 0x79, 0x02, 0x5e, 0x41, 0x7f}};
@@ -27,10 +27,406 @@ typedef struct
 {
     device_extension* Vcb;
     ACCESS_MASK granted_access;
-    file_ref* fileref;
     NTSTATUS Status;
     KEVENT event;
 } oplock_context;
+
+fcb* create_fcb(device_extension* Vcb, POOL_TYPE pool_type)
+{
+    fcb* fcb;
+
+    if (pool_type == NonPagedPool)
+    {
+        fcb = ExAllocatePoolWithTag(pool_type, sizeof(struct _fcb), ALLOC_TAG);
+        if (!fcb)
+        {
+            ERR("out of memory\n");
+            return NULL;
+        }
+    }
+    else
+    {
+        fcb = ExAllocateFromPagedLookasideList(&Vcb->fcb_lookaside);
+        if (!fcb)
+        {
+            ERR("out of memory\n");
+            return NULL;
+        }
+    }
+
+#ifdef DEBUG_FCB_REFCOUNTS
+    WARN("allocating fcb %p\n", fcb);
+#endif
+    RtlZeroMemory(fcb, sizeof(struct _fcb));
+    fcb->pool_type = pool_type;
+
+    fcb->Header.NodeTypeCode = KMCSpaceFS_NODE_TYPE_FCB;
+    fcb->Header.NodeByteSize = sizeof(struct _fcb);
+
+    fcb->nonpaged = ExAllocateFromNPagedLookasideList(&Vcb->fcb_np_lookaside);
+    if (!fcb->nonpaged)
+    {
+        ERR("out of memory\n");
+
+        if (pool_type == NonPagedPool)
+        {
+            ExFreePool(fcb);
+        }
+        else
+        {
+            ExFreeToPagedLookasideList(&Vcb->fcb_lookaside, fcb);
+        }
+
+        return NULL;
+    }
+    RtlZeroMemory(fcb->nonpaged, sizeof(struct _fcb_nonpaged));
+
+    ExInitializeResourceLite(&fcb->nonpaged->paging_resource);
+    fcb->Header.PagingIoResource = &fcb->nonpaged->paging_resource;
+
+    ExInitializeFastMutex(&fcb->nonpaged->HeaderMutex);
+    FsRtlSetupAdvancedHeader(&fcb->Header, &fcb->nonpaged->HeaderMutex);
+
+    fcb->refcount = 1;
+#ifdef DEBUG_FCB_REFCOUNTS
+    WARN("fcb %p: refcount now %i\n", fcb, fcb->refcount);
+#endif
+
+    ExInitializeResourceLite(&fcb->nonpaged->resource);
+    fcb->Header.Resource = &fcb->nonpaged->resource;
+
+    ExInitializeResourceLite(&fcb->nonpaged->dir_children_lock);
+
+    FsRtlInitializeFileLock(&fcb->lock, NULL, NULL);
+
+    InitializeListHead(&fcb->extents);
+
+    return fcb;
+}
+
+static __inline void debug_create_options(ULONG RequestedOptions)
+{
+    if (RequestedOptions != 0)
+    {
+        ULONG options = RequestedOptions;
+
+        TRACE("requested options:\n");
+
+        if (options & FILE_DIRECTORY_FILE)
+        {
+            TRACE("    FILE_DIRECTORY_FILE\n");
+            options &= ~FILE_DIRECTORY_FILE;
+        }
+
+        if (options & FILE_WRITE_THROUGH)
+        {
+            TRACE("    FILE_WRITE_THROUGH\n");
+            options &= ~FILE_WRITE_THROUGH;
+        }
+
+        if (options & FILE_SEQUENTIAL_ONLY)
+        {
+            TRACE("    FILE_SEQUENTIAL_ONLY\n");
+            options &= ~FILE_SEQUENTIAL_ONLY;
+        }
+
+        if (options & FILE_NO_INTERMEDIATE_BUFFERING)
+        {
+            TRACE("    FILE_NO_INTERMEDIATE_BUFFERING\n");
+            options &= ~FILE_NO_INTERMEDIATE_BUFFERING;
+        }
+
+        if (options & FILE_SYNCHRONOUS_IO_ALERT)
+        {
+            TRACE("    FILE_SYNCHRONOUS_IO_ALERT\n");
+            options &= ~FILE_SYNCHRONOUS_IO_ALERT;
+        }
+
+        if (options & FILE_SYNCHRONOUS_IO_NONALERT)
+        {
+            TRACE("    FILE_SYNCHRONOUS_IO_NONALERT\n");
+            options &= ~FILE_SYNCHRONOUS_IO_NONALERT;
+        }
+
+        if (options & FILE_NON_DIRECTORY_FILE)
+        {
+            TRACE("    FILE_NON_DIRECTORY_FILE\n");
+            options &= ~FILE_NON_DIRECTORY_FILE;
+        }
+
+        if (options & FILE_CREATE_TREE_CONNECTION)
+        {
+            TRACE("    FILE_CREATE_TREE_CONNECTION\n");
+            options &= ~FILE_CREATE_TREE_CONNECTION;
+        }
+
+        if (options & FILE_COMPLETE_IF_OPLOCKED)
+        {
+            TRACE("    FILE_COMPLETE_IF_OPLOCKED\n");
+            options &= ~FILE_COMPLETE_IF_OPLOCKED;
+        }
+
+        if (options & FILE_NO_EA_KNOWLEDGE)
+        {
+            TRACE("    FILE_NO_EA_KNOWLEDGE\n");
+            options &= ~FILE_NO_EA_KNOWLEDGE;
+        }
+
+        if (options & FILE_OPEN_REMOTE_INSTANCE)
+        {
+            TRACE("    FILE_OPEN_REMOTE_INSTANCE\n");
+            options &= ~FILE_OPEN_REMOTE_INSTANCE;
+        }
+
+        if (options & FILE_RANDOM_ACCESS)
+        {
+            TRACE("    FILE_RANDOM_ACCESS\n");
+            options &= ~FILE_RANDOM_ACCESS;
+        }
+
+        if (options & FILE_DELETE_ON_CLOSE)
+        {
+            TRACE("    FILE_DELETE_ON_CLOSE\n");
+            options &= ~FILE_DELETE_ON_CLOSE;
+        }
+
+        if (options & FILE_OPEN_BY_FILE_ID)
+        {
+            TRACE("    FILE_OPEN_BY_FILE_ID\n");
+            options &= ~FILE_OPEN_BY_FILE_ID;
+        }
+
+        if (options & FILE_OPEN_FOR_BACKUP_INTENT)
+        {
+            TRACE("    FILE_OPEN_FOR_BACKUP_INTENT\n");
+            options &= ~FILE_OPEN_FOR_BACKUP_INTENT;
+        }
+
+        if (options & FILE_NO_COMPRESSION)
+        {
+            TRACE("    FILE_NO_COMPRESSION\n");
+            options &= ~FILE_NO_COMPRESSION;
+        }
+
+#if NTDDI_VERSION >= NTDDI_WIN7
+        if (options & FILE_OPEN_REQUIRING_OPLOCK)
+        {
+            TRACE("    FILE_OPEN_REQUIRING_OPLOCK\n");
+            options &= ~FILE_OPEN_REQUIRING_OPLOCK;
+        }
+
+        if (options & FILE_DISALLOW_EXCLUSIVE)
+        {
+            TRACE("    FILE_DISALLOW_EXCLUSIVE\n");
+            options &= ~FILE_DISALLOW_EXCLUSIVE;
+        }
+#endif
+
+        if (options & FILE_RESERVE_OPFILTER)
+        {
+            TRACE("    FILE_RESERVE_OPFILTER\n");
+            options &= ~FILE_RESERVE_OPFILTER;
+        }
+
+        if (options & FILE_OPEN_REPARSE_POINT)
+        {
+            TRACE("    FILE_OPEN_REPARSE_POINT\n");
+            options &= ~FILE_OPEN_REPARSE_POINT;
+        }
+
+        if (options & FILE_OPEN_NO_RECALL)
+        {
+            TRACE("    FILE_OPEN_NO_RECALL\n");
+            options &= ~FILE_OPEN_NO_RECALL;
+        }
+
+        if (options & FILE_OPEN_FOR_FREE_SPACE_QUERY)
+        {
+            TRACE("    FILE_OPEN_FOR_FREE_SPACE_QUERY\n");
+            options &= ~FILE_OPEN_FOR_FREE_SPACE_QUERY;
+        }
+
+        if (options)
+        {
+            TRACE("    unknown options: %lx\n", options);
+        }
+    }
+    else
+    {
+        TRACE("requested options: (none)\n");
+    }
+}
+
+static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Curr_->tree_lock) device_extension* Vcb, PIRP Irp, oplock_context** opctx)
+{
+    PFILE_OBJECT FileObject = NULL;
+    ULONG RequestedDisposition;
+    ULONG options;
+    NTSTATUS Status;
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    POOL_TYPE pool_type = IrpSp->Flags & SL_OPEN_PAGING_FILE ? NonPagedPool : PagedPool;
+    ACCESS_MASK granted_access;
+    UNICODE_STRING fn;
+
+    Irp->IoStatus.Information = 0;
+
+    RequestedDisposition = ((IrpSp->Parameters.Create.Options >> 24) & 0xff);
+    options = IrpSp->Parameters.Create.Options & FILE_VALID_OPTION_FLAGS;
+
+    if (options & FILE_DIRECTORY_FILE && RequestedDisposition == FILE_SUPERSEDE)
+    {
+        WARN("error - supersede requested with FILE_DIRECTORY_FILE\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    FileObject = IrpSp->FileObject;
+
+    if (!FileObject)
+    {
+        ERR("FileObject was NULL\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    debug_create_options(options);
+
+    switch (RequestedDisposition)
+    {
+    case FILE_SUPERSEDE:
+        TRACE("requested disposition: FILE_SUPERSEDE\n");
+        break;
+
+    case FILE_CREATE:
+        TRACE("requested disposition: FILE_CREATE\n");
+        break;
+
+    case FILE_OPEN:
+        TRACE("requested disposition: FILE_OPEN\n");
+        break;
+
+    case FILE_OPEN_IF:
+        TRACE("requested disposition: FILE_OPEN_IF\n");
+        break;
+
+    case FILE_OVERWRITE:
+        TRACE("requested disposition: FILE_OVERWRITE\n");
+        break;
+
+    case FILE_OVERWRITE_IF:
+        TRACE("requested disposition: FILE_OVERWRITE_IF\n");
+        break;
+
+    default:
+        ERR("unknown disposition: %lx\n", RequestedDisposition);
+        Status = STATUS_NOT_IMPLEMENTED;
+        goto exit;
+    }
+
+    fn = FileObject->FileName;
+
+    TRACE("(%.*S)\n", (int)(fn.Length / sizeof(WCHAR)), fn.Buffer);
+    TRACE("FileObject = %p\n", FileObject);
+
+    if (Vcb->readonly && (RequestedDisposition == FILE_SUPERSEDE || RequestedDisposition == FILE_CREATE || RequestedDisposition == FILE_OVERWRITE))
+    {
+        Status = STATUS_MEDIA_WRITE_PROTECTED;
+        goto exit;
+    }
+
+    // TODO: Find file by name determine if it exists or is a reparse point
+    Status = STATUS_SUCCESS;//
+
+loaded:
+    /*if (Status == STATUS_REPARSE)
+    {
+        REPARSE_DATA_BUFFER* data;
+        Status = get_reparse_block((uint8_t**)&data);
+
+        if (!NT_SUCCESS(Status))
+        {
+            ERR("get_reparse_block returned %08lx\n", Status);
+
+            Status = STATUS_SUCCESS;
+        }
+        else
+        {
+            Status = STATUS_REPARSE;
+            RtlCopyMemory(&Irp->IoStatus.Information, data, sizeof(ULONG));
+
+            data->Reserved = FileObject->FileName.Length;
+
+            Irp->Tail.Overlay.AuxiliaryBuffer = (void*)data;
+
+            goto exit;
+        }
+    }*/
+
+    if (NT_SUCCESS(Status))
+    {
+        if (RequestedDisposition == FILE_CREATE)
+        {
+            TRACE("file already exists, returning STATUS_OBJECT_NAME_COLLISION\n");
+            Status = STATUS_OBJECT_NAME_COLLISION;
+
+            goto exit;
+        }
+    }
+    else if (Status == STATUS_OBJECT_NAME_NOT_FOUND)
+    {
+        if (RequestedDisposition == FILE_OPEN || RequestedDisposition == FILE_OVERWRITE)
+        {
+            TRACE("file doesn't exist, returning STATUS_OBJECT_NAME_NOT_FOUND\n");
+            goto exit;
+        }
+    }
+    else if (Status == STATUS_OBJECT_PATH_NOT_FOUND || Status == STATUS_OBJECT_NAME_INVALID)
+    {
+        TRACE("open_fileref returned %08lx\n", Status);
+        goto exit;
+    }
+    else
+    {
+        ERR("open_fileref returned %08lx\n", Status);
+        goto exit;
+    }
+
+    /*if (NT_SUCCESS(Status))
+    { // file already exists
+        Status = open_file2(Vcb, RequestedDisposition, &granted_access, FileObject, &fn, options, Irp, opctx);
+    }
+    /*else
+    {
+        Status = file_create(Irp, Vcb, FileObject, &fn, RequestedDisposition, options);
+        Irp->IoStatus.Information = NT_SUCCESS(Status) ? FILE_CREATED : 0;
+        granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
+    }*/
+
+    if (NT_SUCCESS(Status) && !(options & FILE_NO_INTERMEDIATE_BUFFERING))
+    {
+        FileObject->Flags |= FO_CACHE_SUPPORTED;
+    }
+
+exit:
+    if (Status == STATUS_SUCCESS)
+    {
+        fcb* fcb2;
+
+        IrpSp->Parameters.Create.SecurityContext->AccessState->PreviouslyGrantedAccess |= granted_access;
+        IrpSp->Parameters.Create.SecurityContext->AccessState->RemainingDesiredAccess &= ~(granted_access | MAXIMUM_ALLOWED);
+
+        if (!FileObject->Vpb)
+        {
+            FileObject->Vpb = DeviceObject->Vpb;
+        }
+
+        fcb2 = FileObject->FsContext;
+    }
+    else if (Status != STATUS_REPARSE && Status != STATUS_OBJECT_NAME_NOT_FOUND && Status != STATUS_OBJECT_PATH_NOT_FOUND)
+    {
+        TRACE("returning %08lx\n", Status);
+    }
+
+    return Status;
+}
 
 static NTSTATUS verify_vcb(device_extension* Vcb, PIRP Irp)
 {
@@ -316,7 +712,7 @@ NTSTATUS __stdcall Create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         Irp->IoStatus.Information = FILE_OPENED;
         Status = STATUS_SUCCESS;
     }
-    /*else
+    else
     {
         bool skip_lock;
 
@@ -335,17 +731,13 @@ NTSTATUS __stdcall Create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
             ExAcquireResourceSharedLite(&Vcb->tree_lock, true);
         }
 
-        ExAcquireResourceSharedLite(&Vcb->fileref_lock, true);
-
         Status = open_file(DeviceObject, Vcb, Irp, &opctx);
-
-        ExReleaseResourceLite(&Vcb->fileref_lock);
 
         if (!skip_lock)
         {
             ExReleaseResourceLite(&Vcb->tree_lock);
         }
-    }*/
+    }
 
 exit:
     if (Status != STATUS_PENDING)

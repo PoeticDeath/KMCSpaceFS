@@ -38,7 +38,7 @@ static NTSTATUS is_writable(device_extension* Vcb)
 static NTSTATUS query_filesystems(void* data, ULONG length)
 {
     NTSTATUS Status;
-    LIST_ENTRY* le, * le2;
+    LIST_ENTRY* le, *le2;
     KMCSpaceFS_FileSystem* csfs = NULL;
     ULONG itemsize;
 

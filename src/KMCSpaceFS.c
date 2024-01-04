@@ -48,7 +48,7 @@ uint32_t no_pnp = 0;
 bool log_started = false;
 UNICODE_STRING log_device, log_file, registry_path;
 tIoUnregisterPlugPlayNotificationEx fIoUnregisterPlugPlayNotificationEx;
-void* notification_entry = NULL, * notification_entry2 = NULL, * notification_entry3 = NULL;
+void* notification_entry = NULL, *notification_entry2 = NULL, *notification_entry3 = NULL;
 ERESOURCE pdo_list_lock;
 LIST_ENTRY pdo_list;
 HANDLE degraded_wait_handle = NULL, mountmgr_thread_handle = NULL;
@@ -57,6 +57,7 @@ KEVENT mountmgr_thread_event;
 bool shutting_down = false;
 ERESOURCE boot_lock;
 bool is_windows_8;
+extern uint64_t boot_subvol;
 
 typedef struct
 {
@@ -153,7 +154,7 @@ void _debug_message(_In_ const char* func, _In_ char* s, ...)
 	NTSTATUS Status;
 	PIRP Irp;
 	va_list ap;
-	char* buf2, * buf;
+	char* buf2, *buf;
 	read_context context;
 	uint32_t length;
 
@@ -506,7 +507,7 @@ end:
 static NTSTATUS get_device_pnp_name_guid(_In_ PDEVICE_OBJECT DeviceObject, _Out_ PUNICODE_STRING pnp_name, _In_ const GUID* guid)
 {
 	NTSTATUS Status;
-	WCHAR* list = NULL, * s;
+	WCHAR* list = NULL, *s;
 
 	Status = IoGetDeviceInterfaces((PVOID)guid, NULL, 0, &list);
 	if (!NT_SUCCESS(Status))
@@ -562,6 +563,642 @@ end:
 	{
 		ExFreePool(list);
 	}
+
+	return Status;
+}
+
+bool is_KMCSpaceFS(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject)
+{
+	bool found = false;
+	uint8_t* table = NULL, *data = ExAllocatePoolWithTag(NonPagedPool, 512, ALLOC_TAG);
+	if (!data)
+	{
+		ERR("out of memory\n");
+		return false;
+	}
+	NTSTATUS Status = sync_read_phys(DeviceObject, FileObject, 0, 512, data, true);
+	if (NT_SUCCESS(Status))
+	{
+		KMCSpaceFS KMCSFS;
+
+		KMCSFS.sectorsize = 1 << (9 + (data[0] & 0xff));
+		KMCSFS.tablesize = 1 + (data[4] & 0xff) + ((data[3] & 0xff) << 8) + ((data[2] & 0xff) << 16) + ((data[1] & 0xff) << 24);
+		KMCSFS.extratablesize = (unsigned long long)KMCSFS.sectorsize * KMCSFS.tablesize;
+
+		table = ExAllocatePoolWithTag(NonPagedPool, KMCSFS.extratablesize, ALLOC_TAG);
+		if (!table)
+		{
+			ERR("out of memory\n");
+			ExFreePool(data);
+			return false;
+		}
+
+		Status = sync_read_phys(DeviceObject, FileObject, 0, KMCSFS.extratablesize, table, true);
+		if (NT_SUCCESS(Status))
+		{
+			KMCSFS.filenamesend = 5;
+			KMCSFS.tableend = 0;
+			unsigned long long loc = 0;
+
+			for (KMCSFS.filenamesend = 5; KMCSFS.filenamesend < KMCSFS.extratablesize; KMCSFS.filenamesend++)
+			{
+				if ((table[KMCSFS.filenamesend] & 0xff) == 255)
+				{
+					if ((table[min(KMCSFS.filenamesend + 1, KMCSFS.extratablesize)] & 0xff) == 254)
+					{
+						found = true;
+						break;
+					}
+					else
+					{
+						if (loc == 0)
+						{
+							KMCSFS.tableend = KMCSFS.filenamesend;
+						}
+
+						// if following check is not enough to block the driver from loading unnecessarily,
+						// then we can add a check to make sure all bytes between loc and i equal a vaild path.
+						// if that is not enough, then nothing will be.
+
+						loc = KMCSFS.filenamesend;
+					}
+				}
+				if (KMCSFS.filenamesend - loc > 256 && loc > 0)
+				{
+					break;
+				}
+			}
+		}
+	}
+	ExFreePool(data);
+	if (table)
+	{
+		ExFreePool(table);
+	}
+	return found;
+}
+
+#ifdef DEBUG_FCB_REFCOUNTS
+void _free_fcb(_Inout_ fcb* fcb, _In_ const char* func)
+{
+	LONG rc = InterlockedDecrement(&fcb->refcount);
+#else
+void free_fcb(_Inout_ fcb * fcb)
+{
+	InterlockedDecrement(&fcb->refcount);
+#endif
+
+#ifdef DEBUG_FCB_REFCOUNTS
+	ERR("fcb %p (%s): refcount now %i (subvol %I64x, inode %I64x)\n", fcb, func, rc, fcb->subvol ? fcb->subvol->id : 0, fcb->inode);
+#endif
+}
+
+void reap_fcb(fcb* fcb)
+{
+	if (fcb->list_entry.Flink)
+	{
+		RemoveEntryList(&fcb->list_entry);
+	}
+
+	if (fcb->list_entry_all.Flink)
+	{
+		RemoveEntryList(&fcb->list_entry_all);
+	}
+
+	ExDeleteResourceLite(&fcb->nonpaged->resource);
+	ExDeleteResourceLite(&fcb->nonpaged->paging_resource);
+	ExDeleteResourceLite(&fcb->nonpaged->dir_children_lock);
+
+	ExFreeToNPagedLookasideList(&fcb->Vcb->fcb_np_lookaside, fcb->nonpaged);
+
+	if (fcb->sd)
+	{
+		ExFreePool(fcb->sd);
+	}
+
+	if (fcb->reparse_xattr.Buffer)
+	{
+		ExFreePool(fcb->reparse_xattr.Buffer);
+	}
+
+	FsRtlUninitializeFileLock(&fcb->lock);
+
+	if (fcb->pool_type == NonPagedPool)
+	{
+		ExFreePool(fcb);
+	}
+	else
+	{
+		ExFreeToPagedLookasideList(&fcb->Vcb->fcb_lookaside, fcb);
+	}
+}
+
+static NTSTATUS mount_vol(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	PIO_STACK_LOCATION IrpSp;
+	PDEVICE_OBJECT NewDeviceObject = NULL;
+	PDEVICE_OBJECT DeviceToMount, readobj;
+	PFILE_OBJECT fileobj;
+	NTSTATUS Status;
+	device_extension* Vcb = NULL;
+	LIST_ENTRY* le;
+	fcb* root_fcb = NULL;
+	ccb* root_ccb = NULL;
+	bool init_lookaside = false;
+	device* dev;
+	volume_device_extension* vde = NULL;
+	pdo_device_extension* pdode = NULL;
+	volume_child* vc;
+	uint64_t readobjsize;
+	OBJECT_ATTRIBUTES oa;
+	device_extension* real_devext;
+	KIRQL irql;
+
+	TRACE("(%p, %p)\n", DeviceObject, Irp);
+
+	if (DeviceObject != devobj)
+	{
+		return STATUS_INVALID_DEVICE_REQUEST;
+	}
+
+	IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	DeviceToMount = IrpSp->Parameters.MountVolume.DeviceObject;
+
+	real_devext = IrpSp->Parameters.MountVolume.Vpb->RealDevice->DeviceExtension;
+
+	// Make sure we're not trying to mount the PDO
+	if (IrpSp->Parameters.MountVolume.Vpb->RealDevice->DriverObject == drvobj && real_devext->type == VCB_TYPE_PDO)
+	{
+		return STATUS_UNRECOGNIZED_VOLUME;
+	}
+
+	PDEVICE_OBJECT pdo;
+
+	pdo = DeviceToMount;
+
+	ObReferenceObject(pdo);
+
+	while (true)
+	{
+		PDEVICE_OBJECT pdo2 = IoGetLowerDeviceObject(pdo);
+
+		ObDereferenceObject(pdo);
+
+		if (!pdo2)
+		{
+			break;
+		}
+		else
+		{
+			pdo = pdo2;
+		}
+	}
+
+	ExAcquireResourceSharedLite(&pdo_list_lock, true);
+
+	le = pdo_list.Flink;
+	while (le != &pdo_list)
+	{
+		pdo_device_extension* pdode2 = CONTAINING_RECORD(le, pdo_device_extension, list_entry);
+
+		if (pdode2->pdo == pdo)
+		{
+			vde = pdode2->vde;
+			break;
+		}
+
+		le = le->Flink;
+	}
+
+	ExReleaseResourceLite(&pdo_list_lock);
+
+	if (!vde || vde->type != VCB_TYPE_VOLUME)
+	{
+		vde = NULL;
+		Status = STATUS_UNRECOGNIZED_VOLUME;
+		goto exit;
+	}
+
+	if (vde)
+	{
+		pdode = vde->pdode;
+
+		ExAcquireResourceExclusiveLite(&pdode->child_lock, true);
+
+		le = pdode->children.Flink;
+		while (le != &pdode->children)
+		{
+			LIST_ENTRY* le2 = le->Flink;
+
+			vc = CONTAINING_RECORD(pdode->children.Flink, volume_child, list_entry);
+
+			if (!is_KMCSpaceFS(vc->devobj, vc->fileobj))
+			{
+				remove_volume_child(vde, vc, false);
+
+				if (pdode->num_children == 0)
+				{
+					ERR("error - number of devices is zero\n");
+					Status = STATUS_INTERNAL_ERROR;
+					ExReleaseResourceLite(&pdode->child_lock);
+					goto exit;
+				}
+
+				Status = STATUS_DEVICE_NOT_READY;
+				ExReleaseResourceLite(&pdode->child_lock);
+				goto exit;
+			}
+
+			le = le2;
+		}
+
+		if (pdode->num_children == 0 || pdode->children_loaded == 0)
+		{
+			ERR("error - number of devices is zero\n");
+			Status = STATUS_INTERNAL_ERROR;
+			ExReleaseResourceLite(&pdode->child_lock);
+			goto exit;
+		}
+
+		ExConvertExclusiveToSharedLite(&pdode->child_lock);
+
+		vc = CONTAINING_RECORD(pdode->children.Flink, volume_child, list_entry);
+
+		readobj = vc->devobj;
+		fileobj = vc->fileobj;
+		readobjsize = vc->size;
+
+		vde->device->Characteristics &= ~FILE_DEVICE_SECURE_OPEN;
+	}
+	else
+	{
+		GET_LENGTH_INFORMATION gli;
+
+		vc = NULL;
+		readobj = DeviceToMount;
+		fileobj = NULL;
+
+		Status = dev_ioctl(readobj, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0, &gli, sizeof(gli), true, NULL);
+
+		if (!NT_SUCCESS(Status))
+		{
+			ERR("error reading length information: %08lx\n", Status);
+			goto exit;
+		}
+
+		readobjsize = gli.Length.QuadPart;
+	}
+
+	Status = IoCreateDevice(drvobj, sizeof(device_extension), NULL, FILE_DEVICE_DISK_FILE_SYSTEM, 0, false, &NewDeviceObject);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("IoCreateDevice returned %08lx\n", Status);
+		Status = STATUS_UNRECOGNIZED_VOLUME;
+
+		if (pdode)
+		{
+			ExReleaseResourceLite(&pdode->child_lock);
+		}
+
+		goto exit;
+	}
+
+	NewDeviceObject->Flags |= DO_DIRECT_IO;
+
+	// Some programs seem to expect that the sector size will be 512, for
+	// FILE_NO_INTERMEDIATE_BUFFERING and the like.
+	NewDeviceObject->SectorSize = min(DeviceToMount->SectorSize, 512);
+
+	Vcb = (PVOID)NewDeviceObject->DeviceExtension;
+	RtlZeroMemory(Vcb, sizeof(device_extension));
+	Vcb->type = VCB_TYPE_FS;
+	Vcb->vde = vde;
+
+	ExInitializeResourceLite(&Vcb->tree_lock);
+	Vcb->need_write = false;
+
+	ExInitializeResourceLite(&Vcb->load_lock);
+	ExAcquireResourceExclusiveLite(&Vcb->load_lock, true);
+
+	ExAcquireResourceExclusiveLite(&Vcb->tree_lock, true);
+
+	DeviceToMount->Flags |= DO_DIRECT_IO;
+
+	/*Status = registry_load_volume_options(Vcb);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("registry_load_volume_options returned %08lx\n", Status);
+
+		if (pdode)
+		{
+			ExReleaseResourceLite(&pdode->child_lock);
+		}
+
+		goto exit;
+	}*/
+
+	if (pdode)
+	{
+		if (RtlCompareMemory(&boot_uuid, &pdode->KMCSFS.uuid, sizeof(KMCSpaceFS_UUID)) == sizeof(KMCSpaceFS_UUID) && boot_subvol != 0)
+		{
+			Vcb->options.subvol_id = boot_subvol;
+		}
+
+		if (pdode->children_loaded < pdode->num_children && degraded_wait)
+		{
+			ERR("could not mount as %I64u device(s) missing\n", pdode->num_children - pdode->children_loaded);
+			Status = STATUS_DEVICE_NOT_READY;
+			ExReleaseResourceLite(&pdode->child_lock);
+			goto exit;
+		}
+
+		// Windows holds DeviceObject->DeviceLock, guaranteeing that mount_vol is serialized
+		ExReleaseResourceLite(&pdode->child_lock);
+	}
+
+	Vcb->readonly = false;
+	if (Vcb->options.readonly)
+	{
+		Vcb->readonly = true;
+	}
+
+	InitializeListHead(&Vcb->devices);
+	dev = ExAllocatePoolWithTag(NonPagedPool, sizeof(device), ALLOC_TAG);
+	if (!dev)
+	{
+		ERR("out of memory\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto exit;
+	}
+
+	dev->devobj = readobj;
+	dev->fileobj = fileobj;
+
+	if (dev->devitem.num_bytes > readobjsize)
+	{
+		WARN("device %I64x: DEV_ITEM says %I64x bytes, but Windows only reports %I64x\n", dev->devitem.dev_id, dev->devitem.num_bytes, readobjsize);
+
+		dev->devitem.num_bytes = readobjsize;
+	}
+
+	init_device(Vcb, dev, true);
+
+	InsertTailList(&Vcb->devices, &dev->list_entry);
+
+	if (DeviceToMount->Flags & DO_SYSTEM_BOOT_PARTITION)
+	{
+		Vcb->disallow_dismount = true;
+	}
+
+	TRACE("DeviceToMount = %p\n", DeviceToMount);
+	TRACE("IrpSp->Parameters.MountVolume.Vpb = %p\n", IrpSp->Parameters.MountVolume.Vpb);
+
+	NewDeviceObject->StackSize = DeviceToMount->StackSize + 1;
+	NewDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+
+	ExInitializePagedLookasideList(&Vcb->fcb_lookaside, NULL, NULL, 0, sizeof(fcb), ALLOC_TAG, 0);
+	ExInitializeNPagedLookasideList(&Vcb->fcb_np_lookaside, NULL, NULL, 0, sizeof(fcb_nonpaged), ALLOC_TAG, 0);
+	init_lookaside = true;
+
+	Vcb->Vpb = IrpSp->Parameters.MountVolume.Vpb;
+
+	if (dev->readonly)
+	{
+		WARN("setting volume to readonly as device is readonly\n");
+		Vcb->readonly = true;
+	}
+
+	Vcb->volume_fcb = create_fcb(Vcb, NonPagedPool);
+	if (!Vcb->volume_fcb)
+	{
+		ERR("out of memory\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto exit;
+	}
+
+	Vcb->volume_fcb->Vcb = Vcb;
+	Vcb->volume_fcb->sd = NULL;
+
+	root_fcb = create_fcb(Vcb, NonPagedPool);
+	if (!root_fcb)
+	{
+		ERR("out of memory\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto exit;
+	}
+
+	root_fcb->Vcb = Vcb;
+
+#ifdef DEBUG_FCB_REFCOUNTS
+	WARN("volume FCB = %p\n", Vcb->volume_fcb);
+	WARN("root FCB = %p\n", root_fcb);
+#endif
+
+	//fcb_get_sd(root_fcb, NULL, true, Irp);
+
+	root_ccb = ExAllocatePoolWithTag(PagedPool, sizeof(ccb), ALLOC_TAG);
+	if (!root_ccb)
+	{
+		ERR("out of memory\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto exit;
+	}
+
+	Vcb->root_file = IoCreateStreamFileObject(NULL, DeviceToMount);
+	Vcb->root_file->FsContext = root_fcb;
+	Vcb->root_file->SectionObjectPointer = &root_fcb->nonpaged->segment_object;
+	Vcb->root_file->Vpb = DeviceObject->Vpb;
+
+	RtlZeroMemory(root_ccb, sizeof(ccb));
+	root_ccb->NodeType = KMCSpaceFS_NODE_TYPE_CCB;
+	root_ccb->NodeSize = sizeof(ccb);
+
+	Vcb->root_file->FsContext2 = root_ccb;
+
+	IoAcquireVpbSpinLock(&irql);
+
+	NewDeviceObject->Vpb = IrpSp->Parameters.MountVolume.Vpb;
+	IrpSp->Parameters.MountVolume.Vpb->DeviceObject = NewDeviceObject;
+	IrpSp->Parameters.MountVolume.Vpb->Flags |= VPB_MOUNTED;
+	NewDeviceObject->Vpb->VolumeLabelLength = 4; // FIXME
+	NewDeviceObject->Vpb->VolumeLabel[0] = '?';
+	NewDeviceObject->Vpb->VolumeLabel[1] = 0;
+	NewDeviceObject->Vpb->ReferenceCount++;
+
+	IoReleaseVpbSpinLock(irql);
+
+	InitializeObjectAttributes(&oa, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
+
+	/*Status = registry_mark_volume_mounted(&pdode->KMCSFS.uuid);
+	if (!NT_SUCCESS(Status))
+	{
+		WARN("registry_mark_volume_mounted returned %08lx\n", Status);
+	}*/
+
+	Status = STATUS_SUCCESS;
+
+	if (vde)
+	{
+		vde->mounted_device = NewDeviceObject;
+	}
+
+	Vcb->devobj = NewDeviceObject;
+
+exit:
+	if (Vcb)
+	{
+		ExReleaseResourceLite(&Vcb->tree_lock);
+		ExReleaseResourceLite(&Vcb->load_lock);
+	}
+
+	if (!NT_SUCCESS(Status))
+	{
+		if (Vcb)
+		{
+			if (init_lookaside)
+			{
+				ExDeletePagedLookasideList(&Vcb->fcb_lookaside);
+				ExDeleteNPagedLookasideList(&Vcb->fcb_np_lookaside);
+			}
+
+			if (Vcb->root_file)
+			{
+				ObDereferenceObject(Vcb->root_file);
+			}
+			else if (root_fcb)
+			{
+				free_fcb(root_fcb);
+			}
+
+			if (root_fcb && root_fcb->refcount == 0)
+			{
+				reap_fcb(root_fcb);
+			}
+
+			if (Vcb->volume_fcb)
+			{
+				reap_fcb(Vcb->volume_fcb);
+			}
+
+			ExDeleteResourceLite(&Vcb->tree_lock);
+			ExDeleteResourceLite(&Vcb->load_lock);
+
+			if (Vcb->devices.Flink)
+			{
+				while (!IsListEmpty(&Vcb->devices))
+				{
+					device* dev2 = CONTAINING_RECORD(RemoveHeadList(&Vcb->devices), device, list_entry);
+
+					ExFreePool(dev2);
+				}
+			}
+		}
+
+		if (NewDeviceObject)
+		{
+			IoDeleteDevice(NewDeviceObject);
+		}
+	}
+	else
+	{
+		ExAcquireResourceExclusiveLite(&global_loading_lock, true);
+		InsertTailList(&VcbList, &Vcb->list_entry);
+		ExReleaseResourceLite(&global_loading_lock);
+
+		FsRtlNotifyVolumeEvent(Vcb->root_file, FSRTL_VOLUME_MOUNT);
+	}
+
+	TRACE("mount_vol done (status: %lx)\n", Status);
+
+	return Status;
+}
+
+_Dispatch_type_(IRP_MJ_FILE_SYSTEM_CONTROL)
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS __stdcall FileSystemControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	PIO_STACK_LOCATION IrpSp;
+	NTSTATUS Status;
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+	bool top_level;
+
+	FsRtlEnterFileSystem();
+
+	TRACE("file system control\n");
+
+	top_level = is_top_level(Irp);
+
+	if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		Status = STATUS_INVALID_DEVICE_REQUEST;
+		goto end;
+	}
+	else if (!Vcb || (Vcb->type != VCB_TYPE_FS && Vcb->type != VCB_TYPE_CONTROL))
+	{
+		Status = STATUS_INVALID_PARAMETER;
+		goto end;
+	}
+
+	Status = STATUS_NOT_IMPLEMENTED;
+
+	IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+	Irp->IoStatus.Information = 0;
+
+	switch (IrpSp->MinorFunction)
+	{
+	case IRP_MN_MOUNT_VOLUME:
+		TRACE("IRP_MN_MOUNT_VOLUME\n");
+
+		Status = mount_vol(DeviceObject, Irp);
+		break;
+
+	/*case IRP_MN_KERNEL_CALL:
+		TRACE("IRP_MN_KERNEL_CALL\n");
+
+		Status = fsctl_request(DeviceObject, &Irp, IrpSp->Parameters.FileSystemControl.FsControlCode);
+		break;
+
+	case IRP_MN_USER_FS_REQUEST:
+		TRACE("IRP_MN_USER_FS_REQUEST\n");
+
+		Status = fsctl_request(DeviceObject, &Irp, IrpSp->Parameters.FileSystemControl.FsControlCode);
+		break;
+
+	case IRP_MN_VERIFY_VOLUME:
+		TRACE("IRP_MN_VERIFY_VOLUME\n");
+
+		Status = verify_volume(DeviceObject);
+
+		if (!NT_SUCCESS(Status) && Vcb->Vpb->Flags & VPB_MOUNTED)
+		{
+			ExAcquireResourceExclusiveLite(&Vcb->tree_lock, true);
+			Vcb->removing = true;
+			ExReleaseResourceLite(&Vcb->tree_lock);
+		}
+
+		break;*/
+
+	default:
+		break;
+	}
+
+end:
+	TRACE("returning %08lx\n", Status);
+
+	if (Irp)
+	{
+		Irp->IoStatus.Status = Status;
+
+		IoCompleteRequest(Irp, IO_NO_INCREMENT);
+	}
+
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
+
+	FsRtlExitFileSystem();
 
 	return Status;
 }
@@ -795,9 +1432,126 @@ static bool lie_about_fs_type()
 	return false;
 }
 
+// version of RtlUTF8ToUnicodeN for Vista and below
+NTSTATUS utf8_to_utf16(WCHAR* dest, ULONG dest_max, ULONG* dest_len, char* src, ULONG src_len)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+	uint8_t* in = (uint8_t*)src;
+	uint16_t* out = (uint16_t*)dest;
+	ULONG needed = 0, left = dest_max / sizeof(uint16_t);
+
+	for (ULONG i = 0; i < src_len; i++)
+	{
+		uint32_t cp;
+
+		if (!(in[i] & 0x80))
+		{
+			cp = in[i];
+		}
+		else if ((in[i] & 0xe0) == 0xc0)
+		{
+			if (i == src_len - 1 || (in[i + 1] & 0xc0) != 0x80)
+			{
+				cp = 0xfffd;
+				Status = STATUS_SOME_NOT_MAPPED;
+			}
+			else
+			{
+				cp = ((in[i] & 0x1f) << 6) | (in[i + 1] & 0x3f);
+				i++;
+			}
+		}
+		else if ((in[i] & 0xf0) == 0xe0)
+		{
+			if (i >= src_len - 2 || (in[i + 1] & 0xc0) != 0x80 || (in[i + 2] & 0xc0) != 0x80)
+			{
+				cp = 0xfffd;
+				Status = STATUS_SOME_NOT_MAPPED;
+			}
+			else
+			{
+				cp = ((in[i] & 0xf) << 12) | ((in[i + 1] & 0x3f) << 6) | (in[i + 2] & 0x3f);
+				i += 2;
+			}
+		}
+		else if ((in[i] & 0xf8) == 0xf0)
+		{
+			if (i >= src_len - 3 || (in[i + 1] & 0xc0) != 0x80 || (in[i + 2] & 0xc0) != 0x80 || (in[i + 3] & 0xc0) != 0x80) {
+				cp = 0xfffd;
+				Status = STATUS_SOME_NOT_MAPPED;
+			}
+			else
+			{
+				cp = ((in[i] & 0x7) << 18) | ((in[i + 1] & 0x3f) << 12) | ((in[i + 2] & 0x3f) << 6) | (in[i + 3] & 0x3f);
+				i += 3;
+			}
+		}
+		else
+		{
+			cp = 0xfffd;
+			Status = STATUS_SOME_NOT_MAPPED;
+		}
+
+		if (cp > 0x10ffff)
+		{
+			cp = 0xfffd;
+			Status = STATUS_SOME_NOT_MAPPED;
+		}
+
+		if (dest)
+		{
+			if (cp <= 0xffff)
+			{
+				if (left < 1)
+				{
+					return STATUS_BUFFER_OVERFLOW;
+				}
+
+				*out = (uint16_t)cp;
+				out++;
+
+				left--;
+			}
+			else
+			{
+				if (left < 2)
+				{
+					return STATUS_BUFFER_OVERFLOW;
+				}
+
+				cp -= 0x10000;
+
+				*out = 0xd800 | ((cp & 0xffc00) >> 10);
+				out++;
+
+				*out = 0xdc00 | (cp & 0x3ff);
+				out++;
+
+				left -= 2;
+			}
+		}
+
+		if (cp <= 0xffff)
+		{
+			needed += sizeof(uint16_t);
+		}
+		else
+		{
+			needed += 2 * sizeof(uint16_t);
+		}
+	}
+
+	if (dest_len)
+	{
+		*dest_len = needed;
+	}
+
+	return Status;
+}
+
 static void calculate_total_space(_In_ device_extension* Vcb, _Out_ uint64_t* totalsize, _Out_ uint64_t* freespace)
 {
-	*totalsize = Vcb->vde->pdode->KMCSFS.size - (Vcb->vde->pdode->KMCSFS.tablesize * Vcb->vde->pdode->KMCSFS.sectorsize);
+	*totalsize = Vcb->vde->pdode->KMCSFS.size / Vcb->vde->pdode->KMCSFS.sectorsize - Vcb->vde->pdode->KMCSFS.tablesize;
 	*freespace = *totalsize;//
 }
 
@@ -869,7 +1623,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 			overflow = true;
 		}
 
-		data->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_CASE_SENSITIVE_SEARCH | FILE_UNICODE_ON_DISK | FILE_NAMED_STREAMS | FILE_SUPPORTS_HARD_LINKS | FILE_PERSISTENT_ACLS | FILE_SUPPORTS_REPARSE_POINTS | FILE_SUPPORTS_SPARSE_FILES | FILE_SUPPORTS_OBJECT_IDS | FILE_SUPPORTS_OPEN_BY_FILE_ID | FILE_SUPPORTS_BLOCK_REFCOUNTING | FILE_SUPPORTS_POSIX_UNLINK_RENAME;
+		data->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_CASE_SENSITIVE_SEARCH | FILE_UNICODE_ON_DISK | FILE_NAMED_STREAMS | FILE_PERSISTENT_ACLS | FILE_SUPPORTS_REPARSE_POINTS | FILE_SUPPORTS_POSIX_UNLINK_RENAME;
 		if (Vcb->readonly)
 		{
 			data->FileSystemAttributes |= FILE_READ_ONLY_VOLUME;
@@ -960,7 +1714,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		break;
 	}
 
-	/*case FileFsVolumeInformation:
+	case FileFsVolumeInformation:
 	{
 		FILE_FS_VOLUME_INFORMATION* data = Irp->AssociatedIrp.SystemBuffer;
 		FILE_FS_VOLUME_INFORMATION ffvi;
@@ -972,7 +1726,9 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 
 		ExAcquireResourceSharedLite(&Vcb->tree_lock, true);
 
-		Status = utf8_to_utf16(NULL, 0, &label_len, Vcb->superblock.label, (ULONG)strlen(Vcb->superblock.label));
+		char label[] = {'C','S','p','a','c','e','F','S',0};//
+
+		Status = utf8_to_utf16(NULL, 0, &label_len, label, (ULONG)strlen(label));
 		if (!NT_SUCCESS(Status))
 		{
 			ERR("utf8_to_utf16 returned %08lx\n", Status);
@@ -982,7 +1738,8 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 
 		orig_label_len = label_len;
 
-		if (IrpSp->Parameters.QueryVolume.Length < offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel) + label_len) {
+		if (IrpSp->Parameters.QueryVolume.Length < offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel) + label_len)
+		{
 			if (IrpSp->Parameters.QueryVolume.Length > offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel))
 			{
 				label_len = IrpSp->Parameters.QueryVolume.Length - offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel);
@@ -1008,7 +1765,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		{
 			ULONG bytecount;
 
-			Status = utf8_to_utf16(&data->VolumeLabel[0], label_len, &bytecount, Vcb->superblock.label, (ULONG)strlen(Vcb->superblock.label));
+			Status = utf8_to_utf16(&data->VolumeLabel[0], label_len, &bytecount, label, (ULONG)strlen(label));
 			if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW)
 			{
 				ERR("utf8_to_utf16 returned %08lx\n", Status);
@@ -1024,7 +1781,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		BytesCopied = offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel) + label_len;
 		Status = overflow ? STATUS_BUFFER_OVERFLOW : STATUS_SUCCESS;
 		break;
-	}*/
+	}
 
 #ifdef _MSC_VER // not in mingw yet
 	case FileFsSectorSizeInformation:
@@ -1651,7 +2408,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
 	//DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;
 	///DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
-	//DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL]      = FileSystemControl;
+	DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL]      = FileSystemControl;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
 	//DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;
 	//DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL]             = LockControl;

@@ -35,4 +35,20 @@ typedef struct
     unsigned long long filenamesend;
     unsigned long long tableend;
     unsigned long long size;
+    uint8_t* table;
 } KMCSpaceFS;
+
+typedef struct
+{
+    uint64_t index;
+    uint64_t transid;
+    uint64_t st_size;
+    uint32_t st_nlink;
+    uint32_t st_uid;
+    uint32_t st_gid;
+    uint32_t st_mode;
+    uint64_t st_atime;
+    uint64_t st_ctime;
+    uint64_t st_mtime;
+    uint64_t otime;
+} INDEX_ITEM;

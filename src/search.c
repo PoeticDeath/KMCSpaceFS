@@ -121,7 +121,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
     ULONG toread;
     uint8_t* data = NULL, *table = NULL;
     uint32_t sector_size;
-    bool ret = true;
+    bool found = false;
 
     TRACE("%.*S\n", (int)(devpath->Length / sizeof(WCHAR)), devpath->Buffer);
 
@@ -240,6 +240,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
         KMCSFS.sectorsize = 1 << (9 + (data[0] & 0xff));
         KMCSFS.tablesize = 1 + (data[4] & 0xff) + ((data[3] & 0xff) << 8) + ((data[2] & 0xff) << 16) + ((data[1] & 0xff) << 24);
         KMCSFS.extratablesize = (unsigned long long)KMCSFS.sectorsize * KMCSFS.tablesize;
+        KMCSFS.table = table;
 
         table = ExAllocatePoolWithTag(NonPagedPool, KMCSFS.extratablesize, ALLOC_TAG);
         if (!table)
@@ -254,7 +255,6 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
             KMCSFS.filenamesend = 5;
             KMCSFS.tableend = 0;
             unsigned long long loc = 0;
-            bool found = false;
 
             for (KMCSFS.filenamesend = 5; KMCSFS.filenamesend < KMCSFS.extratablesize; KMCSFS.filenamesend++)
             {
@@ -298,12 +298,12 @@ deref:
     {
         ExFreePool(data);
     }
-    if (table)
+    if (table && !found)
     {
 		ExFreePool(table);
 	}
 
-    return ret;
+    return found;
 }
 
 NTSTATUS remove_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath)
@@ -479,7 +479,8 @@ void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->pdode->c
         }
     }
 
-    if (pdode->children_loaded > 0) {
+    if (pdode->children_loaded > 0)
+    {
         UNICODE_STRING mmdevpath;
         PFILE_OBJECT FileObject;
         PDEVICE_OBJECT mountmgr;
@@ -710,7 +711,8 @@ bool volume_arrival(PUNICODE_STRING devpath, bool fve_callback)
     }
 
     // If we've just added a partition to a whole-disk filesystem, unmount it
-    if (sdn.DeviceNumber != 0xffffffff && sdn.PartitionNumber != 0) {
+    if (sdn.DeviceNumber != 0xffffffff && sdn.PartitionNumber != 0)
+    {
         LIST_ENTRY* le;
 
         ExAcquireResourceExclusiveLite(&pdo_list_lock, true);

@@ -60,6 +60,7 @@ void _debug_message(_In_ const char* func, _In_ char* s, ...) __attribute__((for
 
 #define ALLOC_TAG 0x7442484D //'MHBt'
 #define KMCSpaceFS_NODE_TYPE_CCB 0x2295
+#define KMCSpaceFS_NODE_TYPE_FCB 0x2296
 #define UNUSED(x) (void)(x)
 #define VCB_TYPE_FS      1
 #define VCB_TYPE_CONTROL 2
@@ -100,7 +101,6 @@ typedef struct
     UNICODE_STRING name;
     UNICODE_STRING name_uc;
     ULONG size;
-    struct _file_ref* fileref;
     bool root_dir;
     LIST_ENTRY list_entry_index;
 } dir_child;
@@ -110,46 +110,23 @@ typedef struct _fcb
     FSRTL_ADVANCED_FCB_HEADER Header;
     struct _fcb_nonpaged* nonpaged;
     LONG refcount;
+    POOL_TYPE pool_type;
     struct _device_extension* Vcb;
-    struct _root* subvol;
     uint8_t type;
     SECURITY_DESCRIPTOR* sd;
     FILE_LOCK lock;
     bool deleted;
     PKTHREAD lazy_writer_thread;
-    ULONG atts;
     SHARE_ACCESS share_access;
     LIST_ENTRY extents;
     ANSI_STRING reparse_xattr;
-    LIST_ENTRY hardlinks;
-    struct _file_ref* fileref;
     bool inode_item_changed;
     OPLOCK oplock;
     LIST_ENTRY list_entry;
     LIST_ENTRY list_entry_all;
     LIST_ENTRY list_entry_dirty;
+    INDEX_ITEM index_item;
 } fcb;
-
-typedef struct _file_ref
-{
-    fcb* fcb;
-    ANSI_STRING oldutf8;
-    uint64_t oldindex;
-    bool delete_on_close;
-    bool posix_delete;
-    bool deleted;
-    bool created;
-    LIST_ENTRY children;
-    LONG refcount;
-    LONG open_count;
-    struct _file_ref* parent;
-    dir_child* dc;
-
-    bool dirty;
-
-    LIST_ENTRY list_entry;
-    LIST_ENTRY list_entry_dirty;
-} file_ref;
 
 typedef struct _ccb
 {
@@ -187,6 +164,7 @@ typedef struct
     bool readonly;
     uint32_t flush_interval;
     bool no_trim;
+    uint64_t subvol_id;
 } mount_options;
 
 typedef struct _device_extension
@@ -200,15 +178,16 @@ typedef struct _device_extension
     bool readonly;
     bool trim;
     bool removing;
+    bool disallow_dismount;
     LONG page_file_count;
     fcb* volume_fcb;
-    file_ref* root_fileref;
     LONG open_files;
-    ERESOURCE fileref_lock;
     ERESOURCE load_lock;
     bool need_write;
     _Has_lock_level_(tree_lock) ERESOURCE tree_lock;
     PFILE_OBJECT root_file;
+    PAGED_LOOKASIDE_LIST fcb_lookaside;
+    PAGED_LOOKASIDE_LIST fcb_np_lookaside;
     LIST_ENTRY list_entry;
 } device_extension;
 
@@ -329,6 +308,8 @@ NTSTATUS __stdcall volume_notification(PVOID NotificationStructure, PVOID Contex
 
 typedef NTSTATUS(__stdcall* tIoUnregisterPlugPlayNotificationEx)(PVOID NotificationEntry);
 
+void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lock) _Releases_exclusive_lock_(_Curr_->child_lock) _In_ volume_device_extension* vde, _In_ volume_child* vc, _In_ bool skip_dev);
+
 // in KMCSpaceFS.c
 bool is_top_level(_In_ PIRP Irp);
 NTSTATUS dev_ioctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ ULONG ControlCode, _In_reads_bytes_opt_(InputBufferSize) PVOID InputBuffer, _In_ ULONG InputBufferSize, _Out_writes_bytes_opt_(OutputBufferSize) PVOID OutputBuffer, _In_ ULONG OutputBufferSize, _In_ bool Override, _Out_opt_ IO_STATUS_BLOCK* iosb);
@@ -368,8 +349,11 @@ _Dispatch_type_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall Create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
+fcb* create_fcb(device_extension* Vcb, POOL_TYPE pool_type);
+
 // not in DDK headers - taken from winternl.h
-typedef struct _LDR_DATA_TABLE_ENTRY {
+typedef struct _LDR_DATA_TABLE_ENTRY
+{
     PVOID Reserved1[2];
     LIST_ENTRY InMemoryOrderLinks;
     PVOID Reserved2[2];
@@ -378,29 +362,33 @@ typedef struct _LDR_DATA_TABLE_ENTRY {
     UNICODE_STRING FullDllName;
     BYTE Reserved4[8];
     PVOID Reserved5[3];
-    union {
+    union
+    {
         ULONG CheckSum;
         PVOID Reserved6;
     };
     ULONG TimeDateStamp;
-} LDR_DATA_TABLE_ENTRY, * PLDR_DATA_TABLE_ENTRY;
+} LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
 
-typedef struct _PEB_LDR_DATA {
+typedef struct _PEB_LDR_DATA
+{
     BYTE Reserved1[8];
     PVOID Reserved2[3];
     LIST_ENTRY InMemoryOrderModuleList;
-} PEB_LDR_DATA, * PPEB_LDR_DATA;
+} PEB_LDR_DATA, *PPEB_LDR_DATA;
 
-typedef struct _RTL_USER_PROCESS_PARAMETERS {
+typedef struct _RTL_USER_PROCESS_PARAMETERS
+{
     BYTE Reserved1[16];
     PVOID Reserved2[10];
     UNICODE_STRING ImagePathName;
     UNICODE_STRING CommandLine;
-} RTL_USER_PROCESS_PARAMETERS, * PRTL_USER_PROCESS_PARAMETERS;
+} RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
 
 typedef VOID(NTAPI* PPS_POST_PROCESS_INIT_ROUTINE)(VOID);
 
-typedef struct _PEB {
+typedef struct _PEB
+{
     BYTE Reserved1[2];
     BYTE BeingDebugged;
     BYTE Reserved2[1];
@@ -413,7 +401,7 @@ typedef struct _PEB {
     BYTE Reserved6[128];
     PVOID Reserved7[1];
     ULONG SessionId;
-} PEB, * PPEB;
+} PEB, *PPEB;
 
 #ifdef _MSC_VER
 __kernel_entry
