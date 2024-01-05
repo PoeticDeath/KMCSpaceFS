@@ -351,6 +351,15 @@ NTSTATUS __stdcall Create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
 fcb* create_fcb(device_extension* Vcb, POOL_TYPE pool_type);
 
+// in CSpaceFS.c
+extern unsigned* emap;
+extern unsigned* dmap;
+void init_maps();
+char* encode(char* str, unsigned long long len);
+char* decode(char* bytes, unsigned long long len);
+unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS KMCSFS);
+bool incmp(unsigned char a, unsigned char b);
+
 // not in DDK headers - taken from winternl.h
 typedef struct _LDR_DATA_TABLE_ENTRY
 {

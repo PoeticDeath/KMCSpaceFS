@@ -119,7 +119,8 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 {
     NTSTATUS Status;
     ULONG toread;
-    uint8_t* data = NULL, *table = NULL;
+    uint8_t* data = NULL;
+    char* table = NULL;
     uint32_t sector_size;
     bool found = false;
 
@@ -209,7 +210,6 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
         KMCSFS.sectorsize = 1 << (9 + (data[0] & 0xff));
         KMCSFS.tablesize = 1 + (data[4] & 0xff) + ((data[3] & 0xff) << 8) + ((data[2] & 0xff) << 16) + ((data[1] & 0xff) << 24);
         KMCSFS.extratablesize = (unsigned long long)KMCSFS.sectorsize * KMCSFS.tablesize;
-        KMCSFS.table = table;
 
         table = ExAllocatePoolWithTag(NonPagedPool, KMCSFS.extratablesize, ALLOC_TAG);
         if (!table)
@@ -218,17 +218,20 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 			goto deref;
 		}
 
+        KMCSFS.table = table;
         Status = sync_read_phys(DeviceObject, FileObject, 0, KMCSFS.extratablesize, table, true);
         if (NT_SUCCESS(Status))
         {
             KMCSFS.filenamesend = 5;
             KMCSFS.tableend = 0;
+            KMCSFS.filecount = 0;
             unsigned long long loc = 0;
 
             for (KMCSFS.filenamesend = 5; KMCSFS.filenamesend < KMCSFS.extratablesize; KMCSFS.filenamesend++)
             {
                 if ((table[KMCSFS.filenamesend] & 0xff) == 255)
                 {
+                    KMCSFS.filecount++;
                     if ((table[min(KMCSFS.filenamesend + 1, KMCSFS.extratablesize)] & 0xff) == 254)
                     {
                         found = true;
@@ -257,6 +260,16 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
             if (!fs_ignored(&KMCSFS.uuid) && found)
             {
                 DeviceObject->Flags &= ~DO_VERIFY_VOLUME;
+
+                KMCSFS.tablestr = decode(table + 5, KMCSFS.tableend - 5);
+                if (!KMCSFS.tablestr)
+				{
+					ERR("out of memory\n");
+                    found = false;
+					goto deref;
+				}
+                KMCSFS.tablestrlen = KMCSFS.tableend + KMCSFS.tableend - 10;
+
                 add_volume_device(KMCSFS, devpath, length, disk_num, part_num);
             }
         }

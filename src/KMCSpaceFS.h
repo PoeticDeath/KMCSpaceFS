@@ -35,7 +35,10 @@ typedef struct
     unsigned long long filenamesend;
     unsigned long long tableend;
     unsigned long long size;
-    uint8_t* table;
+    unsigned long long filecount;
+    unsigned long long tablestrlen;
+    char* table;
+    char* tablestr;
 } KMCSpaceFS;
 
 typedef struct

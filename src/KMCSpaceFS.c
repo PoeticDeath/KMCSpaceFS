@@ -2345,6 +2345,13 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	ULONG dispos;
 	RTL_OSVERSIONINFOW ver;
 
+	init_maps();
+	if (!emap || !dmap)
+	{
+		ERR("init_maps failed\n");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
 	ver.dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOW);
 
 	Status = RtlGetVersion(&ver);
