@@ -13,6 +13,78 @@ extern PDEVICE_OBJECT comdo;
 
 WORK_QUEUE_ITEM wqi;
 
+static const WCHAR option_mounted[] = L"Mounted";
+
+NTSTATUS registry_mark_volume_mounted(KMCSpaceFS_UUID uuid)
+{
+    UNICODE_STRING path, mountedus;
+    ULONG i, j;
+    NTSTATUS Status;
+    OBJECT_ATTRIBUTES oa;
+    HANDLE h;
+    DWORD data;
+
+    path.Length = path.MaximumLength = registry_path.Length + (37 * sizeof(WCHAR));
+    path.Buffer = ExAllocatePoolWithTag(PagedPool, path.Length, ALLOC_TAG);
+
+    if (!path.Buffer)
+    {
+        ERR("out of memory\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlCopyMemory(path.Buffer, registry_path.Buffer, registry_path.Length);
+    i = registry_path.Length / sizeof(WCHAR);
+
+    path.Buffer[i] = '\\';
+    i++;
+
+    for (j = 0; j < 16; j++)
+    {
+        path.Buffer[i] = hex_digit((uuid.uuid[j] & 0xF0) >> 4);
+        path.Buffer[i + 1] = hex_digit(uuid.uuid[j] & 0xF);
+
+        i += 2;
+
+        if (j == 3 || j == 5 || j == 7 || j == 9)
+        {
+            path.Buffer[i] = '-';
+            i++;
+        }
+    }
+
+    InitializeObjectAttributes(&oa, &path, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+
+    Status = ZwCreateKey(&h, KEY_SET_VALUE, &oa, 0, NULL, REG_OPTION_NON_VOLATILE, NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        ERR("ZwCreateKey returned %08lx\n", Status);
+        goto end;
+    }
+
+    mountedus.Buffer = (WCHAR*)option_mounted;
+    mountedus.Length = mountedus.MaximumLength = sizeof(option_mounted) - sizeof(WCHAR);
+
+    data = 1;
+
+    Status = ZwSetValueKey(h, &mountedus, 0, REG_DWORD, &data, sizeof(DWORD));
+    if (!NT_SUCCESS(Status))
+    {
+        ERR("ZwSetValueKey returned %08lx\n", Status);
+        goto end2;
+    }
+
+    Status = STATUS_SUCCESS;
+
+end2:
+    ZwClose(h);
+
+end:
+    ExFreePool(path.Buffer);
+
+    return Status;
+}
+
 #define is_hex(c) ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
 
 static bool is_uuid(ULONG namelen, WCHAR* name)

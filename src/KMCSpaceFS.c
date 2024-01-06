@@ -1029,11 +1029,11 @@ static NTSTATUS mount_vol(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 
 	InitializeObjectAttributes(&oa, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
 
-	/*Status = registry_mark_volume_mounted(&pdode->KMCSFS.uuid);
+	Status = registry_mark_volume_mounted(pdode->KMCSFS.uuid);
 	if (!NT_SUCCESS(Status))
 	{
 		WARN("registry_mark_volume_mounted returned %08lx\n", Status);
-	}*/
+	}
 
 	Status = STATUS_SUCCESS;
 
