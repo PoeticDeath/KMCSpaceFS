@@ -196,3 +196,142 @@ unsigned long chwinattrs(unsigned long long filenameindex, unsigned long winattr
 		return 0;
 	}
 }
+
+static unsigned toint(unsigned char c)
+{
+	switch (c)
+	{
+	case '0':
+		return 0;
+	case '1':
+		return 1;
+	case '2':
+		return 2;
+	case '3':
+		return 3;
+	case '4':
+		return 4;
+	case '5':
+		return 5;
+	case '6':
+		return 6;
+	case '7':
+		return 7;
+	case '8':
+		return 8;
+	case '9':
+		return 9;
+	default:
+		return 0;
+	}
+}
+
+unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS)
+{
+	unsigned long long loc = 0;
+	if (index)
+	{
+		for (unsigned long long i = 0; i < KMCSFS.tablestrlen; i++)
+		{
+			if (KMCSFS.tablestr[i] == *".")
+			{
+				loc++;
+				if (loc == index)
+				{
+					loc = i + 1;
+					break;
+				}
+			}
+		}
+	}
+
+	bool notzero = false;
+	bool multisector = false;
+	unsigned cur = 0;
+	unsigned long long int0 = 0;
+	unsigned long long int1 = 0;
+	unsigned long long int2 = 0;
+	unsigned long long int3 = 0;
+	unsigned long long filesize = 0;
+
+	for (unsigned long long i = loc; i < KMCSFS.tablestrlen; i++)
+	{
+		if (KMCSFS.tablestr[i] == *"," || KMCSFS.tablestr[i] == *".")
+		{
+			if (notzero)
+			{
+				if (multisector)
+				{
+					for (unsigned long long o = 0; o < int0 - int3; o++)
+					{
+						filesize += KMCSFS.sectorsize;
+					}
+				}
+				switch (cur)
+				{
+				case 0:
+					filesize += KMCSFS.sectorsize;
+					break;
+				case 1:
+					break;
+				case 2:
+					filesize += int2 - int1;
+					break;
+				}
+			}
+			cur = 0;
+			int0 = 0;
+			int1 = 0;
+			int2 = 0;
+			int3 = 0;
+			multisector = false;
+			if (KMCSFS.tablestr[i] == *".")
+			{
+				break;
+			}
+		}
+		else if (KMCSFS.tablestr[i] == *";")
+		{
+			cur++;
+		}
+		else if (KMCSFS.tablestr[i] == *"-")
+		{
+			int3 = int0;
+			multisector = true;
+			cur = 0;
+			int0 = 0;
+			int1 = 0;
+			int2 = 0;
+		}
+		else
+		{
+			notzero = true;
+			switch (cur)
+			{
+			case 0:
+				int0 += toint(KMCSFS.tablestr[i] & 0xff);
+				if (KMCSFS.tablestr[i + 1] != *";" && KMCSFS.tablestr[i + 1] != *"," && KMCSFS.tablestr[i + 1] != *"." && KMCSFS.tablestr[i + 1] != *"-")
+				{
+					int0 *= 10;
+				}
+				break;
+			case 1:
+				int1 += toint(KMCSFS.tablestr[i] & 0xff);
+				if (KMCSFS.tablestr[i + 1] != *";" && KMCSFS.tablestr[i + 1] != *"," && KMCSFS.tablestr[i + 1] != *"." && KMCSFS.tablestr[i + 1] != *"-")
+				{
+					int1 *= 10;
+				}
+				break;
+			case 2:
+				int2 += toint(KMCSFS.tablestr[i] & 0xff);
+				if (KMCSFS.tablestr[i + 1] != *";" && KMCSFS.tablestr[i + 1] != *"," && KMCSFS.tablestr[i + 1] != *"." && KMCSFS.tablestr[i + 1] != *"-")
+				{
+					int2 *= 10;
+				}
+				break;
+			}
+		}
+	}
+
+	return filesize;
+}
