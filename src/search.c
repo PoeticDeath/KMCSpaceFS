@@ -231,7 +231,6 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
             {
                 if ((table[KMCSFS.filenamesend] & 0xff) == 255)
                 {
-                    KMCSFS.filecount++;
                     if ((table[min(KMCSFS.filenamesend + 1, KMCSFS.extratablesize)] & 0xff) == 254)
                     {
                         found = true;
@@ -250,6 +249,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 
                         loc = KMCSFS.filenamesend;
                     }
+                    KMCSFS.filecount++;
                 }
                 if (KMCSFS.filenamesend - loc > 256 && loc > 0)
                 {

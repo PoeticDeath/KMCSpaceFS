@@ -332,8 +332,22 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
         goto exit;
     }
 
-    // TODO: Find file by name determine if it exists or is a reparse point
-    Status = STATUS_SUCCESS;//
+    if (RequestedDisposition == FILE_OPEN || RequestedDisposition == FILE_OPEN_IF)
+    {
+        unsigned long long index = get_filename_index(fn, Vcb->vde->pdode->KMCSFS);
+        if (index)
+        {
+            Status = STATUS_SUCCESS;
+            if (chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_REPARSE_POINT)
+            {
+                Status = STATUS_REPARSE;
+            }
+        }
+        else
+        {
+            Status = STATUS_OBJECT_NAME_NOT_FOUND;
+        }
+    }
 
 loaded:
     /*if (Status == STATUS_REPARSE)

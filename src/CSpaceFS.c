@@ -154,3 +154,45 @@ unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS KMCSFS
 	}
 	return 0;
 }
+
+static unsigned long attrtoATTR(unsigned long attr)
+{
+	unsigned long ATTR = 0;
+	if (attr & FILE_ATTRIBUTE_HIDDEN) ATTR |= 32768;
+	if (attr & FILE_ATTRIBUTE_READONLY) ATTR |= 4096;
+	if (attr & FILE_ATTRIBUTE_SYSTEM) ATTR |= 128;
+	if (attr & FILE_ATTRIBUTE_ARCHIVE) ATTR |= 2048;
+	if (attr & FILE_ATTRIBUTE_DIRECTORY) ATTR |= 8192;
+	if (attr & FILE_ATTRIBUTE_REPARSE_POINT) ATTR |= 1024;
+	return ATTR;
+}
+
+static unsigned long ATTRtoattr(unsigned long ATTR)
+{
+	unsigned long attr = 0;
+	if (ATTR & 32768) attr |= FILE_ATTRIBUTE_HIDDEN;
+	if (ATTR & 4096) attr |= FILE_ATTRIBUTE_READONLY;
+	if (ATTR & 128) attr |= FILE_ATTRIBUTE_SYSTEM;
+	if (ATTR & 2048) attr |= FILE_ATTRIBUTE_ARCHIVE;
+	if (ATTR & 8192) attr |= FILE_ATTRIBUTE_DIRECTORY;
+	if (ATTR & 1024) attr |= FILE_ATTRIBUTE_REPARSE_POINT;
+	return attr;
+}
+
+unsigned long chwinattrs(unsigned long long filenameindex, unsigned long winattrs, KMCSpaceFS KMCSFS)
+{ // Last four bytes of fileinfo
+	if (!winattrs)
+	{
+		winattrs = (KMCSFS.table[KMCSFS.filenamesend + 2 + KMCSFS.filecount * 24 + filenameindex * 11 + 7] & 0xff) << 24 | (KMCSFS.table[KMCSFS.filenamesend + 2 + KMCSFS.filecount * 24 + filenameindex * 11 + 8] & 0xff) << 16 | (KMCSFS.table[KMCSFS.filenamesend + 2 + KMCSFS.filecount * 24 + filenameindex * 11 + 9] & 0xff) << 8 | KMCSFS.table[KMCSFS.filenamesend + 2 + KMCSFS.filecount * 24 + filenameindex * 11 + 10] & 0xff;
+		return ATTRtoattr(winattrs);
+	}
+	else
+	{
+		winattrs = attrtoATTR(winattrs);
+		KMCSFS.table[KMCSFS.filenamesend + 2 + KMCSFS.filecount * 24 + filenameindex * 11 + 7] = (winattrs >> 24) & 0xff;
+		KMCSFS.table[KMCSFS.filenamesend + 2 + KMCSFS.filecount * 24 + filenameindex * 11 + 8] = (winattrs >> 16) & 0xff;
+		KMCSFS.table[KMCSFS.filenamesend + 2 + KMCSFS.filecount * 24 + filenameindex * 11 + 9] = (winattrs >> 8) & 0xff;
+		KMCSFS.table[KMCSFS.filenamesend + 2 + KMCSFS.filecount * 24 + filenameindex * 11 + 10] = winattrs & 0xff;
+		return 0;
+	}
+}
