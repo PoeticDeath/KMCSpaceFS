@@ -60,6 +60,8 @@ fcb* create_fcb(device_extension* Vcb, POOL_TYPE pool_type)
     RtlZeroMemory(fcb, sizeof(struct _fcb));
     fcb->pool_type = pool_type;
 
+    fcb->Vcb = Vcb;
+
     fcb->Header.NodeTypeCode = KMCSpaceFS_NODE_TYPE_FCB;
     fcb->Header.NodeByteSize = sizeof(struct _fcb);
 
@@ -262,7 +264,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
     PFILE_OBJECT FileObject = NULL;
     ULONG RequestedDisposition;
     ULONG options;
-    NTSTATUS Status;
+    NTSTATUS Status = STATUS_INVALID_PARAMETER;
     PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     POOL_TYPE pool_type = IrpSp->Flags & SL_OPEN_PAGING_FILE ? NonPagedPool : PagedPool;
     ACCESS_MASK granted_access;
@@ -338,6 +340,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
         if (index)
         {
             Status = STATUS_SUCCESS;
+            granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
             if (chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_REPARSE_POINT)
             {
                 Status = STATUS_REPARSE;
@@ -403,15 +406,59 @@ loaded:
         goto exit;
     }
 
-    /*if (NT_SUCCESS(Status))
-    { // file already exists
-        Status = open_file2(Vcb, RequestedDisposition, &granted_access, FileObject, &fn, options, Irp, opctx);
+    if (NT_SUCCESS(Status))
+    {
+        FileObject->FsContext = create_fcb(Vcb, pool_type);
+        if (!FileObject->FsContext)
+		{
+			ERR("create_fcb returned NULL\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+
+        ccb* ccb = ExAllocatePoolWithTag(NonPagedPool, sizeof(*ccb), ALLOC_TAG);
+        if (!ccb)
+		{
+			ERR("out of memory\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+
+        RtlZeroMemory(ccb, sizeof(*ccb));
+
+		ccb->NodeType = KMCSpaceFS_NODE_TYPE_CCB;
+		ccb->NodeSize = sizeof(*ccb);
+		ccb->disposition = RequestedDisposition;
+		ccb->options = options;
+		ccb->access = granted_access;
+        RtlInitUnicodeString(&ccb->filename, fn.Buffer);
+
+        InterlockedIncrement(&Vcb->open_files);
+
+        FileObject->FsContext2 = ccb;
+        FileObject->SectionObjectPointer = &((fcb*)FileObject->FsContext)->nonpaged->segment_object;
+        
+        switch (RequestedDisposition)
+        {
+            case FILE_SUPERSEDE:
+                Irp->IoStatus.Information = FILE_SUPERSEDED;
+                break;
+
+			case FILE_OPEN:
+            case FILE_OPEN_IF:
+                Irp->IoStatus.Information = FILE_OPENED;
+                break;
+
+			case FILE_OVERWRITE:
+            case FILE_OVERWRITE_IF:
+                Irp->IoStatus.Information = FILE_OVERWRITTEN;
+				break;
+        }
     }
     /*else
     {
         Status = file_create(Irp, Vcb, FileObject, &fn, RequestedDisposition, options);
         Irp->IoStatus.Information = NT_SUCCESS(Status) ? FILE_CREATED : 0;
-        granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
     }*/
 
     if (NT_SUCCESS(Status) && !(options & FILE_NO_INTERMEDIATE_BUFFERING))

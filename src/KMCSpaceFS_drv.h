@@ -95,7 +95,6 @@ typedef struct _fcb_nonpaged
 
 typedef struct
 {
-    uint64_t index;
     uint8_t type;
     ANSI_STRING utf8;
     UNICODE_STRING name;
@@ -125,7 +124,6 @@ typedef struct _fcb
     LIST_ENTRY list_entry;
     LIST_ENTRY list_entry_all;
     LIST_ENTRY list_entry_dirty;
-    INDEX_ITEM index_item;
 } fcb;
 
 typedef struct _ccb
@@ -135,6 +133,7 @@ typedef struct _ccb
     ULONG disposition;
     ULONG options;
     ACCESS_MASK access;
+    UNICODE_STRING filename;
     bool manage_volume_privilege;
 } ccb;
 
@@ -142,7 +141,6 @@ typedef struct
 {
     PDEVICE_OBJECT devobj;
     PFILE_OBJECT fileobj;
-    DEV_ITEM devitem;
     bool removable;
     bool readonly;
     bool reloc;
@@ -185,6 +183,8 @@ typedef struct _device_extension
     ERESOURCE load_lock;
     bool need_write;
     _Has_lock_level_(tree_lock) ERESOURCE tree_lock;
+    PNOTIFY_SYNC NotifySync;
+    LIST_ENTRY DirNotifyList;
     PFILE_OBJECT root_file;
     PAGED_LOOKASIDE_LIST fcb_lookaside;
     PAGED_LOOKASIDE_LIST fcb_np_lookaside;
@@ -362,6 +362,11 @@ unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS KMCSFS
 bool incmp(unsigned char a, unsigned char b);
 unsigned long chwinattrs(unsigned long long filenameindex, unsigned long winattrs, KMCSpaceFS KMCSFS);
 unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS);
+
+// in dirctrl.c
+_Dispatch_type_(IRP_MJ_DIRECTORY_CONTROL)
+_Function_class_(DRIVER_DISPATCH)
+NTSTATUS __stdcall DirectoryControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
 // not in DDK headers - taken from winternl.h
 typedef struct _LDR_DATA_TABLE_ENTRY

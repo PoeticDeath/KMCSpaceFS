@@ -934,13 +934,6 @@ static NTSTATUS mount_vol(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 	dev->devobj = readobj;
 	dev->fileobj = fileobj;
 
-	if (dev->devitem.num_bytes > readobjsize)
-	{
-		WARN("device %I64x: DEV_ITEM says %I64x bytes, but Windows only reports %I64x\n", dev->devitem.dev_id, dev->devitem.num_bytes, readobjsize);
-
-		dev->devitem.num_bytes = readobjsize;
-	}
-
 	init_device(Vcb, dev, true);
 
 	InsertTailList(&Vcb->devices, &dev->list_entry);
@@ -955,6 +948,9 @@ static NTSTATUS mount_vol(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 
 	NewDeviceObject->StackSize = DeviceToMount->StackSize + 1;
 	NewDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+
+	InitializeListHead(&Vcb->DirNotifyList);
+	FsRtlNotifyInitializeSync(&Vcb->NotifySync);
 
 	ExInitializePagedLookasideList(&Vcb->fcb_lookaside, NULL, NULL, 0, sizeof(fcb), ALLOC_TAG, 0);
 	ExInitializeNPagedLookasideList(&Vcb->fcb_np_lookaside, NULL, NULL, 0, sizeof(fcb_nonpaged), ALLOC_TAG, 0);
@@ -2414,7 +2410,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	//DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
 	//DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;
-	///DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
+	DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
 	DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL]      = FileSystemControl;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
 	//DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;
