@@ -132,6 +132,7 @@ typedef struct _ccb
     CSHORT NodeSize;
     ULONG disposition;
     ULONG options;
+    uint64_t query_dir_offset;
     ACCESS_MASK access;
     UNICODE_STRING filename;
     bool manage_volume_privilege;

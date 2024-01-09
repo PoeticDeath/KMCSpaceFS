@@ -430,6 +430,7 @@ loaded:
 		ccb->NodeSize = sizeof(*ccb);
 		ccb->disposition = RequestedDisposition;
 		ccb->options = options;
+        ccb->query_dir_offset = 0;
 		ccb->access = granted_access;
         RtlInitUnicodeString(&ccb->filename, fn.Buffer);
 
@@ -749,6 +750,7 @@ NTSTATUS __stdcall Create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         ccb->NodeSize = sizeof(*ccb);
         ccb->disposition = RequestedDisposition;
         ccb->options = RequestedOptions;
+        ccb->query_dir_offset = 0;
         ccb->access = IrpSp->Parameters.Create.SecurityContext->AccessState->PreviouslyGrantedAccess;
         ccb->manage_volume_privilege = has_manage_volume_privilege(IrpSp->Parameters.Create.SecurityContext->AccessState, IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode);
 
