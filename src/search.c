@@ -177,24 +177,21 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
         if (!NT_SUCCESS(Status))
         {
             ERR("IoGetDeviceObjectPointer returned %08lx\n", Status);
-            ExReleaseResourceLite(&pdo_list_lock);
-            return;
+            return false;
         }
         uint8_t* GUIDPT = NULL;
         GUIDPT = ExAllocatePoolWithTag(NonPagedPool, 16384, ALLOC_TAG);
         if (!GUIDPT)
         {
             ERR("out of memory\n");
-            ExReleaseResourceLite(&pdo_list_lock);
-            return;
+            return false;
         }
         Status = sync_read_phys(DriveDeviceObject, DriveFileObject, 1024, 16384, GUIDPT, true);
         if (!NT_SUCCESS(Status))
         {
             ERR("sync_read_phys returned %08lx\n", Status);
             ExFreePool(GUIDPT);
-            ExReleaseResourceLite(&pdo_list_lock);
-            return;
+            return false;
         }
         for (int i = 0; i < 16; i++)
         {
@@ -425,7 +422,7 @@ end:
     ExReleaseResourceLite(&boot_lock);
 }
 
-void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->pdode->child_lock) _Releases_exclusive_lock_(_Curr_->pdode->child_lock) _In_ volume_device_extension* vde, _In_ volume_child* vc, _In_ bool skip_dev)
+void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lock) _Releases_exclusive_lock_(_Curr_->child_lock) _In_ volume_device_extension* vde, _In_ volume_child* vc, _In_ bool skip_dev)
 {
     NTSTATUS Status;
     pdo_device_extension* pdode = vde->pdode;

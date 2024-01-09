@@ -423,11 +423,5 @@ typedef struct _PEB
 
 #ifdef _MSC_VER
 __kernel_entry
-NTSTATUS NTAPI ZwQueryInformationProcess(
-    IN HANDLE ProcessHandle,
-    IN PROCESSINFOCLASS ProcessInformationClass,
-    OUT PVOID ProcessInformation,
-    IN ULONG ProcessInformationLength,
-    OUT PULONG ReturnLength OPTIONAL
-);
+NTSTATUS NTAPI ZwQueryInformationProcess(IN HANDLE ProcessHandle, IN PROCESSINFOCLASS ProcessInformationClass, OUT PVOID ProcessInformation, IN ULONG ProcessInformationLength, OUT PULONG ReturnLength OPTIONAL);
 #endif
