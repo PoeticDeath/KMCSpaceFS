@@ -122,7 +122,7 @@ static NTSTATUS query_directory(PIRP Irp)
 
 		for (; ccb->query_dir_offset < Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1; ccb->query_dir_offset++)
 		{
-			if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + ccb->query_dir_offset] & 0xff) == 255)
+			if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + ccb->query_dir_offset] & 0xff) == 255 || (Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + ccb->query_dir_offset] & 0xff) == 42) // 255 = file, 42 = fuse symlink
 			{
 				filename[filenamelen] = 0;
 				if (ccb->filename.Length / sizeof(WCHAR) < filenamelen)
@@ -156,7 +156,10 @@ static NTSTATUS query_directory(PIRP Irp)
 					}
 				}
 				filenamelen = 0;
-				ccb->query_dir_index++;
+				if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + ccb->query_dir_offset] & 0xff) == 255)
+				{
+					ccb->query_dir_index++;
+				}
 			}
 			else
 			{
@@ -412,8 +415,8 @@ static NTSTATUS query_directory(PIRP Irp)
 			{
 				break;
 			}
+			}
 		}
-	}
 
 	if (!Irp->IoStatus.Information)
 	{
@@ -439,7 +442,7 @@ end:
 	}
 
 	return Status;
-}
+	}
 
 static NTSTATUS notify_change_directory(device_extension* Vcb, PIRP Irp)
 {
