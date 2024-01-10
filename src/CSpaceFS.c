@@ -4,6 +4,7 @@
 
 unsigned* emap = NULL;
 unsigned* dmap = NULL;
+long _fltused = 0;
 
 bool incmp(unsigned char a, unsigned char b)
 {
@@ -177,6 +178,45 @@ static unsigned long ATTRtoattr(unsigned long ATTR)
 	if (ATTR & 8192) attr |= FILE_ATTRIBUTE_DIRECTORY;
 	if (ATTR & 1024) attr |= FILE_ATTRIBUTE_REPARSE_POINT;
 	return attr;
+}
+
+unsigned long long chtime(unsigned long long filenameindex, unsigned long long time, unsigned ch, KMCSpaceFS KMCSFS)
+{ // 24 bytes per file
+	unsigned o = 0;
+	if (ch == 2 || ch == 3)
+	{
+		o = 8;
+	}
+	else if (ch == 4 || ch == 5)
+	{
+		o = 16;
+	}
+	if (!(ch % 2))
+	{
+		char tim[8] = {0};
+		RtlCopyMemory(tim, KMCSFS.table + KMCSFS.filenamesend + 2 + filenameindex * 24 + o, 8);
+		char ti[8] = {0};
+		for (unsigned i = 0; i < 8; i++)
+		{
+			ti[i] = tim[7 - i];
+		}
+		double t;
+		RtlCopyMemory(&t, ti, 8);
+		return t * 10000000 + 116444736000000000;
+	}
+	else
+	{
+		double t = (time - 116444736000000000) / 10000000.0;
+		char ti[8] = {0};
+		RtlCopyMemory(ti, &t, 8);
+		char tim[8] = {0};
+		for (unsigned i = 0; i < 8; i++)
+		{
+			tim[i] = ti[7 - i];
+		}
+		RtlCopyMemory(KMCSFS.table + KMCSFS.filenamesend + 2 + filenameindex * 24 + o, tim, 8);
+		return 0;
+	}
 }
 
 unsigned long chwinattrs(unsigned long long filenameindex, unsigned long winattrs, KMCSpaceFS KMCSFS)

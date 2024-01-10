@@ -162,9 +162,9 @@ static NTSTATUS query_directory(PIRP Irp)
 		{
 			Filename.Length = filenamelen * sizeof(WCHAR);
 			unsigned long long index = get_filename_index(Filename, Vcb->vde->pdode->KMCSFS);
-			unsigned long long CT = 0;//
-			unsigned long long LAT = 0;//
-			unsigned long long LWT = 0;//
+			unsigned long long CT = chtime(index, 0, 4, Vcb->vde->pdode->KMCSFS);
+			unsigned long long LAT = chtime(index, 0, 0, Vcb->vde->pdode->KMCSFS);
+			unsigned long long LWT = chtime(index, 0, 2, Vcb->vde->pdode->KMCSFS);
 			unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 			unsigned long long AS = sector_align(filesize, Vcb->vde->pdode->KMCSFS.sectorsize);
 			unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
