@@ -86,110 +86,110 @@ void _debug_message(_In_ const char* func, _In_ char* s, ...) __attribute__((for
 
 typedef struct _fcb_nonpaged
 {
-    FAST_MUTEX HeaderMutex;
-    SECTION_OBJECT_POINTERS segment_object;
-    ERESOURCE resource;
-    ERESOURCE paging_resource;
-    ERESOURCE dir_children_lock;
+	FAST_MUTEX HeaderMutex;
+	SECTION_OBJECT_POINTERS segment_object;
+	ERESOURCE resource;
+	ERESOURCE paging_resource;
+	ERESOURCE dir_children_lock;
 } fcb_nonpaged;
 
 typedef struct
 {
-    uint8_t type;
-    ANSI_STRING utf8;
-    UNICODE_STRING name;
-    UNICODE_STRING name_uc;
-    ULONG size;
-    bool root_dir;
-    LIST_ENTRY list_entry_index;
+	uint8_t type;
+	ANSI_STRING utf8;
+	UNICODE_STRING name;
+	UNICODE_STRING name_uc;
+	ULONG size;
+	bool root_dir;
+	LIST_ENTRY list_entry_index;
 } dir_child;
 
 typedef struct _fcb
 {
-    FSRTL_ADVANCED_FCB_HEADER Header;
-    struct _fcb_nonpaged* nonpaged;
-    LONG refcount;
-    POOL_TYPE pool_type;
-    struct _device_extension* Vcb;
-    uint8_t type;
-    SECURITY_DESCRIPTOR* sd;
-    FILE_LOCK lock;
-    bool deleted;
-    PKTHREAD lazy_writer_thread;
-    SHARE_ACCESS share_access;
-    LIST_ENTRY extents;
-    ANSI_STRING reparse_xattr;
-    bool inode_item_changed;
-    OPLOCK oplock;
-    LIST_ENTRY list_entry;
-    LIST_ENTRY list_entry_all;
-    LIST_ENTRY list_entry_dirty;
+	FSRTL_ADVANCED_FCB_HEADER Header;
+	struct _fcb_nonpaged* nonpaged;
+	LONG refcount;
+	POOL_TYPE pool_type;
+	struct _device_extension* Vcb;
+	uint8_t type;
+	SECURITY_DESCRIPTOR* sd;
+	FILE_LOCK lock;
+	bool deleted;
+	PKTHREAD lazy_writer_thread;
+	SHARE_ACCESS share_access;
+	LIST_ENTRY extents;
+	ANSI_STRING reparse_xattr;
+	bool inode_item_changed;
+	OPLOCK oplock;
+	LIST_ENTRY list_entry;
+	LIST_ENTRY list_entry_all;
+	LIST_ENTRY list_entry_dirty;
 } fcb;
 
 typedef struct _ccb
 {
-    USHORT NodeType;
-    CSHORT NodeSize;
-    ULONG disposition;
-    ULONG options;
-    uint64_t query_dir_offset;
-    ACCESS_MASK access;
-    UNICODE_STRING filename;
-    bool manage_volume_privilege;
+	USHORT NodeType;
+	CSHORT NodeSize;
+	ULONG disposition;
+	ULONG options;
+	uint64_t query_dir_offset;
+	ACCESS_MASK access;
+	UNICODE_STRING filename;
+	bool manage_volume_privilege;
 } ccb;
 
 typedef struct
 {
-    PDEVICE_OBJECT devobj;
-    PFILE_OBJECT fileobj;
-    bool removable;
-    bool readonly;
-    bool reloc;
-    bool trim;
-    bool can_flush;
-    ULONG change_count;
-    ULONG disk_num;
-    ULONG part_num;
-    uint64_t stats[5];
-    bool stats_changed;
-    LIST_ENTRY space;
-    LIST_ENTRY list_entry;
-    ULONG num_trim_entries;
-    LIST_ENTRY trim_list;
+	PDEVICE_OBJECT devobj;
+	PFILE_OBJECT fileobj;
+	bool removable;
+	bool readonly;
+	bool reloc;
+	bool trim;
+	bool can_flush;
+	ULONG change_count;
+	ULONG disk_num;
+	ULONG part_num;
+	uint64_t stats[5];
+	bool stats_changed;
+	LIST_ENTRY space;
+	LIST_ENTRY list_entry;
+	ULONG num_trim_entries;
+	LIST_ENTRY trim_list;
 } device;
 
 typedef struct
 {
-    bool readonly;
-    uint32_t flush_interval;
-    bool no_trim;
-    uint64_t subvol_id;
+	bool readonly;
+	uint32_t flush_interval;
+	bool no_trim;
+	uint64_t subvol_id;
 } mount_options;
 
 typedef struct _device_extension
 {
-    uint32_t type;
-    mount_options options;
-    PVPB Vpb;
-    PDEVICE_OBJECT devobj;
-    struct _volume_device_extension* vde;
-    LIST_ENTRY devices;
-    bool readonly;
-    bool trim;
-    bool removing;
-    bool disallow_dismount;
-    LONG page_file_count;
-    fcb* volume_fcb;
-    LONG open_files;
-    ERESOURCE load_lock;
-    bool need_write;
-    _Has_lock_level_(tree_lock) ERESOURCE tree_lock;
-    PNOTIFY_SYNC NotifySync;
-    LIST_ENTRY DirNotifyList;
-    PFILE_OBJECT root_file;
-    PAGED_LOOKASIDE_LIST fcb_lookaside;
-    PAGED_LOOKASIDE_LIST fcb_np_lookaside;
-    LIST_ENTRY list_entry;
+	uint32_t type;
+	mount_options options;
+	PVPB Vpb;
+	PDEVICE_OBJECT devobj;
+	struct _volume_device_extension* vde;
+	LIST_ENTRY devices;
+	bool readonly;
+	bool trim;
+	bool removing;
+	bool disallow_dismount;
+	LONG page_file_count;
+	fcb* volume_fcb;
+	LONG open_files;
+	ERESOURCE load_lock;
+	bool need_write;
+	_Has_lock_level_(tree_lock) ERESOURCE tree_lock;
+	PNOTIFY_SYNC NotifySync;
+	LIST_ENTRY DirNotifyList;
+	PFILE_OBJECT root_file;
+	PAGED_LOOKASIDE_LIST fcb_lookaside;
+	PAGED_LOOKASIDE_LIST fcb_np_lookaside;
+	LIST_ENTRY list_entry;
 } device_extension;
 
 typedef struct
@@ -199,82 +199,82 @@ typedef struct
 
 typedef struct
 {
-    uint32_t type;
-    PDEVICE_OBJECT buspdo;
-    PDEVICE_OBJECT attached_device;
-    UNICODE_STRING bus_name;
+	uint32_t type;
+	PDEVICE_OBJECT buspdo;
+	PDEVICE_OBJECT attached_device;
+	UNICODE_STRING bus_name;
 } bus_device_extension;
 
 typedef struct
 {
-    PDEVICE_OBJECT devobj;
-    PFILE_OBJECT fileobj;
-    UNICODE_STRING pnp_name;
-    uint64_t size;
-    bool had_drive_letter;
-    void* notification_entry;
-    ULONG disk_num;
-    ULONG part_num;
-    bool boot_volume;
-    LIST_ENTRY list_entry;
+	PDEVICE_OBJECT devobj;
+	PFILE_OBJECT fileobj;
+	UNICODE_STRING pnp_name;
+	uint64_t size;
+	bool had_drive_letter;
+	void* notification_entry;
+	ULONG disk_num;
+	ULONG part_num;
+	bool boot_volume;
+	LIST_ENTRY list_entry;
 
-    KMCSpaceFS KMCSFS;
+	KMCSpaceFS KMCSFS;
 } volume_child;
 
 typedef struct _volume_device_extension
 {
-    uint32_t type;
-    UNICODE_STRING name;
-    PDEVICE_OBJECT device;
-    PDEVICE_OBJECT mounted_device;
-    PDEVICE_OBJECT pdo;
-    struct pdo_device_extension* pdode;
-    UNICODE_STRING bus_name;
-    PDEVICE_OBJECT attached_device;
-    bool removing;
-    bool dead;
-    LONG open_count;
+	uint32_t type;
+	UNICODE_STRING name;
+	PDEVICE_OBJECT device;
+	PDEVICE_OBJECT mounted_device;
+	PDEVICE_OBJECT pdo;
+	struct pdo_device_extension* pdode;
+	UNICODE_STRING bus_name;
+	PDEVICE_OBJECT attached_device;
+	bool removing;
+	bool dead;
+	LONG open_count;
 } volume_device_extension;
 
 typedef struct pdo_device_extension
 {
-    uint32_t type;
-    volume_device_extension* vde;
-    PDEVICE_OBJECT pdo;
-    bool removable;
-    bool dont_report;
+	uint32_t type;
+	volume_device_extension* vde;
+	PDEVICE_OBJECT pdo;
+	bool removable;
+	bool dont_report;
 
-    uint64_t num_children;
-    uint64_t children_loaded;
-    ERESOURCE child_lock;
-    LIST_ENTRY children;
+	uint64_t num_children;
+	uint64_t children_loaded;
+	ERESOURCE child_lock;
+	LIST_ENTRY children;
 
-    KMCSpaceFS KMCSFS;
+	KMCSpaceFS KMCSFS;
 
-    LIST_ENTRY list_entry;
+	LIST_ENTRY list_entry;
 } pdo_device_extension;
 
 static __inline void* map_user_buffer(PIRP Irp, ULONG priority)
 {
-    if (!Irp->MdlAddress)
-    {
-        return Irp->UserBuffer;
-    }
-    else
-    {
-        return MmGetSystemAddressForMdlSafe(Irp->MdlAddress, priority);
-    }
+	if (!Irp->MdlAddress)
+	{
+		return Irp->UserBuffer;
+	}
+	else
+	{
+		return MmGetSystemAddressForMdlSafe(Irp->MdlAddress, priority);
+	}
 }
 
 _Post_satisfies_(return >= n)
 __inline static uint64_t sector_align(_In_ uint64_t n, _In_ uint64_t a)
 {
-    if (n & (a - 1))
-    {
-        n = (n + a) & ~(a - 1);
-    }
+	if (n & (a - 1))
+	{
+		n = (n + a) & ~(a - 1);
+	}
 
-    return n;
+	return n;
 }
 
 // in registry.c
@@ -372,53 +372,53 @@ NTSTATUS __stdcall DirectoryControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 // not in DDK headers - taken from winternl.h
 typedef struct _LDR_DATA_TABLE_ENTRY
 {
-    PVOID Reserved1[2];
-    LIST_ENTRY InMemoryOrderLinks;
-    PVOID Reserved2[2];
-    PVOID DllBase;
-    PVOID Reserved3[2];
-    UNICODE_STRING FullDllName;
-    BYTE Reserved4[8];
-    PVOID Reserved5[3];
-    union
-    {
-        ULONG CheckSum;
-        PVOID Reserved6;
-    };
-    ULONG TimeDateStamp;
+	PVOID Reserved1[2];
+	LIST_ENTRY InMemoryOrderLinks;
+	PVOID Reserved2[2];
+	PVOID DllBase;
+	PVOID Reserved3[2];
+	UNICODE_STRING FullDllName;
+	BYTE Reserved4[8];
+	PVOID Reserved5[3];
+	union
+	{
+		ULONG CheckSum;
+		PVOID Reserved6;
+	};
+	ULONG TimeDateStamp;
 } LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
 
 typedef struct _PEB_LDR_DATA
 {
-    BYTE Reserved1[8];
-    PVOID Reserved2[3];
-    LIST_ENTRY InMemoryOrderModuleList;
+	BYTE Reserved1[8];
+	PVOID Reserved2[3];
+	LIST_ENTRY InMemoryOrderModuleList;
 } PEB_LDR_DATA, *PPEB_LDR_DATA;
 
 typedef struct _RTL_USER_PROCESS_PARAMETERS
 {
-    BYTE Reserved1[16];
-    PVOID Reserved2[10];
-    UNICODE_STRING ImagePathName;
-    UNICODE_STRING CommandLine;
+	BYTE Reserved1[16];
+	PVOID Reserved2[10];
+	UNICODE_STRING ImagePathName;
+	UNICODE_STRING CommandLine;
 } RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
 
 typedef VOID(NTAPI* PPS_POST_PROCESS_INIT_ROUTINE)(VOID);
 
 typedef struct _PEB
 {
-    BYTE Reserved1[2];
-    BYTE BeingDebugged;
-    BYTE Reserved2[1];
-    PVOID Reserved3[2];
-    PPEB_LDR_DATA Ldr;
-    PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
-    BYTE Reserved4[104];
-    PVOID Reserved5[52];
-    PPS_POST_PROCESS_INIT_ROUTINE PostProcessInitRoutine;
-    BYTE Reserved6[128];
-    PVOID Reserved7[1];
-    ULONG SessionId;
+	BYTE Reserved1[2];
+	BYTE BeingDebugged;
+	BYTE Reserved2[1];
+	PVOID Reserved3[2];
+	PPEB_LDR_DATA Ldr;
+	PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
+	BYTE Reserved4[104];
+	PVOID Reserved5[52];
+	PPS_POST_PROCESS_INIT_ROUTINE PostProcessInitRoutine;
+	BYTE Reserved6[128];
+	PVOID Reserved7[1];
+	ULONG SessionId;
 } PEB, *PPEB;
 
 #ifdef _MSC_VER

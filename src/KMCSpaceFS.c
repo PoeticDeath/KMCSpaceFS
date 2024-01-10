@@ -1149,31 +1149,31 @@ static NTSTATUS __stdcall FileSystemControl(_In_ PDEVICE_OBJECT DeviceObject, _I
 		Status = mount_vol(DeviceObject, Irp);
 		break;
 
-	/*case IRP_MN_KERNEL_CALL:
-		TRACE("IRP_MN_KERNEL_CALL\n");
+		/*case IRP_MN_KERNEL_CALL:
+			TRACE("IRP_MN_KERNEL_CALL\n");
 
-		Status = fsctl_request(DeviceObject, &Irp, IrpSp->Parameters.FileSystemControl.FsControlCode);
-		break;
+			Status = fsctl_request(DeviceObject, &Irp, IrpSp->Parameters.FileSystemControl.FsControlCode);
+			break;
 
-	case IRP_MN_USER_FS_REQUEST:
-		TRACE("IRP_MN_USER_FS_REQUEST\n");
+		case IRP_MN_USER_FS_REQUEST:
+			TRACE("IRP_MN_USER_FS_REQUEST\n");
 
-		Status = fsctl_request(DeviceObject, &Irp, IrpSp->Parameters.FileSystemControl.FsControlCode);
-		break;
+			Status = fsctl_request(DeviceObject, &Irp, IrpSp->Parameters.FileSystemControl.FsControlCode);
+			break;
 
-	case IRP_MN_VERIFY_VOLUME:
-		TRACE("IRP_MN_VERIFY_VOLUME\n");
+		case IRP_MN_VERIFY_VOLUME:
+			TRACE("IRP_MN_VERIFY_VOLUME\n");
 
-		Status = verify_volume(DeviceObject);
+			Status = verify_volume(DeviceObject);
 
-		if (!NT_SUCCESS(Status) && Vcb->Vpb->Flags & VPB_MOUNTED)
-		{
-			ExAcquireResourceExclusiveLite(&Vcb->tree_lock, true);
-			Vcb->removing = true;
-			ExReleaseResourceLite(&Vcb->tree_lock);
-		}
+			if (!NT_SUCCESS(Status) && Vcb->Vpb->Flags & VPB_MOUNTED)
+			{
+				ExAcquireResourceExclusiveLite(&Vcb->tree_lock, true);
+				Vcb->removing = true;
+				ExReleaseResourceLite(&Vcb->tree_lock);
+			}
 
-		break;*/
+			break;*/
 
 	default:
 		break;
