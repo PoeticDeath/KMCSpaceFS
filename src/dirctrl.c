@@ -150,6 +150,27 @@ static NTSTATUS query_directory(PIRP Irp)
 							break;
 						}
 					}
+					if (IrpSp->Parameters.QueryDirectory.FileName && IrpSp->Parameters.QueryDirectory.FileName->Length > 1)
+					{
+						if (IrpSp->Parameters.QueryDirectory.FileName->Buffer[0] != *L"*")
+						{
+							if (IrpSp->Parameters.QueryDirectory.FileName->Length / sizeof(WCHAR) != filenamelen - ccb->filename.Length / sizeof(WCHAR) - (ccb->filename.Length > 2))
+							{
+								isin = false;
+							}
+							else
+							{
+								for (i = 0; i < IrpSp->Parameters.QueryDirectory.FileName->Length / sizeof(WCHAR); i++)
+								{
+									if (!incmp(IrpSp->Parameters.QueryDirectory.FileName->Buffer[i] & 0xff, filename[i + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2)] & 0xff) && !(IrpSp->Parameters.QueryDirectory.FileName->Buffer[i] == *L"/" && filename[i + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2)] == *L"\\") && !(IrpSp->Parameters.QueryDirectory.FileName->Buffer[i] == *L"\\" && filename[i + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2)] == *L"/"))
+									{
+										isin = false;
+										break;
+									}
+								}
+							}
+						}
+					}
 					if (isin)
 					{
 						break;
@@ -402,12 +423,12 @@ static NTSTATUS query_directory(PIRP Irp)
 
 				len -= needed;
 				break;
-			}
+		}
 			default:
 				WARN("unhandled file information class %u\n", IrpSp->Parameters.QueryDirectory.FileInformationClass);
 				Status = STATUS_NOT_IMPLEMENTED;
 				goto end;
-			}
+	}
 
 			old_offset = Irp->IoStatus.Information;
 			Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - len;
@@ -415,7 +436,7 @@ static NTSTATUS query_directory(PIRP Irp)
 			{
 				break;
 			}
-			}
+}
 		}
 
 	if (!Irp->IoStatus.Information)
