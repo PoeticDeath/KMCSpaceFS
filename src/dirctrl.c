@@ -136,6 +136,10 @@ static NTSTATUS query_directory(PIRP Irp)
 							break;
 						}
 					}
+					if (!(filename[i] == *L"/") && !(filename[i] == *L"\\") && (ccb->filename.Length > 2))
+					{
+						isin = false;
+					}
 					i++;
 					for (; i < filenamelen; i++)
 					{
