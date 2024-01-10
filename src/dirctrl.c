@@ -102,6 +102,7 @@ static NTSTATUS query_directory(PIRP Irp)
 	}
 
 	Irp->IoStatus.Information = 0;
+	unsigned long old_offset = 0;
 
 	WCHAR* filename = ExAllocatePoolWithTag(NonPagedPool, 256 * sizeof(WCHAR), ALLOC_TAG);
 	if (!filename)
@@ -168,7 +169,7 @@ static NTSTATUS query_directory(PIRP Irp)
 			unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 			unsigned long long AS = sector_align(filesize, Vcb->vde->pdode->KMCSFS.sectorsize);
 			unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
-			unsigned FNL = Filename.Length - sizeof(WCHAR);
+			unsigned FNL = Filename.Length - ccb->filename.Length - (ccb->filename.Length > 2) * sizeof(WCHAR);
 			unsigned long RPT = 0;//
 			unsigned long EALEN = 0;
 			unsigned long EA = (winattrs & FILE_ATTRIBUTE_REPARSE_POINT) ? RPT : EALEN;
@@ -185,11 +186,10 @@ static NTSTATUS query_directory(PIRP Irp)
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
-					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
-				fbdi->NextEntryOffset = 0;
+				fbdi->NextEntryOffset = needed;
 				fbdi->FileIndex = 0;
 				fbdi->CreationTime.QuadPart = CT;
 				fbdi->LastAccessTime.QuadPart = LAT;
@@ -202,7 +202,7 @@ static NTSTATUS query_directory(PIRP Irp)
 				fbdi->EaSize = EA;
 				fbdi->ShortNameLength = 0;
 
-				RtlCopyMemory(fbdi->FileName, Filename.Buffer + 1, FNL);
+				RtlCopyMemory(fbdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -215,11 +215,10 @@ static NTSTATUS query_directory(PIRP Irp)
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
-					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
-				fdi->NextEntryOffset = 0;
+				fdi->NextEntryOffset = needed;
 				fdi->FileIndex = 0;
 				fdi->CreationTime.QuadPart = CT;
 				fdi->LastAccessTime.QuadPart = LAT;
@@ -230,7 +229,7 @@ static NTSTATUS query_directory(PIRP Irp)
 				fdi->FileAttributes = winattrs;
 				fdi->FileNameLength = FNL;
 
-				RtlCopyMemory(fdi->FileName, Filename.Buffer + 1, FNL);
+				RtlCopyMemory(fdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -243,11 +242,10 @@ static NTSTATUS query_directory(PIRP Irp)
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
-					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
-				ffdi->NextEntryOffset = 0;
+				ffdi->NextEntryOffset = needed;
 				ffdi->FileIndex = 0;
 				ffdi->CreationTime.QuadPart = CT;
 				ffdi->LastAccessTime.QuadPart = LAT;
@@ -259,7 +257,7 @@ static NTSTATUS query_directory(PIRP Irp)
 				ffdi->FileNameLength = FNL;
 				ffdi->EaSize = EA;
 
-				RtlCopyMemory(ffdi->FileName, Filename.Buffer + 1, FNL);
+				RtlCopyMemory(ffdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -272,11 +270,10 @@ static NTSTATUS query_directory(PIRP Irp)
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
-					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
-				fibdi->NextEntryOffset = 0;
+				fibdi->NextEntryOffset = needed;
 				fibdi->FileIndex = 0;
 				fibdi->CreationTime.QuadPart = CT;
 				fibdi->LastAccessTime.QuadPart = LAT;
@@ -290,7 +287,7 @@ static NTSTATUS query_directory(PIRP Irp)
 				fibdi->ShortNameLength = 0;
 				fibdi->FileId.QuadPart = index;
 
-				RtlCopyMemory(fibdi->FileName, Filename.Buffer + 1, FNL);
+				RtlCopyMemory(fibdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -307,11 +304,10 @@ static NTSTATUS query_directory(PIRP Irp)
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
-					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
-				fiedi->NextEntryOffset = 0;
+				fiedi->NextEntryOffset = needed;
 				fiedi->FileIndex = 0;
 				fiedi->CreationTime.QuadPart = CT;
 				fiedi->LastAccessTime.QuadPart = LAT;
@@ -332,7 +328,7 @@ static NTSTATUS query_directory(PIRP Irp)
 				fiedi->FileId.Identifier[6] = index & 0x000000000000ff00;
 				fiedi->FileId.Identifier[7] = index & 0x00000000000000ff;
 
-				RtlCopyMemory(fiedi->FileName, Filename.Buffer + 1, FNL);
+				RtlCopyMemory(fiedi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -345,11 +341,10 @@ static NTSTATUS query_directory(PIRP Irp)
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
-					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
-				fiebdi->NextEntryOffset = 0;
+				fiebdi->NextEntryOffset = needed;
 				fiebdi->FileIndex = 0;
 				fiebdi->CreationTime.QuadPart = CT;
 				fiebdi->LastAccessTime.QuadPart = LAT;
@@ -371,7 +366,7 @@ static NTSTATUS query_directory(PIRP Irp)
 				fiebdi->FileId.Identifier[7] = index & 0x00000000000000ff;
 				fiebdi->ShortNameLength = 0;
 
-				RtlCopyMemory(fiebdi->FileName, Filename.Buffer + 1, FNL);
+				RtlCopyMemory(fiebdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -387,15 +382,14 @@ static NTSTATUS query_directory(PIRP Irp)
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
-					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
-				fni->NextEntryOffset = 0;
+				fni->NextEntryOffset = needed;
 				fni->FileIndex = 0;
 				fni->FileNameLength = FNL;
 
-				RtlCopyMemory(fni->FileName, Filename.Buffer + 1, FNL);
+				RtlCopyMemory(fni->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -406,33 +400,7 @@ static NTSTATUS query_directory(PIRP Irp)
 				goto end;
 			}
 
-			switch (IrpSp->Parameters.QueryDirectory.FileInformationClass)
-			{
-#ifndef _MSC_VER
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wswitch"
-#endif
-			case FileBothDirectoryInformation:
-			case FileDirectoryInformation:
-			case FileFullDirectoryInformation:
-			case FileIdBothDirectoryInformation:
-			case FileIdFullDirectoryInformation:
-			case FileIdExtdDirectoryInformation:
-			case FileIdExtdBothDirectoryInformation:
-				len -= len % 8;
-				break;
-#ifndef _MSC_VER
-#pragma GCC diagnostic pop
-#endif
-			case FileNamesInformation:
-				len -= len % 4;
-				break;
-			default:
-				WARN("unhandled file information class %u\n", IrpSp->Parameters.QueryDirectory.FileInformationClass);
-				Status = STATUS_NOT_IMPLEMENTED;
-				goto end;
-			}
-
+			old_offset = Irp->IoStatus.Information;
 			Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - len;
 			if (IrpSp->Flags & SL_RETURN_SINGLE_ENTRY)
 			{
@@ -451,6 +419,12 @@ static NTSTATUS query_directory(PIRP Irp)
 end:
 	ExReleaseResourceLite(&fcb->nonpaged->dir_children_lock);
 	ExReleaseResourceLite(&Vcb->tree_lock);
+
+	if (Irp->IoStatus.Information)
+	{
+		char* tmp[4] = {0};
+		RtlCopyMemory((uint8_t*)buf + old_offset, tmp, 4);
+	}
 
 	if (filename)
 	{
