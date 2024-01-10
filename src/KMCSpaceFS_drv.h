@@ -133,6 +133,7 @@ typedef struct _ccb
 	ULONG disposition;
 	ULONG options;
 	uint64_t query_dir_offset;
+	uint64_t query_dir_index;
 	ACCESS_MASK access;
 	UNICODE_STRING filename;
 	bool manage_volume_privilege;

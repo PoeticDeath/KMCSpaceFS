@@ -99,6 +99,7 @@ static NTSTATUS query_directory(PIRP Irp)
 	if (IrpSp->Flags & SL_RESTART_SCAN)
 	{
 		ccb->query_dir_offset = 0;
+		ccb->query_dir_index = 0;
 	}
 
 	Irp->IoStatus.Information = 0;
@@ -155,6 +156,7 @@ static NTSTATUS query_directory(PIRP Irp)
 					}
 				}
 				filenamelen = 0;
+				ccb->query_dir_index++;
 			}
 			else
 			{
@@ -166,7 +168,7 @@ static NTSTATUS query_directory(PIRP Irp)
 		if (filenamelen)
 		{
 			Filename.Length = filenamelen * sizeof(WCHAR);
-			unsigned long long index = get_filename_index(Filename, Vcb->vde->pdode->KMCSFS);
+			unsigned long long index = ccb->query_dir_index - 1;
 			unsigned long long CT = chtime(index, 0, 4, Vcb->vde->pdode->KMCSFS);
 			unsigned long long LAT = chtime(index, 0, 0, Vcb->vde->pdode->KMCSFS);
 			unsigned long long LWT = chtime(index, 0, 2, Vcb->vde->pdode->KMCSFS);
@@ -416,6 +418,7 @@ static NTSTATUS query_directory(PIRP Irp)
 	if (!Irp->IoStatus.Information)
 	{
 		ccb->query_dir_offset = 0;
+		ccb->query_dir_index = 0;
 		Status = STATUS_NO_MORE_FILES;
 		goto end;
 	}
