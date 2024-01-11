@@ -349,14 +349,15 @@ static NTSTATUS query_directory(PIRP Irp)
 				fiedi->FileNameLength = FNL;
 				fiedi->EaSize = EALEN;
 				fiedi->ReparsePointTag = RPT;
-				fiedi->FileId.Identifier[0] = index & 0xff00000000000000;
-				fiedi->FileId.Identifier[1] = index & 0x00ff000000000000;
-				fiedi->FileId.Identifier[2] = index & 0x0000ff0000000000;
-				fiedi->FileId.Identifier[3] = index & 0x000000ff00000000;
-				fiedi->FileId.Identifier[4] = index & 0x00000000ff000000;
-				fiedi->FileId.Identifier[5] = index & 0x0000000000ff0000;
-				fiedi->FileId.Identifier[6] = index & 0x000000000000ff00;
-				fiedi->FileId.Identifier[7] = index & 0x00000000000000ff;
+				RtlCopyMemory(&fiedi->FileId.Identifier, index, 8);
+				fiedi->FileId.Identifier[8] = 0;
+				fiedi->FileId.Identifier[9] = 0;
+				fiedi->FileId.Identifier[10] = 0;
+				fiedi->FileId.Identifier[11] = 0;
+				fiedi->FileId.Identifier[12] = 0;
+				fiedi->FileId.Identifier[13] = 0;
+				fiedi->FileId.Identifier[14] = 0;
+				fiedi->FileId.Identifier[15] = 0;
 
 				RtlCopyMemory(fiedi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
 
@@ -386,14 +387,15 @@ static NTSTATUS query_directory(PIRP Irp)
 				fiebdi->FileNameLength = FNL;
 				fiebdi->EaSize = EALEN;
 				fiebdi->ReparsePointTag = RPT;
-				fiebdi->FileId.Identifier[0] = index & 0xff00000000000000;
-				fiebdi->FileId.Identifier[1] = index & 0x00ff000000000000;
-				fiebdi->FileId.Identifier[2] = index & 0x0000ff0000000000;
-				fiebdi->FileId.Identifier[3] = index & 0x000000ff00000000;
-				fiebdi->FileId.Identifier[4] = index & 0x00000000ff000000;
-				fiebdi->FileId.Identifier[5] = index & 0x0000000000ff0000;
-				fiebdi->FileId.Identifier[6] = index & 0x000000000000ff00;
-				fiebdi->FileId.Identifier[7] = index & 0x00000000000000ff;
+				RtlCopyMemory(&fiebdi->FileId.Identifier, index, 8);
+				fiebdi->FileId.Identifier[8] = 0;
+				fiebdi->FileId.Identifier[9] = 0;
+				fiebdi->FileId.Identifier[10] = 0;
+				fiebdi->FileId.Identifier[11] = 0;
+				fiebdi->FileId.Identifier[12] = 0;
+				fiebdi->FileId.Identifier[13] = 0;
+				fiebdi->FileId.Identifier[14] = 0;
+				fiebdi->FileId.Identifier[15] = 0;
 				fiebdi->ShortNameLength = 0;
 
 				RtlCopyMemory(fiebdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
@@ -423,12 +425,12 @@ static NTSTATUS query_directory(PIRP Irp)
 
 				len -= needed;
 				break;
-		}
+			}
 			default:
 				WARN("unhandled file information class %u\n", IrpSp->Parameters.QueryDirectory.FileInformationClass);
 				Status = STATUS_NOT_IMPLEMENTED;
 				goto end;
-	}
+			}
 
 			old_offset = Irp->IoStatus.Information;
 			Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - len;
@@ -436,7 +438,7 @@ static NTSTATUS query_directory(PIRP Irp)
 			{
 				break;
 			}
-}
+			}
 		}
 
 	if (!Irp->IoStatus.Information)

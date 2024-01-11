@@ -371,6 +371,11 @@ _Dispatch_type_(IRP_MJ_DIRECTORY_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall DirectoryControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
+// in fileinfo.c
+_Dispatch_type_(IRP_MJ_QUERY_INFORMATION)
+_Function_class_(DRIVER_DISPATCH)
+NTSTATUS __stdcall QueryInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+
 // not in DDK headers - taken from winternl.h
 typedef struct _LDR_DATA_TABLE_ENTRY
 {
