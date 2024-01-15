@@ -1722,7 +1722,42 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 
 		ExAcquireResourceSharedLite(&Vcb->tree_lock, true);
 
-		char label[] = {'C','S','p','a','c','e','F','S',0};//
+		WCHAR labelname[] = L":";
+		UNICODE_STRING labelname_us;
+		labelname_us.Length = sizeof(labelname) - sizeof(WCHAR);
+		labelname_us.Buffer = labelname;
+		unsigned long long index = get_filename_index(labelname_us, Vcb->vde->pdode->KMCSFS);
+		unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
+		char* label = ExAllocatePoolWithTag(NonPagedPool, filesize, ALLOC_TAG);
+		if (!label)
+		{
+			ERR("out of memory\n");
+			ExReleaseResourceLite(&Vcb->tree_lock);
+			break;
+		}
+		unsigned long long bytes_read = 0;
+		fcb* fcb = create_fcb(Vcb, NonPagedPool);
+		if (!fcb)
+		{
+			ERR("out of memory\n");
+			ExReleaseResourceLite(&Vcb->tree_lock);
+			break;
+		}
+		PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+		if (!Irp2)
+		{
+			ERR("out of memory\n");
+			ExReleaseResourceLite(&Vcb->tree_lock);
+			break;
+		}
+		Irp2->Flags |= IRP_NOCACHE;
+		read_file(fcb, label, 0, filesize, index, &bytes_read, Irp2, Vcb->vde->pdode->KMCSFS.DeviceObject);
+		if (bytes_read != filesize)
+		{
+			ERR("read_file returned %I64u\n", bytes_read);
+			ExReleaseResourceLite(&Vcb->tree_lock);
+			break;
+		}
 
 		Status = utf8_to_utf16(NULL, 0, &label_len, label, (ULONG)strlen(label));
 		if (!NT_SUCCESS(Status))
@@ -1772,6 +1807,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 			TRACE("label = %.*S\n", (int)(label_len / sizeof(WCHAR)), data->VolumeLabel);
 		}
 
+		ExFreePool(label);
 		ExReleaseResourceLite(&Vcb->tree_lock);
 
 		BytesCopied = offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel) + label_len;
