@@ -456,6 +456,11 @@ loaded:
 			Irp->IoStatus.Information = FILE_OVERWRITTEN;
 			break;
 		}
+
+		if (IrpSp->Flags & SL_OPEN_PAGING_FILE)
+		{
+			((fcb*)FileObject->FsContext)->Header.Flags2 |= FSRTL_FLAG2_IS_PAGING_FILE;
+		}
 	}
 	/*else
 	{

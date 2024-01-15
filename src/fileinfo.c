@@ -244,7 +244,7 @@ static NTSTATUS fill_in_file_network_open_information(FILE_NETWORK_OPEN_INFORMAT
 static NTSTATUS fill_in_file_id_information(FILE_ID_INFORMATION* fii, fcb* fcb, LONG* length, unsigned long long index)
 {
 	RtlCopyMemory(&fii->VolumeSerialNumber, &fcb->Vcb->vde->pdode->KMCSFS.uuid, sizeof(uint64_t));
-	RtlCopyMemory(&fii->FileId.Identifier, index, 8);
+	RtlCopyMemory(&fii->FileId.Identifier, &index, 8);
 	fii->FileId.Identifier[8] = 0;
 	fii->FileId.Identifier[9] = 0;
 	fii->FileId.Identifier[10] = 0;

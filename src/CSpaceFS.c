@@ -375,3 +375,176 @@ unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS)
 
 	return filesize;
 }
+
+NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long* bytes_read, PIRP Irp, PDEVICE_OBJECT DeviceObject)
+{
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	unsigned long long loc = 0;
+	for (unsigned long long i = 0; i < fcb->Vcb->vde->pdode->KMCSFS.tablestrlen; i++)
+	{
+		if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] == *".")
+		{
+			loc++;
+			if (loc == index)
+			{
+				loc = i + 1;
+				break;
+			}
+		}
+	}
+	
+	uint8_t* buf = ExAllocatePoolWithTag(fcb->pool_type, sector_align(length, fcb->Vcb->vde->pdode->KMCSFS.sectorsize), ALLOC_TAG);
+
+	if (!buf)
+	{
+		ERR("out of memory\n");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	bool init = true;
+	bool notzero = false;
+	bool multisector = false;
+	unsigned cur = 0;
+	unsigned long long int0 = 0;
+	unsigned long long int1 = 0;
+	unsigned long long int2 = 0;
+	unsigned long long int3 = 0;
+	unsigned long long filesize = 0;
+
+	for (unsigned long long i = loc; i < fcb->Vcb->vde->pdode->KMCSFS.tablestrlen; i++)
+	{
+		if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] == *"," || fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] == *".")
+		{
+			if (notzero)
+			{
+				if (multisector)
+				{
+					for (unsigned long long o = 0; o < int0 - int3; o++)
+					{
+						filesize += fcb->Vcb->vde->pdode->KMCSFS.sectorsize;
+						if (filesize > start)
+						{
+							sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, IrpSp->FileObject, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, buf, true);
+							if (init)
+							{
+								RtlCopyMemory(data, buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length));
+								*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
+								start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
+								init = false;
+							}
+							else
+							{
+								RtlCopyMemory(data + *bytes_read, buf, min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read));
+								start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
+								*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
+							}
+						}
+					}
+				}
+				switch (cur)
+				{
+				case 0:
+					filesize += fcb->Vcb->vde->pdode->KMCSFS.sectorsize;
+					if (filesize > start)
+					{
+						sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, IrpSp->FileObject, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, buf, true);
+						if (init)
+						{
+							RtlCopyMemory(data, buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length));
+							*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
+							start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
+							init = false;
+						}
+						else
+						{
+							RtlCopyMemory(data + *bytes_read, buf, min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read));
+							start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
+							*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
+						}
+					}
+					break;
+				case 1:
+					break;
+				case 2:
+					filesize += int2 - int1;
+					if (filesize > start)
+					{
+						sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, IrpSp->FileObject, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, buf, true);
+						if (init)
+						{
+							RtlCopyMemory(data, buf + ((int1 + start) % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(int2 - int1, length));
+							start += min(int2 - int1, length);
+							*bytes_read += min(int2 - int1, length);
+							init = false;
+						}
+						else
+						{
+							RtlCopyMemory(data + *bytes_read, buf + int1, min(int2 - int1, length - *bytes_read));
+							start += min(int2 - int1, length - *bytes_read);
+							*bytes_read += min(int2 - int1, length - *bytes_read);
+						}
+					}
+					break;
+				}
+			}
+			if (*bytes_read == length)
+			{
+				ExFreePool(buf);
+				return STATUS_SUCCESS;
+			}
+			cur = 0;
+			int0 = 0;
+			int1 = 0;
+			int2 = 0;
+			int3 = 0;
+			multisector = false;
+			if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] == *".")
+			{
+				break;
+			}
+		}
+		else if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] == *";")
+		{
+			cur++;
+		}
+		else if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] == *"-")
+		{
+			int3 = int0;
+			multisector = true;
+			cur = 0;
+			int0 = 0;
+			int1 = 0;
+			int2 = 0;
+		}
+		else
+		{
+			notzero = true;
+			switch (cur)
+			{
+			case 0:
+				int0 += toint(fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] & 0xff);
+				if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *";" && fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *"," && fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *"." && fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *"-")
+				{
+					int0 *= 10;
+				}
+				break;
+			case 1:
+				int1 += toint(fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] & 0xff);
+				if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *";" && fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *"," && fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *"." && fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *"-")
+				{
+					int1 *= 10;
+				}
+				break;
+			case 2:
+				int2 += toint(fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] & 0xff);
+				if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *";" && fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *"," && fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *"." && fcb->Vcb->vde->pdode->KMCSFS.tablestr[i + 1] != *"-")
+				{
+					int2 *= 10;
+				}
+				break;
+			}
+		}
+	}
+	ExFreePool(buf);
+	return STATUS_SUCCESS;
+}

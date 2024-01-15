@@ -23,4 +23,5 @@ typedef struct
     unsigned long long tablestrlen;
     char* table;
     char* tablestr;
+    PDEVICE_OBJECT DeviceObject;
 } KMCSpaceFS;

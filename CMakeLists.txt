@@ -16,6 +16,7 @@ set(SRC_FILES
     src/CSpaceFS.c
     src/dirctrl.c
     src/fileinfo.c
+    src/read.c
     ${CMAKE_CURRENT_BINARY_DIR}/KMCSpaceFS.rc)
 
 if(MSVC) # cmake bug 15170

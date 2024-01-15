@@ -349,7 +349,7 @@ static NTSTATUS query_directory(PIRP Irp)
 				fiedi->FileNameLength = FNL;
 				fiedi->EaSize = EALEN;
 				fiedi->ReparsePointTag = RPT;
-				RtlCopyMemory(&fiedi->FileId.Identifier, index, 8);
+				RtlCopyMemory(&fiedi->FileId.Identifier, &index, 8);
 				fiedi->FileId.Identifier[8] = 0;
 				fiedi->FileId.Identifier[9] = 0;
 				fiedi->FileId.Identifier[10] = 0;
@@ -387,7 +387,7 @@ static NTSTATUS query_directory(PIRP Irp)
 				fiebdi->FileNameLength = FNL;
 				fiebdi->EaSize = EALEN;
 				fiebdi->ReparsePointTag = RPT;
-				RtlCopyMemory(&fiebdi->FileId.Identifier, index, 8);
+				RtlCopyMemory(&fiebdi->FileId.Identifier, &index, 8);
 				fiebdi->FileId.Identifier[8] = 0;
 				fiebdi->FileId.Identifier[9] = 0;
 				fiebdi->FileId.Identifier[10] = 0;
