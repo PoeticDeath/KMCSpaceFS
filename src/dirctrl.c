@@ -438,8 +438,8 @@ static NTSTATUS query_directory(PIRP Irp)
 			{
 				break;
 			}
-			}
 		}
+	}
 
 	if (!Irp->IoStatus.Information)
 	{
@@ -465,7 +465,7 @@ end:
 	}
 
 	return Status;
-	}
+}
 
 static NTSTATUS notify_change_directory(device_extension* Vcb, PIRP Irp)
 {
