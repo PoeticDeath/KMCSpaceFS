@@ -285,7 +285,6 @@ NTSTATUS registry_mark_volume_mounted(KMCSpaceFS_UUID uuid);
 NTSTATUS registry_load_volume_options(device_extension* Vcb);
 
 // in pnp.c
-
 _Dispatch_type_(IRP_MJ_PNP)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall Pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp);
@@ -322,6 +321,9 @@ NTSTATUS get_device_pnp_name(_In_ PDEVICE_OBJECT DeviceObject, _Out_ PUNICODE_ST
 
 _Function_class_(DRIVER_ADD_DEVICE)
 NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject);
+
+void free_fcb(_Inout_ fcb* fcb);
+void reap_fcb(fcb* fcb);
 
 // in volume.c
 NTSTATUS vol_create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
@@ -381,6 +383,11 @@ NTSTATUS __stdcall QueryInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 _Dispatch_type_(IRP_MJ_READ)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+
+// in security.c
+_Dispatch_type_(IRP_MJ_QUERY_SECURITY)
+_Function_class_(DRIVER_DISPATCH)
+NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
 // not in DDK headers - taken from winternl.h
 typedef struct _LDR_DATA_TABLE_ENTRY

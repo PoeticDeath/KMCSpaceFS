@@ -643,7 +643,7 @@ void _free_fcb(_Inout_ fcb* fcb, _In_ const char* func)
 {
 	LONG rc = InterlockedDecrement(&fcb->refcount);
 #else
-void free_fcb(_Inout_ fcb * fcb)
+void free_fcb(_Inout_ fcb* fcb)
 {
 	InterlockedDecrement(&fcb->refcount);
 #endif
@@ -1740,6 +1740,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		if (!fcb)
 		{
 			ERR("out of memory\n");
+			ExFreePool(label);
 			ExReleaseResourceLite(&Vcb->tree_lock);
 			break;
 		}
@@ -1747,6 +1748,9 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		if (!Irp2)
 		{
 			ERR("out of memory\n");
+			free_fcb(fcb);
+			reap_fcb(fcb);
+			ExFreePool(label);
 			ExReleaseResourceLite(&Vcb->tree_lock);
 			break;
 		}
@@ -1755,6 +1759,10 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		if (bytes_read != filesize)
 		{
 			ERR("read_file returned %I64u\n", bytes_read);
+			IoFreeIrp(Irp2);
+			free_fcb(fcb);
+			reap_fcb(fcb);
+			ExFreePool(label);
 			ExReleaseResourceLite(&Vcb->tree_lock);
 			break;
 		}
@@ -1763,6 +1771,10 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		if (!NT_SUCCESS(Status))
 		{
 			ERR("utf8_to_utf16 returned %08lx\n", Status);
+			IoFreeIrp(Irp2);
+			free_fcb(fcb);
+			reap_fcb(fcb);
+			ExFreePool(label);
 			ExReleaseResourceLite(&Vcb->tree_lock);
 			break;
 		}
@@ -1800,6 +1812,10 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 			if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW)
 			{
 				ERR("utf8_to_utf16 returned %08lx\n", Status);
+				IoFreeIrp(Irp2);
+				free_fcb(fcb);
+				reap_fcb(fcb);
+				ExFreePool(label);
 				ExReleaseResourceLite(&Vcb->tree_lock);
 				break;
 			}
@@ -1807,6 +1823,9 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 			TRACE("label = %.*S\n", (int)(label_len / sizeof(WCHAR)), data->VolumeLabel);
 		}
 
+		IoFreeIrp(Irp2);
+		free_fcb(fcb);
+		reap_fcb(fcb);
 		ExFreePool(label);
 		ExReleaseResourceLite(&Vcb->tree_lock);
 
@@ -2452,7 +2471,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	//DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;
 	//DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL]             = LockControl;
 	//DriverObject->MajorFunction[IRP_MJ_CLEANUP]                  = Cleanup;
-	//DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = QuerySecurity;
+	DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = QuerySecurity;
 	//DriverObject->MajorFunction[IRP_MJ_SET_SECURITY]             = SetSecurity;
 	//DriverObject->MajorFunction[IRP_MJ_POWER]                    = Power;
 	//DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL]           = SystemControl;
