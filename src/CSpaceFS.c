@@ -380,15 +380,18 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 {
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	unsigned long long loc = 0;
-	for (unsigned long long i = 0; i < fcb->Vcb->vde->pdode->KMCSFS.tablestrlen; i++)
+	if (index)
 	{
-		if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] == *".")
+		for (unsigned long long i = 0; i < fcb->Vcb->vde->pdode->KMCSFS.tablestrlen; i++)
 		{
-			loc++;
-			if (loc == index)
+			if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] == *".")
 			{
-				loc = i + 1;
-				break;
+				loc++;
+				if (loc == index)
+				{
+					loc = i + 1;
+					break;
+				}
 			}
 		}
 	}

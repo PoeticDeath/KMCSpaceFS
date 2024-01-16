@@ -3563,7 +3563,7 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	SECURITY_DESCRIPTOR* SD;
 	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(securityW, SDDL_REVISION, &SD, &BUFLEN))
 	{
-		Status = STATUS_BUFFER_TOO_SMALL;
+		Status = STATUS_INSUFFICIENT_RESOURCES;
 	}
 	else
 	{
@@ -3589,7 +3589,7 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 	else if (Status == STATUS_BUFFER_TOO_SMALL)
 	{
-		Irp->IoStatus.Information = buflen;
+		Irp->IoStatus.Information = BUFLEN;
 		Status = STATUS_BUFFER_OVERFLOW;
 	}
 	else
