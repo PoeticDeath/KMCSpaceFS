@@ -3542,7 +3542,7 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		return STATUS_INTERNAL_ERROR;
 	}
 
-	WCHAR* securityW = ExAllocatePoolWithTag(NonPagedPool, filesize * sizeof(WCHAR), ALLOC_TAG);
+	WCHAR* securityW = ExAllocatePoolWithTag(NonPagedPool, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
 	if (!securityW)
 	{
 		ERR("out of memory\n");
@@ -3557,6 +3557,7 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	{
 		securityW[i] = security[i] & 0xff;
 	}
+	securityW[filesize] = 0;
 
 	ULONG BUFLEN = 0;
 	SECURITY_DESCRIPTOR* SD;

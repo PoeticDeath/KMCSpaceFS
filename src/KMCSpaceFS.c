@@ -1728,7 +1728,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		labelname_us.Buffer = labelname;
 		unsigned long long index = get_filename_index(labelname_us, Vcb->vde->pdode->KMCSFS);
 		unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-		char* label = ExAllocatePoolWithTag(NonPagedPool, filesize, ALLOC_TAG);
+		char* label = ExAllocatePoolWithTag(NonPagedPool, filesize + 1, ALLOC_TAG);
 		if (!label)
 		{
 			ERR("out of memory\n");
@@ -1766,6 +1766,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 			ExReleaseResourceLite(&Vcb->tree_lock);
 			break;
 		}
+		label[filesize] = 0;
 
 		Status = utf8_to_utf16(NULL, 0, &label_len, label, (ULONG)strlen(label));
 		if (!NT_SUCCESS(Status))
