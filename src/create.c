@@ -323,6 +323,23 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 		goto exit;
 	}
 
+	if (FileObject->FileName.Buffer[0] != *L"\\")
+	{
+		UNICODE_STRING fn2;
+		fn2.Length = FileObject->FileName.Length + 2 * sizeof(WCHAR);
+		fn2.Buffer = ExAllocatePoolWithTag(pool_type, fn2.Length, ALLOC_TAG);
+		if (!fn2.Buffer)
+		{
+			ERR("out of memory\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+		fn2.Buffer[0] = *L"\\";
+		RtlCopyMemory(fn2.Buffer + 1, FileObject->FileName.Buffer, FileObject->FileName.Length);
+		fn2.Buffer[fn2.Length / sizeof(WCHAR) - 1] = 0;
+		ExFreePool(FileObject->FileName.Buffer);
+		FileObject->FileName = fn2;
+	}
 	fn = FileObject->FileName;
 
 	TRACE("(%.*S)\n", (int)(fn.Length / sizeof(WCHAR)), fn.Buffer);
