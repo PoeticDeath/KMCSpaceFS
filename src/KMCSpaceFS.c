@@ -671,6 +671,83 @@ end:
 	return Status;
 }
 
+_Dispatch_type_(IRP_MJ_FLUSH_BUFFERS)
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS __stdcall FlushBuffers(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	fcb* fcb = FileObject->FsContext;
+	ccb* ccb = FileObject->FsContext2;
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+	bool top_level;
+
+	FsRtlEnterFileSystem();
+
+	TRACE("flush buffers\n");
+
+	top_level = is_top_level(Irp);
+
+	if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		goto end;
+	}
+	else if (!Vcb || Vcb->type != VCB_TYPE_FS)
+	{
+		goto end;
+	}
+
+	if (!fcb)
+	{
+		ERR("fcb was NULL\n");
+		goto end;
+	}
+
+	if (fcb == Vcb->volume_fcb)
+	{
+		goto end;
+	}
+
+	if (!ccb)
+	{
+		ERR("ccb was NULL\n");
+		goto end;
+	}
+
+	Irp->IoStatus.Information = 0;
+	Irp->IoStatus.Status = Status;
+
+	unsigned long long index = get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS);
+
+	if (!(chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_DIRECTORY))
+	{
+		CcFlushCache(FileObject->SectionObjectPointer, NULL, 0, &Irp->IoStatus);
+
+		if (fcb->Header.PagingIoResource)
+		{
+			ExAcquireResourceExclusiveLite(fcb->Header.PagingIoResource, true);
+			ExReleaseResourceLite(fcb->Header.PagingIoResource);
+		}
+
+		Status = Irp->IoStatus.Status;
+	}
+
+end:
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	TRACE("returning %08lx\n", Status);
+
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
+
+	FsRtlExitFileSystem();
+
+	return Status;
+}
+
 static NTSTATUS get_device_pnp_name_guid(_In_ PDEVICE_OBJECT DeviceObject, _Out_ PUNICODE_STRING pnp_name, _In_ const GUID* guid)
 {
 	NTSTATUS Status;
@@ -2755,7 +2832,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_WRITE]                    = Write;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION]        = QueryInformation;
 	//DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION]          = SetInformation;
-	//DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
+	DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
 	//DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;
 	DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
