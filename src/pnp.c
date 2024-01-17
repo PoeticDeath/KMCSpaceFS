@@ -12,31 +12,7 @@ NTSTATUS pnp_query_remove_device(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
 	// We might be going away imminently - do a flush so we're not caught out
 
-	ExAcquireResourceExclusiveLite(&Vcb->tree_lock, true);
-
-	/*if (Vcb->root_fileref && Vcb->root_fileref->fcb && (Vcb->root_fileref->open_count > 0 || has_open_children(Vcb->root_fileref)))
-	{
-		ExReleaseResourceLite(&Vcb->tree_lock);
-		return STATUS_ACCESS_DENIED;
-	}
-
-	if (Vcb->need_write && !Vcb->readonly)
-	{
-		Status = do_write(Vcb, Irp);
-
-		free_trees(Vcb);
-
-		if (!NT_SUCCESS(Status))
-		{
-			ERR("do_write returned %08lx\n", Status);
-			ExReleaseResourceLite(&Vcb->tree_lock);
-			return Status;
-		}
-	}*/
-
-	ExReleaseResourceLite(&Vcb->tree_lock);
-
-	return STATUS_UNSUCCESSFUL;
+	return STATUS_SUCCESS;
 }
 
 static NTSTATUS pnp_remove_device(PDEVICE_OBJECT DeviceObject)
@@ -61,10 +37,10 @@ static NTSTATUS pnp_remove_device(PDEVICE_OBJECT DeviceObject)
 		Vcb->removing = true;
 		ExReleaseResourceLite(&Vcb->tree_lock);
 
-		/*if (Vcb->open_files == 0)
+		if (Vcb->open_files == 0)
 		{
 			uninit(Vcb);
-		}*/
+		}
 	}
 
 	return STATUS_SUCCESS;
@@ -91,10 +67,10 @@ NTSTATUS pnp_surprise_removal(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
 		ExReleaseResourceLite(&Vcb->tree_lock);
 
-		/*if (Vcb->open_files == 0)
+		if (Vcb->open_files == 0)
 		{
 			uninit(Vcb);
-		}*/
+		}
 	}
 
 	return STATUS_SUCCESS;

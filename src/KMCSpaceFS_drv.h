@@ -320,6 +320,7 @@ NTSTATUS sync_read_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT File
 NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT FileObject, _In_ uint64_t StartingOffset, _In_ ULONG Length, _Out_writes_bytes_(Length) PUCHAR Buffer, _In_ bool override);
 void init_device(_In_ device_extension* Vcb, _Inout_ device* dev, _In_ bool get_nums);
 NTSTATUS get_device_pnp_name(_In_ PDEVICE_OBJECT DeviceObject, _Out_ PUNICODE_STRING pnp_name, _Out_ const GUID** guid);
+void uninit(_In_ device_extension* Vcb);
 
 _Function_class_(DRIVER_ADD_DEVICE)
 NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject);
