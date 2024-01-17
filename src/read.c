@@ -2,7 +2,7 @@
 
 #include "KMCSpaceFS_drv.h"
 
-static NTSTATUS do_read(PIRP Irp, bool wait, unsigned long long* bytes_read, PDEVICE_OBJECT DeviceObject)
+static NTSTATUS do_read(PIRP Irp, bool wait, unsigned long long* bytes_read)
 {
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
@@ -61,7 +61,7 @@ static NTSTATUS do_read(PIRP Irp, bool wait, unsigned long long* bytes_read, PDE
 		length = size - start;
 	}
 
-	Status = read_file(fcb, data, start, length, index, bytes_read, Irp, DeviceObject);
+	Status = read_file(fcb, data, start, length, index, bytes_read, Irp);
 
 	TRACE("read %lu bytes\n", *bytes_read);
 
@@ -172,7 +172,7 @@ NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		acquired_fcb_lock = true;
 	}
 
-	Status = do_read(Irp, wait, &bytes_read, DeviceObject);
+	Status = do_read(Irp, wait, &bytes_read);
 
 	if (acquired_fcb_lock)
 	{

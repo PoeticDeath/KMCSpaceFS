@@ -367,7 +367,7 @@ bool incmp(unsigned char a, unsigned char b);
 unsigned long long chtime(unsigned long long filenameindex, unsigned long long time, unsigned ch, KMCSpaceFS KMCSFS);
 unsigned long chwinattrs(unsigned long long filenameindex, unsigned long winattrs, KMCSpaceFS KMCSFS);
 unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS);
-NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long* bytes_read, PIRP Irp, PDEVICE_OBJECT DeviceObject);
+NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long* bytes_read, PIRP Irp);
 
 // in dirctrl.c
 _Dispatch_type_(IRP_MJ_DIRECTORY_CONTROL)

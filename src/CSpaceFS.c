@@ -376,7 +376,7 @@ unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS)
 	return filesize;
 }
 
-NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long* bytes_read, PIRP Irp, PDEVICE_OBJECT DeviceObject)
+NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long* bytes_read, PIRP Irp)
 {
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	unsigned long long loc = 0;

@@ -2,6 +2,17 @@
 
 #include "KMCSpaceFS_drv.h"
 
+static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
+{
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	fcb* fcb = FileObject->FsContext;
+	ccb* ccb = FileObject->FsContext2;
+	unsigned long long length = IrpSp->Parameters.Write.Length;
+	unsigned long long start = IrpSp->Parameters.Write.ByteOffset.QuadPart;
+
+}
+
 _Dispatch_type_(IRP_MJ_WRITE)
 _Function_class_(DRIVER_DISPATCH)
 __attribute__((nonnull(1,2)))
@@ -77,7 +88,7 @@ NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			wait = true;
 		}
 
-		//Status = write_file(Vcb, Irp, wait, false);
+		Status = do_write(Vcb, Irp, wait);
 	}
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
