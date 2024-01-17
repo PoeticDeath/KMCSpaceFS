@@ -569,6 +569,54 @@ void uninit(_In_ device_extension* Vcb)
 	IoDeleteDevice(Vcb->devobj);
 }
 
+_Dispatch_type_(IRP_MJ_LOCK_CONTROL)
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS __stdcall LockControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	NTSTATUS Status;
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	fcb* fcb = IrpSp->FileObject ? IrpSp->FileObject->FsContext : NULL;
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+	bool top_level;
+
+	FsRtlEnterFileSystem();
+
+	top_level = is_top_level(Irp);
+
+	if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		Status = STATUS_INVALID_DEVICE_REQUEST;
+
+		Irp->IoStatus.Status = Status;
+		IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+		goto exit;
+	}
+
+	TRACE("lock control\n");
+
+	if (!fcb)
+	{
+		ERR("fcb was NULL\n");
+		Status = STATUS_INVALID_PARAMETER;
+		goto exit;
+	}
+
+	Status = FsRtlProcessFileLock(&fcb->lock, Irp, NULL);
+
+exit:
+	TRACE("returning %08lx\n", Status);
+
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
+
+	FsRtlExitFileSystem();
+
+	return Status;
+}
+
 static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 {
 	fcb* fcb;
@@ -2839,7 +2887,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL]      = FileSystemControl;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
 	//DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;
-	//DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL]             = LockControl;
+	DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL]             = LockControl;
 	//DriverObject->MajorFunction[IRP_MJ_CLEANUP]                  = Cleanup;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = QuerySecurity;
 	//DriverObject->MajorFunction[IRP_MJ_SET_SECURITY]             = SetSecurity;
