@@ -54,6 +54,11 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 
 	Status = write_file(fcb, buf, start, length, index, size, Irp);
 
+	if (NT_SUCCESS(Status))
+	{
+		Irp->IoStatus.Information = length;
+	}
+
 exit:
 	return Status;
 }
