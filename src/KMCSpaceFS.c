@@ -617,6 +617,249 @@ exit:
 	return Status;
 }
 
+bool is_KMCSpaceFS(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject)
+{
+	bool found = false;
+	uint8_t* table = NULL, * data = ExAllocatePoolWithTag(NonPagedPool, 512, ALLOC_TAG);
+	if (!data)
+	{
+		ERR("out of memory\n");
+		return false;
+	}
+	NTSTATUS Status = sync_read_phys(DeviceObject, FileObject, 0, 512, data, true);
+	if (NT_SUCCESS(Status))
+	{
+		KMCSpaceFS KMCSFS;
+
+		KMCSFS.sectorsize = 1 << (9 + (data[0] & 0xff));
+		KMCSFS.tablesize = 1 + (data[4] & 0xff) + ((data[3] & 0xff) << 8) + ((data[2] & 0xff) << 16) + ((data[1] & 0xff) << 24);
+		KMCSFS.extratablesize = (unsigned long long)KMCSFS.sectorsize * KMCSFS.tablesize;
+
+		table = ExAllocatePoolWithTag(NonPagedPool, KMCSFS.extratablesize, ALLOC_TAG);
+		if (!table)
+		{
+			ERR("out of memory\n");
+			ExFreePool(data);
+			return false;
+		}
+
+		Status = sync_read_phys(DeviceObject, FileObject, 0, KMCSFS.extratablesize, table, true);
+		if (NT_SUCCESS(Status))
+		{
+			KMCSFS.filenamesend = 5;
+			KMCSFS.tableend = 0;
+			unsigned long long loc = 0;
+
+			for (KMCSFS.filenamesend = 5; KMCSFS.filenamesend < KMCSFS.extratablesize; KMCSFS.filenamesend++)
+			{
+				if ((table[KMCSFS.filenamesend] & 0xff) == 255)
+				{
+					if ((table[min(KMCSFS.filenamesend + 1, KMCSFS.extratablesize)] & 0xff) == 254)
+					{
+						found = true;
+						break;
+					}
+					else
+					{
+						if (loc == 0)
+						{
+							KMCSFS.tableend = KMCSFS.filenamesend;
+						}
+
+						// if following check is not enough to block the driver from loading unnecessarily,
+						// then we can add a check to make sure all bytes between loc and i equal a vaild path.
+						// if that is not enough, then nothing will be.
+
+						loc = KMCSFS.filenamesend;
+					}
+				}
+				if (KMCSFS.filenamesend - loc > 256 && loc > 0)
+				{
+					break;
+				}
+			}
+		}
+	}
+	ExFreePool(data);
+	if (table)
+	{
+		ExFreePool(table);
+	}
+	return found;
+}
+
+_Function_class_(IO_WORKITEM_ROUTINE)
+static void __stdcall check_after_wakeup(PDEVICE_OBJECT DeviceObject, PVOID con)
+{
+	device_extension* Vcb = (device_extension*)con;
+	LIST_ENTRY* le;
+
+	UNUSED(DeviceObject);
+
+	ExAcquireResourceExclusiveLite(&Vcb->tree_lock, true);
+
+	le = Vcb->devices.Flink;
+
+	// FIXME - do reads in parallel?
+
+	while (le != &Vcb->devices)
+	{
+		device* dev = CONTAINING_RECORD(le, device, list_entry);
+
+		if (dev->devobj)
+		{
+			if (!is_KMCSpaceFS(dev->devobj, dev->fileobj))
+			{
+				PDEVICE_OBJECT voldev = Vcb->Vpb->RealDevice;
+				KIRQL irql;
+				PVPB newvpb;
+
+				WARN("forcing remount\n");
+
+				newvpb = ExAllocatePoolWithTag(NonPagedPool, sizeof(VPB), ALLOC_TAG);
+				if (!newvpb)
+				{
+					ERR("out of memory\n");
+					return;
+				}
+
+				RtlZeroMemory(newvpb, sizeof(VPB));
+
+				newvpb->Type = IO_TYPE_VPB;
+				newvpb->Size = sizeof(VPB);
+				newvpb->RealDevice = voldev;
+				newvpb->Flags = VPB_DIRECT_WRITES_ALLOWED;
+
+				Vcb->removing = true;
+
+				IoAcquireVpbSpinLock(&irql);
+				voldev->Vpb = newvpb;
+				IoReleaseVpbSpinLock(irql);
+
+				Vcb->vde = NULL;
+
+				ExReleaseResourceLite(&Vcb->tree_lock);
+
+				if (Vcb->open_files == 0)
+				{
+					uninit(Vcb);
+				}
+				else
+				{ // remove from VcbList
+					ExAcquireResourceExclusiveLite(&global_loading_lock, true);
+					RemoveEntryList(&Vcb->list_entry);
+					Vcb->list_entry.Flink = NULL;
+					ExReleaseResourceLite(&global_loading_lock);
+				}
+
+				return;
+			}
+		}
+
+		le = le->Flink;
+	}
+
+	ExReleaseResourceLite(&Vcb->tree_lock);
+}
+
+_Dispatch_type_(IRP_MJ_POWER)
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS __stdcall Power(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	NTSTATUS Status;
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+	bool top_level;
+
+	// no need for FsRtlEnterFileSystem, as this only ever gets called in a system thread
+
+	top_level = is_top_level(Irp);
+
+	Irp->IoStatus.Information = 0;
+
+	if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		volume_device_extension* vde = DeviceObject->DeviceExtension;
+
+		if (IrpSp->MinorFunction == IRP_MN_QUERY_POWER && IrpSp->Parameters.Power.Type == SystemPowerState && IrpSp->Parameters.Power.State.SystemState != PowerSystemWorking && vde->mounted_device)
+		{
+			device_extension* Vcb2 = vde->mounted_device->DeviceExtension;
+
+			/* If power state is about to go to sleep or hibernate, do a flush. We do this on IRP_MJ_QUERY_POWER
+			* rather than IRP_MJ_SET_POWER because we know that the hard disks are still awake. */
+
+			if (Vcb2)
+			{
+				Status = STATUS_SUCCESS;
+			}
+		}
+		else if (IrpSp->MinorFunction == IRP_MN_SET_POWER && IrpSp->Parameters.Power.Type == SystemPowerState && IrpSp->Parameters.Power.State.SystemState == PowerSystemWorking && vde->mounted_device)
+		{
+			device_extension* Vcb2 = vde->mounted_device->DeviceExtension;
+
+			/* If waking up, make sure that the FS hasn't been changed while we've been out (e.g., by dual-boot Linux) */
+
+			if (Vcb2)
+			{
+				PIO_WORKITEM work_item;
+
+				work_item = IoAllocateWorkItem(DeviceObject);
+				if (!work_item)
+				{
+					ERR("out of memory\n");
+				}
+				else
+				{
+					IoQueueWorkItem(work_item, check_after_wakeup, DelayedWorkQueue, Vcb2);
+				}
+			}
+		}
+
+		PoStartNextPowerIrp(Irp);
+		IoSkipCurrentIrpStackLocation(Irp);
+		Status = PoCallDriver(vde->attached_device, Irp);
+
+		goto exit;
+	}
+	else if (Vcb && Vcb->type == VCB_TYPE_FS)
+	{
+		IoSkipCurrentIrpStackLocation(Irp);
+
+		Status = IoCallDriver(Vcb->Vpb->RealDevice, Irp);
+
+		goto exit;
+	}
+	else if (Vcb && Vcb->type == VCB_TYPE_BUS)
+	{
+		bus_device_extension* bde = DeviceObject->DeviceExtension;
+
+		PoStartNextPowerIrp(Irp);
+		IoSkipCurrentIrpStackLocation(Irp);
+		Status = PoCallDriver(bde->attached_device, Irp);
+
+		goto exit;
+	}
+
+	if (IrpSp->MinorFunction == IRP_MN_SET_POWER || IrpSp->MinorFunction == IRP_MN_QUERY_POWER)
+	{
+		Irp->IoStatus.Status = STATUS_SUCCESS;
+	}
+
+	Status = Irp->IoStatus.Status;
+
+	PoStartNextPowerIrp(Irp);
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+exit:
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
+
+	return Status;
+}
+
 _Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall SystemControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
@@ -914,77 +1157,6 @@ end:
 	}
 
 	return Status;
-}
-
-bool is_KMCSpaceFS(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject)
-{
-	bool found = false;
-	uint8_t* table = NULL, *data = ExAllocatePoolWithTag(NonPagedPool, 512, ALLOC_TAG);
-	if (!data)
-	{
-		ERR("out of memory\n");
-		return false;
-	}
-	NTSTATUS Status = sync_read_phys(DeviceObject, FileObject, 0, 512, data, true);
-	if (NT_SUCCESS(Status))
-	{
-		KMCSpaceFS KMCSFS;
-
-		KMCSFS.sectorsize = 1 << (9 + (data[0] & 0xff));
-		KMCSFS.tablesize = 1 + (data[4] & 0xff) + ((data[3] & 0xff) << 8) + ((data[2] & 0xff) << 16) + ((data[1] & 0xff) << 24);
-		KMCSFS.extratablesize = (unsigned long long)KMCSFS.sectorsize * KMCSFS.tablesize;
-
-		table = ExAllocatePoolWithTag(NonPagedPool, KMCSFS.extratablesize, ALLOC_TAG);
-		if (!table)
-		{
-			ERR("out of memory\n");
-			ExFreePool(data);
-			return false;
-		}
-
-		Status = sync_read_phys(DeviceObject, FileObject, 0, KMCSFS.extratablesize, table, true);
-		if (NT_SUCCESS(Status))
-		{
-			KMCSFS.filenamesend = 5;
-			KMCSFS.tableend = 0;
-			unsigned long long loc = 0;
-
-			for (KMCSFS.filenamesend = 5; KMCSFS.filenamesend < KMCSFS.extratablesize; KMCSFS.filenamesend++)
-			{
-				if ((table[KMCSFS.filenamesend] & 0xff) == 255)
-				{
-					if ((table[min(KMCSFS.filenamesend + 1, KMCSFS.extratablesize)] & 0xff) == 254)
-					{
-						found = true;
-						break;
-					}
-					else
-					{
-						if (loc == 0)
-						{
-							KMCSFS.tableend = KMCSFS.filenamesend;
-						}
-
-						// if following check is not enough to block the driver from loading unnecessarily,
-						// then we can add a check to make sure all bytes between loc and i equal a vaild path.
-						// if that is not enough, then nothing will be.
-
-						loc = KMCSFS.filenamesend;
-					}
-				}
-				if (KMCSFS.filenamesend - loc > 256 && loc > 0)
-				{
-					break;
-				}
-			}
-		}
-	}
-	ExFreePool(data);
-	if (table)
-	{
-		ExFreePool(table);
-	}
-	return found;
 }
 
 #ifdef DEBUG_FCB_REFCOUNTS
@@ -1821,7 +1993,8 @@ NTSTATUS utf8_to_utf16(WCHAR* dest, ULONG dest_max, ULONG* dest_len, char* src, 
 		}
 		else if ((in[i] & 0xf8) == 0xf0)
 		{
-			if (i >= src_len - 3 || (in[i + 1] & 0xc0) != 0x80 || (in[i + 2] & 0xc0) != 0x80 || (in[i + 3] & 0xc0) != 0x80) {
+			if (i >= src_len - 3 || (in[i + 1] & 0xc0) != 0x80 || (in[i + 2] & 0xc0) != 0x80 || (in[i + 3] & 0xc0) != 0x80)
+			{
 				cp = 0xfffd;
 				Status = STATUS_SOME_NOT_MAPPED;
 			}
@@ -2948,7 +3121,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	//DriverObject->MajorFunction[IRP_MJ_CLEANUP]                  = Cleanup;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = QuerySecurity;
 	//DriverObject->MajorFunction[IRP_MJ_SET_SECURITY]             = SetSecurity;
-	//DriverObject->MajorFunction[IRP_MJ_POWER]                    = Power;
+	DriverObject->MajorFunction[IRP_MJ_POWER]                    = Power;
 	DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL]           = SystemControl;
 	DriverObject->MajorFunction[IRP_MJ_PNP]                      = Pnp;
 

@@ -289,7 +289,8 @@ static NTSTATUS fill_in_file_case_sensitive_information(FILE_CASE_SENSITIVE_INFO
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP Irp) {
+static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP Irp)
+{
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	LONG length = IrpSp->Parameters.QueryFile.Length;
 	fcb* fcb = FileObject->FsContext;
