@@ -3530,7 +3530,7 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 	Irp2->Flags |= IRP_NOCACHE;
-	read_file(fcb, security, 0, filesize, index, &bytes_read, Irp2, Vcb->vde->pdode->KMCSFS.DeviceObject);
+	read_file(fcb, security, 0, filesize, index, &bytes_read, Irp2);
 	if (bytes_read != filesize)
 	{
 		ERR("read_file returned %I64u\n", bytes_read);

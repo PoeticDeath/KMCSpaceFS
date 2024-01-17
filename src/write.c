@@ -6,11 +6,56 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 {
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	NTSTATUS Status;
+
+	if (!FileObject)
+	{
+		ERR("error - FileObject was NULL\n");
+		Status = STATUS_ACCESS_DENIED;
+		goto exit;
+	}
+
 	fcb* fcb = FileObject->FsContext;
 	ccb* ccb = FileObject->FsContext2;
 	unsigned long long length = IrpSp->Parameters.Write.Length;
-	unsigned long long start = IrpSp->Parameters.Write.ByteOffset.QuadPart;
+	LARGE_INTEGER offset = IrpSp->Parameters.Write.ByteOffset;
+	uint8_t* buf;
 
+	if (!Irp->AssociatedIrp.SystemBuffer)
+	{
+		buf = map_user_buffer(Irp, fcb && fcb->Header.Flags2 & FSRTL_FLAG2_IS_PAGING_FILE ? HighPagePriority : NormalPagePriority);
+
+		if (Irp->MdlAddress && !buf)
+		{
+			ERR("MmGetSystemAddressForMdlSafe returned NULL\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+	}
+	else
+	{
+		buf = Irp->AssociatedIrp.SystemBuffer;
+	}
+
+	if (length == 0)
+	{
+		Status = STATUS_SUCCESS;
+		goto exit;
+	}
+
+	unsigned long long index = get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS);
+	unsigned long long size = get_file_size(index, Vcb->vde->pdode->KMCSFS);
+
+	if (offset.LowPart == FILE_WRITE_TO_END_OF_FILE && offset.HighPart == -1)
+	{
+		offset.QuadPart = size;
+	}
+	unsigned long long start = offset.QuadPart;
+
+	Status = write_file(fcb, buf, start, length, index, size, Irp);
+
+exit:
+	return Status;
 }
 
 _Dispatch_type_(IRP_MJ_WRITE)

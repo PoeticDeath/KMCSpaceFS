@@ -316,6 +316,7 @@ void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lo
 bool is_top_level(_In_ PIRP Irp);
 NTSTATUS dev_ioctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ ULONG ControlCode, _In_reads_bytes_opt_(InputBufferSize) PVOID InputBuffer, _In_ ULONG InputBufferSize, _Out_writes_bytes_opt_(OutputBufferSize) PVOID OutputBuffer, _In_ ULONG OutputBufferSize, _In_ bool Override, _Out_opt_ IO_STATUS_BLOCK* iosb);
 NTSTATUS sync_read_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT FileObject, _In_ uint64_t StartingOffset, _In_ ULONG Length, _Out_writes_bytes_(Length) PUCHAR Buffer, _In_ bool override);
+NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT FileObject, _In_ uint64_t StartingOffset, _In_ ULONG Length, _Out_writes_bytes_(Length) PUCHAR Buffer, _In_ bool override);
 void init_device(_In_ device_extension* Vcb, _Inout_ device* dev, _In_ bool get_nums);
 NTSTATUS get_device_pnp_name(_In_ PDEVICE_OBJECT DeviceObject, _Out_ PUNICODE_STRING pnp_name, _Out_ const GUID** guid);
 
@@ -368,6 +369,7 @@ unsigned long long chtime(unsigned long long filenameindex, unsigned long long t
 unsigned long chwinattrs(unsigned long long filenameindex, unsigned long winattrs, KMCSpaceFS KMCSFS);
 unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS);
 NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long* bytes_read, PIRP Irp);
+NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long size, PIRP Irp);
 
 // in dirctrl.c
 _Dispatch_type_(IRP_MJ_DIRECTORY_CONTROL)
