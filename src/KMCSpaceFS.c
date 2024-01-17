@@ -617,6 +617,197 @@ exit:
 	return Status;
 }
 
+void do_shutdown(PIRP Irp)
+{
+	LIST_ENTRY* le;
+	bus_device_extension* bde;
+
+	shutting_down = true;
+	KeSetEvent(&mountmgr_thread_event, 0, false);
+
+	le = VcbList.Flink;
+	while (le != &VcbList)
+	{
+		LIST_ENTRY* le2 = le->Flink;
+
+		device_extension* Vcb = CONTAINING_RECORD(le, device_extension, list_entry);
+		volume_device_extension* vde = Vcb->vde;
+		PDEVICE_OBJECT devobj = vde ? vde->device : NULL;
+
+		TRACE("shutting down Vcb %p\n", Vcb);
+
+		if (vde)
+		{
+			InterlockedIncrement(&vde->open_count);
+		}
+
+		if (devobj)
+		{
+			ObReferenceObject(devobj);
+		}
+
+		dismount_volume(Vcb, true, Irp);
+
+		if (vde)
+		{
+			NTSTATUS Status;
+			UNICODE_STRING mmdevpath;
+			PDEVICE_OBJECT mountmgr;
+			PFILE_OBJECT mountmgrfo;
+			KIRQL irql;
+			PVPB newvpb;
+
+			RtlInitUnicodeString(&mmdevpath, MOUNTMGR_DEVICE_NAME);
+			Status = IoGetDeviceObjectPointer(&mmdevpath, FILE_READ_ATTRIBUTES, &mountmgrfo, &mountmgr);
+			if (!NT_SUCCESS(Status))
+			{
+				ERR("IoGetDeviceObjectPointer returned %08lx\n", Status);
+			}
+			else
+			{
+				remove_drive_letter(mountmgr, &vde->name);
+
+				ObDereferenceObject(mountmgrfo);
+			}
+
+			vde->removing = true;
+
+			newvpb = ExAllocatePoolWithTag(NonPagedPool, sizeof(VPB), ALLOC_TAG);
+			if (!newvpb)
+			{
+				ERR("out of memory\n");
+				return;
+			}
+
+			RtlZeroMemory(newvpb, sizeof(VPB));
+
+			newvpb->Type = IO_TYPE_VPB;
+			newvpb->Size = sizeof(VPB);
+			newvpb->RealDevice = newvpb->DeviceObject = vde->device;
+			newvpb->Flags = VPB_DIRECT_WRITES_ALLOWED;
+
+			IoAcquireVpbSpinLock(&irql);
+			vde->device->Vpb = newvpb;
+			IoReleaseVpbSpinLock(irql);
+
+			if (InterlockedDecrement(&vde->open_count) == 0)
+			{
+				free_vol(vde);
+			}
+		}
+
+		if (devobj)
+		{
+			ObDereferenceObject(devobj);
+		}
+
+		le = le2;
+	}
+
+#ifdef _DEBUG
+	if (comfo)
+	{
+		ObDereferenceObject(comfo);
+		comdo = NULL;
+		comfo = NULL;
+	}
+#endif
+
+	IoUnregisterFileSystem(devobj);
+
+	if (notification_entry2)
+	{
+		if (fIoUnregisterPlugPlayNotificationEx)
+		{
+			fIoUnregisterPlugPlayNotificationEx(notification_entry2);
+		}
+		else
+		{
+			IoUnregisterPlugPlayNotification(notification_entry2);
+		}
+
+		notification_entry2 = NULL;
+	}
+
+	if (notification_entry3)
+	{
+		if (fIoUnregisterPlugPlayNotificationEx)
+		{
+			fIoUnregisterPlugPlayNotificationEx(notification_entry3);
+		}
+		else
+		{
+			IoUnregisterPlugPlayNotification(notification_entry3);
+		}
+
+		notification_entry3 = NULL;
+	}
+
+	if (notification_entry)
+	{
+		if (fIoUnregisterPlugPlayNotificationEx)
+		{
+			fIoUnregisterPlugPlayNotificationEx(notification_entry);
+		}
+		else
+		{
+			IoUnregisterPlugPlayNotification(notification_entry);
+		}
+
+		notification_entry = NULL;
+	}
+
+	bde = busobj->DeviceExtension;
+
+	if (bde->attached_device)
+	{
+		IoDetachDevice(bde->attached_device);
+	}
+
+	IoDeleteDevice(busobj);
+	IoDeleteDevice(devobj);
+}
+
+_Dispatch_type_(IRP_MJ_SHUTDOWN)
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS __stdcall Shutdown(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	NTSTATUS Status;
+	bool top_level;
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+
+	FsRtlEnterFileSystem();
+
+	TRACE("shutdown\n");
+
+	top_level = is_top_level(Irp);
+
+	if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		Status = STATUS_INVALID_DEVICE_REQUEST;
+		goto end;
+	}
+
+	Status = STATUS_SUCCESS;
+
+	do_shutdown(Irp);
+
+end:
+	Irp->IoStatus.Status = Status;
+	Irp->IoStatus.Information = 0;
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
+
+	FsRtlExitFileSystem();
+
+	return Status;
+}
+
 bool is_KMCSpaceFS(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject)
 {
 	bool found = false;
@@ -3116,7 +3307,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
 	DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL]      = FileSystemControl;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
-	//DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;
+	DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;
 	DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL]             = LockControl;
 	//DriverObject->MajorFunction[IRP_MJ_CLEANUP]                  = Cleanup;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = QuerySecurity;
