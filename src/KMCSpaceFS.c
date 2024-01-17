@@ -504,6 +504,173 @@ end:
 }
 #endif
 
+void uninit(_In_ device_extension* Vcb)
+{
+	uint64_t i;
+	KIRQL irql;
+	NTSTATUS Status;
+	LIST_ENTRY* le;
+
+	if (!Vcb->removing)
+	{
+		ExAcquireResourceExclusiveLite(&Vcb->tree_lock, true);
+		Vcb->removing = true;
+		ExReleaseResourceLite(&Vcb->tree_lock);
+	}
+
+	if (Vcb->vde && Vcb->vde->mounted_device == Vcb->devobj)
+	{
+		Vcb->vde->mounted_device = NULL;
+	}
+
+	IoAcquireVpbSpinLock(&irql);
+	Vcb->Vpb->Flags &= ~VPB_MOUNTED;
+	Vcb->Vpb->Flags |= VPB_DIRECT_WRITES_ALLOWED;
+	Vcb->Vpb->DeviceObject = NULL;
+	IoReleaseVpbSpinLock(irql);
+
+	// FIXME - needs global_loading_lock to be held
+	if (Vcb->list_entry.Flink)
+	{
+		RemoveEntryList(&Vcb->list_entry);
+	}
+
+	Status = registry_mark_volume_unmounted(Vcb->vde->pdode->KMCSFS.uuid);
+	if (!NT_SUCCESS(Status) && Status != STATUS_TOO_LATE)
+	{
+		WARN("registry_mark_volume_unmounted returned %08lx\n", Status);
+	}
+
+	reap_fcb(Vcb->volume_fcb);
+
+	if (Vcb->root_file)
+	{
+		ObDereferenceObject(Vcb->root_file);
+	}
+
+	while (!IsListEmpty(&Vcb->devices))
+	{
+		device* dev = CONTAINING_RECORD(RemoveHeadList(&Vcb->devices), device, list_entry);
+
+		ExFreePool(dev);
+	}
+
+	ExDeleteResourceLite(&Vcb->load_lock);
+	ExDeleteResourceLite(&Vcb->tree_lock);
+
+	ExDeletePagedLookasideList(&Vcb->fcb_lookaside);
+	ExDeleteNPagedLookasideList(&Vcb->fcb_np_lookaside);
+
+	if (Vcb->devobj->AttachedDevice)
+	{
+		IoDetachDevice(Vcb->devobj);
+	}
+
+	IoDeleteDevice(Vcb->devobj);
+}
+
+static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
+{
+	fcb* fcb;
+	ccb* ccb;
+	LONG open_files;
+
+	UNUSED(Irp);
+
+	TRACE("FileObject = %p\n", FileObject);
+
+	fcb = FileObject->FsContext;
+	if (!fcb)
+	{
+		TRACE("FCB was NULL, returning success\n");
+		return STATUS_SUCCESS;
+	}
+
+	open_files = InterlockedDecrement(&fcb->Vcb->open_files);
+
+	ccb = FileObject->FsContext2;
+
+	TRACE("close called for fcb %p)\n", fcb);
+
+	// FIXME - make sure notification gets sent if file is being deleted
+
+	if (ccb)
+	{
+		ExFreePool(ccb);
+	}
+
+	if (open_files == 0 && fcb->Vcb->removing)
+	{
+		uninit(fcb->Vcb);
+		return STATUS_SUCCESS;
+	}
+
+	if (!(fcb->Vcb->Vpb->Flags & VPB_MOUNTED))
+	{
+		return STATUS_SUCCESS;
+	}
+
+	free_fcb(fcb);
+
+	return STATUS_SUCCESS;
+}
+
+_Dispatch_type_(IRP_MJ_CLOSE)
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS __stdcall Close(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	NTSTATUS Status;
+	PIO_STACK_LOCATION IrpSp;
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+	bool top_level;
+
+	FsRtlEnterFileSystem();
+
+	TRACE("close\n");
+
+	top_level = is_top_level(Irp);
+
+	if (DeviceObject == devobj)
+	{
+		TRACE("Closing file system\n");
+		Status = STATUS_SUCCESS;
+		goto end;
+	}
+	else if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		Status = vol_close(DeviceObject, Irp);
+		goto end;
+	}
+	else if (!Vcb || Vcb->type != VCB_TYPE_FS)
+	{
+		Status = STATUS_INVALID_PARAMETER;
+		goto end;
+	}
+
+	IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+	// FIXME - call FsRtlNotifyUninitializeSync(&Vcb->NotifySync) if unmounting
+
+	Status = close_file(IrpSp->FileObject, Irp);
+
+end:
+	Irp->IoStatus.Status = Status;
+	Irp->IoStatus.Information = 0;
+
+	IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
+
+	TRACE("returning %08lx\n", Status);
+
+	FsRtlExitFileSystem();
+
+	return Status;
+}
+
 static NTSTATUS get_device_pnp_name_guid(_In_ PDEVICE_OBJECT DeviceObject, _Out_ PUNICODE_STRING pnp_name, _In_ const GUID* guid)
 {
 	NTSTATUS Status;
@@ -2583,7 +2750,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->DriverExtension->AddDevice = AddDevice;
 
 	DriverObject->MajorFunction[IRP_MJ_CREATE]                   = Create;
-	//DriverObject->MajorFunction[IRP_MJ_CLOSE]                    = Close;
+	DriverObject->MajorFunction[IRP_MJ_CLOSE]                    = Close;
 	DriverObject->MajorFunction[IRP_MJ_READ]                     = Read;
 	DriverObject->MajorFunction[IRP_MJ_WRITE]                    = Write;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION]        = QueryInformation;

@@ -85,6 +85,148 @@ end:
 	return Status;
 }
 
+static NTSTATUS registry_mark_volume_unmounted_path(PUNICODE_STRING path)
+{
+	HANDLE h;
+	OBJECT_ATTRIBUTES oa;
+	NTSTATUS Status;
+	ULONG index, kvbilen = sizeof(KEY_VALUE_BASIC_INFORMATION) - sizeof(WCHAR) + (255 * sizeof(WCHAR)), retlen;
+	KEY_VALUE_BASIC_INFORMATION* kvbi;
+	bool has_options = false;
+	UNICODE_STRING mountedus;
+
+	// If a volume key has any options in it, we set Mounted to 0 and return. Otherwise,
+	// we delete the whole thing.
+
+	kvbi = ExAllocatePoolWithTag(PagedPool, kvbilen, ALLOC_TAG);
+	if (!kvbi)
+	{
+		ERR("out of memory\n");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	InitializeObjectAttributes(&oa, path, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+
+	Status = ZwOpenKey(&h, KEY_QUERY_VALUE | KEY_SET_VALUE | DELETE, &oa);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("ZwOpenKey returned %08lx\n", Status);
+		goto end;
+	}
+
+	index = 0;
+
+	mountedus.Buffer = (WCHAR*)option_mounted;
+	mountedus.Length = mountedus.MaximumLength = sizeof(option_mounted) - sizeof(WCHAR);
+
+	do
+	{
+		Status = ZwEnumerateValueKey(h, index, KeyValueBasicInformation, kvbi, kvbilen, &retlen);
+
+		index++;
+
+		if (NT_SUCCESS(Status))
+		{
+			UNICODE_STRING us;
+
+			us.Length = us.MaximumLength = (USHORT)kvbi->NameLength;
+			us.Buffer = kvbi->Name;
+
+			if (!FsRtlAreNamesEqual(&mountedus, &us, true, NULL))
+			{
+				has_options = true;
+				break;
+			}
+		}
+		else if (Status != STATUS_NO_MORE_ENTRIES)
+		{
+			ERR("ZwEnumerateValueKey returned %08lx\n", Status);
+			goto end2;
+		}
+	} while (NT_SUCCESS(Status));
+
+	if (has_options)
+	{
+		DWORD data = 0;
+
+		Status = ZwSetValueKey(h, &mountedus, 0, REG_DWORD, &data, sizeof(DWORD));
+		if (!NT_SUCCESS(Status))
+		{
+			ERR("ZwSetValueKey returned %08lx\n", Status);
+			goto end2;
+		}
+	}
+	else
+	{
+		Status = ZwDeleteKey(h);
+		if (!NT_SUCCESS(Status))
+		{
+			ERR("ZwDeleteKey returned %08lx\n", Status);
+			goto end2;
+		}
+	}
+
+	Status = STATUS_SUCCESS;
+
+end2:
+	ZwClose(h);
+
+end:
+	ExFreePool(kvbi);
+
+	return Status;
+}
+
+NTSTATUS registry_mark_volume_unmounted(KMCSpaceFS_UUID uuid)
+{
+	UNICODE_STRING path;
+	NTSTATUS Status;
+	ULONG i, j;
+
+	path.Length = path.MaximumLength = registry_path.Length + (37 * sizeof(WCHAR));
+	path.Buffer = ExAllocatePoolWithTag(PagedPool, path.Length, ALLOC_TAG);
+
+	if (!path.Buffer)
+	{
+		ERR("out of memory\n");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	RtlCopyMemory(path.Buffer, registry_path.Buffer, registry_path.Length);
+	i = registry_path.Length / sizeof(WCHAR);
+
+	path.Buffer[i] = '\\';
+	i++;
+
+	for (j = 0; j < 16; j++)
+	{
+		path.Buffer[i] = hex_digit((uuid.uuid[j] & 0xF0) >> 4);
+		path.Buffer[i + 1] = hex_digit(uuid.uuid[j] & 0xF);
+
+		i += 2;
+
+		if (j == 3 || j == 5 || j == 7 || j == 9)
+		{
+			path.Buffer[i] = '-';
+			i++;
+		}
+	}
+
+	Status = registry_mark_volume_unmounted_path(&path);
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("registry_mark_volume_unmounted_path returned %08lx\n", Status);
+		goto end;
+	}
+
+	Status = STATUS_SUCCESS;
+
+end:
+	ExFreePool(path.Buffer);
+
+	return Status;
+}
+
 #define is_hex(c) ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
 
 static bool is_uuid(ULONG namelen, WCHAR* name)

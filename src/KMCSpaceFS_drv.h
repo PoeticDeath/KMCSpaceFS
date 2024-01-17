@@ -282,6 +282,7 @@ __inline static uint64_t sector_align(_In_ uint64_t n, _In_ uint64_t a)
 void read_registry(PUNICODE_STRING regpath, bool refresh);
 void watch_registry(HANDLE regh);
 NTSTATUS registry_mark_volume_mounted(KMCSpaceFS_UUID uuid);
+NTSTATUS registry_mark_volume_unmounted(KMCSpaceFS_UUID uuid);
 NTSTATUS registry_load_volume_options(device_extension* Vcb);
 
 // in pnp.c

@@ -35,6 +35,109 @@ NTSTATUS vol_create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	return STATUS_SUCCESS;
 }
 
+void free_vol(volume_device_extension* vde)
+{
+	PDEVICE_OBJECT pdo;
+
+	vde->dead = true;
+
+	if (vde->mounted_device)
+	{
+		device_extension* Vcb = vde->mounted_device->DeviceExtension;
+
+		Vcb->vde = NULL;
+	}
+
+	if (vde->name.Buffer)
+	{
+		ExFreePool(vde->name.Buffer);
+	}
+
+	ExDeleteResourceLite(&vde->pdode->child_lock);
+
+	if (vde->pdo->AttachedDevice)
+	{
+		IoDetachDevice(vde->pdo);
+	}
+
+	while (!IsListEmpty(&vde->pdode->children))
+	{
+		volume_child* vc = CONTAINING_RECORD(RemoveHeadList(&vde->pdode->children), volume_child, list_entry);
+
+		if (vc->notification_entry)
+		{
+			if (fIoUnregisterPlugPlayNotificationEx)
+			{
+				fIoUnregisterPlugPlayNotificationEx(vc->notification_entry);
+			}
+			else
+			{
+				IoUnregisterPlugPlayNotification(vc->notification_entry);
+			}
+		}
+
+		if (vc->pnp_name.Buffer)
+		{
+			ExFreePool(vc->pnp_name.Buffer);
+		}
+
+		ExFreePool(vc);
+	}
+
+	if (no_pnp)
+	{
+		ExFreePool(vde->pdode);
+	}
+
+	pdo = vde->pdo;
+	IoDeleteDevice(vde->device);
+
+	if (!no_pnp)
+	{
+		IoDeleteDevice(pdo);
+	}
+}
+
+NTSTATUS vol_close(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+	volume_device_extension* vde = DeviceObject->DeviceExtension;
+	pdo_device_extension* pdode = vde->pdode;
+
+	TRACE("(%p, %p)\n", DeviceObject, Irp);
+
+	Irp->IoStatus.Information = 0;
+
+	if (vde->dead)
+	{
+		return STATUS_SUCCESS;
+	}
+
+	ExAcquireResourceExclusiveLite(&pdo_list_lock, true);
+
+	if (vde->dead)
+	{
+		ExReleaseResourceLite(&pdo_list_lock);
+		return STATUS_SUCCESS;
+	}
+
+	ExAcquireResourceSharedLite(&pdode->child_lock, true);
+
+	if (InterlockedDecrement(&vde->open_count) == 0 && vde->removing)
+	{
+		ExReleaseResourceLite(&pdode->child_lock);
+
+		free_vol(vde);
+	}
+	else
+	{
+		ExReleaseResourceLite(&pdode->child_lock);
+	}
+
+	ExReleaseResourceLite(&pdo_list_lock);
+
+	return STATUS_SUCCESS;
+}
+
 typedef struct
 {
 	IO_STATUS_BLOCK iosb;
