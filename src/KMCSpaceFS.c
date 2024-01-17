@@ -617,6 +617,63 @@ exit:
 	return Status;
 }
 
+_Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS __stdcall SystemControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	NTSTATUS Status;
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+	bool top_level;
+
+	FsRtlEnterFileSystem();
+
+	top_level = is_top_level(Irp);
+
+	Irp->IoStatus.Information = 0;
+
+	if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		volume_device_extension* vde = DeviceObject->DeviceExtension;
+
+		IoSkipCurrentIrpStackLocation(Irp);
+
+		Status = IoCallDriver(vde->attached_device, Irp);
+
+		goto exit;
+	}
+	else if (Vcb && Vcb->type == VCB_TYPE_FS)
+	{
+		IoSkipCurrentIrpStackLocation(Irp);
+
+		Status = IoCallDriver(Vcb->Vpb->RealDevice, Irp);
+
+		goto exit;
+	}
+	else if (Vcb && Vcb->type == VCB_TYPE_BUS)
+	{
+		bus_device_extension* bde = DeviceObject->DeviceExtension;
+
+		IoSkipCurrentIrpStackLocation(Irp);
+
+		Status = IoCallDriver(bde->attached_device, Irp);
+
+		goto exit;
+	}
+
+	Status = Irp->IoStatus.Status;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+exit:
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
+
+	FsRtlExitFileSystem();
+
+	return Status;
+}
+
 static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 {
 	fcb* fcb;
@@ -2892,7 +2949,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = QuerySecurity;
 	//DriverObject->MajorFunction[IRP_MJ_SET_SECURITY]             = SetSecurity;
 	//DriverObject->MajorFunction[IRP_MJ_POWER]                    = Power;
-	//DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL]           = SystemControl;
+	DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL]           = SystemControl;
 	DriverObject->MajorFunction[IRP_MJ_PNP]                      = Pnp;
 
 	device_nameW.Buffer = (WCHAR*)device_name;
