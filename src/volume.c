@@ -146,6 +146,98 @@ end:
 	return Status;
 }
 
+NTSTATUS vol_write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+	volume_device_extension* vde = DeviceObject->DeviceExtension;
+	pdo_device_extension* pdode = vde->pdode;
+	volume_child* vc;
+	NTSTATUS Status;
+	PIRP Irp2;
+	vol_read_context context;
+	PIO_STACK_LOCATION IrpSp, IrpSp2;
+
+	TRACE("(%p, %p)\n", DeviceObject, Irp);
+
+	ExAcquireResourceSharedLite(&pdode->child_lock, true);
+
+	if (IsListEmpty(&pdode->children))
+	{
+		ExReleaseResourceLite(&pdode->child_lock);
+		Status = STATUS_INVALID_DEVICE_REQUEST;
+		goto end;
+	}
+
+	vc = CONTAINING_RECORD(pdode->children.Flink, volume_child, list_entry);
+
+	if (vc->list_entry.Flink != &pdode->children)
+	{ // more than once device
+		ExReleaseResourceLite(&pdode->child_lock);
+		Status = STATUS_ACCESS_DENIED;
+		goto end;
+	}
+
+	// We can't use IoSkipCurrentIrpStackLocation as the device isn't in our stack
+
+	Irp2 = IoAllocateIrp(vc->devobj->StackSize, false);
+
+	if (!Irp2)
+	{
+		ERR("IoAllocateIrp failed\n");
+		ExReleaseResourceLite(&pdode->child_lock);
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
+	}
+
+	IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	IrpSp2 = IoGetNextIrpStackLocation(Irp2);
+
+	IrpSp2->MajorFunction = IRP_MJ_WRITE;
+	IrpSp2->FileObject = vc->fileobj;
+
+	if (vc->devobj->Flags & DO_BUFFERED_IO)
+	{
+		Irp2->AssociatedIrp.SystemBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+
+		Irp2->Flags |= IRP_BUFFERED_IO;
+
+		Irp2->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+	}
+	else if (vc->devobj->Flags & DO_DIRECT_IO)
+	{
+		Irp2->MdlAddress = Irp->MdlAddress;
+	}
+	else
+	{
+		Irp2->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+	}
+
+	IrpSp2->Parameters.Write.Length = IrpSp->Parameters.Write.Length;
+	IrpSp2->Parameters.Write.ByteOffset.QuadPart = IrpSp->Parameters.Write.ByteOffset.QuadPart;
+
+	KeInitializeEvent(&context.Event, NotificationEvent, false);
+	Irp2->UserIosb = &context.iosb;
+
+	IoSetCompletionRoutine(Irp2, vol_read_completion, &context, true, true, true);
+
+	Status = IoCallDriver(vc->devobj, Irp2);
+
+	if (Status == STATUS_PENDING)
+	{
+		KeWaitForSingleObject(&context.Event, Executive, KernelMode, false, NULL);
+		Status = context.iosb.Status;
+	}
+
+	ExReleaseResourceLite(&pdode->child_lock);
+
+	Irp->IoStatus.Information = context.iosb.Information;
+
+end:
+	Irp->IoStatus.Status = Status;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	return Status;
+}
+
 static NTSTATUS vol_query_device_name(volume_device_extension* vde, PIRP Irp)
 {
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);

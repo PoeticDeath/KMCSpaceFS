@@ -389,6 +389,12 @@ _Dispatch_type_(IRP_MJ_QUERY_SECURITY)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
+// in write.c
+_Dispatch_type_(IRP_MJ_WRITE)
+_Function_class_(DRIVER_DISPATCH)
+__attribute__((nonnull(1,2)))
+NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+
 // not in DDK headers - taken from winternl.h
 typedef struct _LDR_DATA_TABLE_ENTRY
 {
