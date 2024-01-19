@@ -725,6 +725,11 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 {
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
+	if ((fn.Buffer[fn.Length / sizeof(WCHAR) - 1] & 0xff) == 0)
+	{
+		fn.Length -= sizeof(WCHAR);
+	}
+
 	char* newtablestr = ExAllocatePoolWithTag(NonPagedPool, Vcb->vde->pdode->KMCSFS.tablestrlen + 1, ALLOC_TAG);
 	if (!newtablestr)
 	{
