@@ -2763,7 +2763,7 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 	IrpSp->Parameters.Write.Length = RLength + 512 - RLength % 512;
 	IrpSp->Parameters.Write.ByteOffset = Offset;
 
-	PUCHAR RBuffer = ExAllocatePoolWithTag(NonPagedPool, IrpSp->Parameters.Write.Length, ALLOC_TAG);
+	PUCHAR RBuffer = ExAllocatePoolWithTag(NonPagedPool, sector_align(IrpSp->Parameters.Write.Length, 512), ALLOC_TAG);
 	if (!RBuffer)
 	{
 		ERR("out of memory\n");
@@ -2772,7 +2772,7 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 	}
 
 	sync_read_phys(DeviceObject, FileObject, Offset.QuadPart, 512, RBuffer, override);
-	sync_read_phys(DeviceObject, FileObject, Offset.QuadPart + IrpSp->Parameters.Write.Length - 512, 512, RBuffer + IrpSp->Parameters.Write.Length - 512, override);
+	sync_read_phys(DeviceObject, FileObject, Offset.QuadPart + IrpSp->Parameters.Write.Length - IrpSp->Parameters.Write.Length % 512, 512, RBuffer + IrpSp->Parameters.Write.Length - IrpSp->Parameters.Write.Length % 512, override);
 	RtlCopyMemory(RBuffer + (LONGLONG)StartingOffset % 512, Buffer, Length);
 
 	if (DeviceObject->Flags & DO_BUFFERED_IO)

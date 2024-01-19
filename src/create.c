@@ -479,11 +479,12 @@ loaded:
 			((fcb*)FileObject->FsContext)->Header.Flags2 |= FSRTL_FLAG2_IS_PAGING_FILE;
 		}
 	}
-	/*else
+	else
 	{
-		Status = file_create(Irp, Vcb, FileObject, &fn, RequestedDisposition, options);
+		Status = create_file(Irp, Vcb, FileObject, fn);
 		Irp->IoStatus.Information = NT_SUCCESS(Status) ? FILE_CREATED : 0;
-	}*/
+		granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
+	}
 
 	if (NT_SUCCESS(Status) && !(options & FILE_NO_INTERMEDIATE_BUFFERING))
 	{

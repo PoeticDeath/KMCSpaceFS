@@ -372,6 +372,7 @@ unsigned long chwinattrs(unsigned long long filenameindex, unsigned long winattr
 unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS);
 NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long* bytes_read, PIRP Irp);
 NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long size, PIRP Irp);
+NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, UNICODE_STRING fn);
 
 // in dirctrl.c
 _Dispatch_type_(IRP_MJ_DIRECTORY_CONTROL)

@@ -60,6 +60,7 @@ char* encode(char* str, unsigned long long len)
 			ERR("out of memory\n");
 			return NULL;
 		}
+		RtlCopyMemory(alc, str, len - 1);
 		alc[len - 1] = 32;
 		alc[len - 2] = 46;
 	}
@@ -67,6 +68,10 @@ char* encode(char* str, unsigned long long len)
 	if (!bytes)
 	{
 		ERR("out of memory\n");
+		if (alc)
+		{
+			ExFreePool(alc);
+		}
 		return NULL;
 	}
 	if (alc)
@@ -713,5 +718,109 @@ NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned 
 			}
 		}
 	}
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, UNICODE_STRING fn)
+{
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+	char* newtablestr = ExAllocatePoolWithTag(NonPagedPool, Vcb->vde->pdode->KMCSFS.tablestrlen + 1, ALLOC_TAG);
+	if (!newtablestr)
+	{
+		ERR("out of memory\n");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	char* newtable = ExAllocatePoolWithTag(NonPagedPool, Vcb->vde->pdode->KMCSFS.filenamesend + 2 + fn.Length / sizeof(WCHAR) + 1 + 35 * (Vcb->vde->pdode->KMCSFS.filecount + 1), ALLOC_TAG);
+	if (!newtable)
+	{
+		ERR("out of memory\n");
+		ExFreePool(newtablestr);
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	RtlZeroMemory(newtable, Vcb->vde->pdode->KMCSFS.filenamesend + 2 + fn.Length / sizeof(WCHAR) + 1 + 35 * (Vcb->vde->pdode->KMCSFS.filecount + 1));
+	
+	RtlCopyMemory(newtablestr, Vcb->vde->pdode->KMCSFS.tablestr, Vcb->vde->pdode->KMCSFS.tablestrlen);
+	if (newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen - 1] == 32)
+	{
+		newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen - 1] = 46;
+		newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen] = 32;
+	}
+	else
+	{
+		newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen] = 46;
+		Vcb->vde->pdode->KMCSFS.tablestrlen++;
+	}
+
+	ExFreePool(Vcb->vde->pdode->KMCSFS.tablestr);
+	Vcb->vde->pdode->KMCSFS.tablestr = newtablestr;
+
+	char* newtablestren = encode(newtablestr, Vcb->vde->pdode->KMCSFS.tablestrlen);
+	if (!newtablestren)
+	{
+		ERR("out of memory\n");
+		ExFreePool(newtablestr);
+		ExFreePool(newtable);
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	newtable[0] = Vcb->vde->pdode->KMCSFS.table[0];
+	unsigned long long extratablesize = 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 2 + fn.Length / sizeof(WCHAR) + 1 + 35 * (Vcb->vde->pdode->KMCSFS.filecount + 1);
+	unsigned long long tablesize = (extratablesize + Vcb->vde->pdode->KMCSFS.sectorsize - 1) / Vcb->vde->pdode->KMCSFS.sectorsize - 1;
+	newtable[1] = (tablesize >> 24) & 0xff;
+	newtable[2] = (tablesize >> 16) & 0xff;
+	newtable[3] = (tablesize >> 8) & 0xff;
+	newtable[4] = tablesize & 0xff;
+	Vcb->vde->pdode->KMCSFS.extratablesize = sector_align(extratablesize, Vcb->vde->pdode->KMCSFS.sectorsize);
+	Vcb->vde->pdode->KMCSFS.tablesize = 1 + tablesize;
+
+	RtlCopyMemory(newtable + 5, newtablestren, (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2);
+	ExFreePool(newtablestren);
+
+	RtlCopyMemory(newtable + 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2, Vcb->vde->pdode->KMCSFS.table + Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend);
+	
+	newtable[5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend] = 255;
+	for (unsigned long long i = 0; i < fn.Length / sizeof(WCHAR); i++)
+	{
+		newtable[5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + i] = ((fn.Buffer[i] & 0xff) == 92) ? 47 : fn.Buffer[i] & 0xff;
+	}
+	newtable[5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR)] = 255;
+	newtable[5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR) + 1] = 254;
+
+	RtlCopyMemory(newtable + 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR) + 2, Vcb->vde->pdode->KMCSFS.table + Vcb->vde->pdode->KMCSFS.filenamesend + 2, 24 * Vcb->vde->pdode->KMCSFS.filecount);
+	RtlCopyMemory(newtable + 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR) + 2 + 24 * (Vcb->vde->pdode->KMCSFS.filecount + 1), Vcb->vde->pdode->KMCSFS.table + Vcb->vde->pdode->KMCSFS.filenamesend + 2 + 24 * Vcb->vde->pdode->KMCSFS.filecount, 11 * Vcb->vde->pdode->KMCSFS.filecount);
+
+	char guidmodes[11] = {0};
+	unsigned long guid = 545;
+	guidmodes[0] = (guid >> 16) & 0xff;
+	guidmodes[1] = (guid >> 8) & 0xff;
+	guidmodes[2] = guid & 0xff;
+	guidmodes[3] = (guid >> 8) & 0xff;
+	guidmodes[4] = guid & 0xff;
+	unsigned long mode = 448 + 16429 * (IrpSp->Parameters.Create.FileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+	guidmodes[5] = (mode >> 8) & 0xff;
+	guidmodes[6] = mode & 0xff;
+	unsigned long winattrs = 2048 | attrtoATTR(IrpSp->Parameters.Create.FileAttributes);
+	guidmodes[7] = (winattrs >> 24) & 0xff;
+	guidmodes[8] = (winattrs >> 16) & 0xff;
+	guidmodes[9] = (winattrs >> 8) & 0xff;
+	guidmodes[10] = winattrs & 0xff;
+	RtlCopyMemory(newtable + 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR) + 2 + 24 * (Vcb->vde->pdode->KMCSFS.filecount + 1) + 11 * Vcb->vde->pdode->KMCSFS.filecount, guidmodes, 11);
+
+	ExFreePool(Vcb->vde->pdode->KMCSFS.table);
+	Vcb->vde->pdode->KMCSFS.table = newtable;
+
+	Vcb->vde->pdode->KMCSFS.tableend = 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2;
+	Vcb->vde->pdode->KMCSFS.filenamesend += 1 + fn.Length / sizeof(WCHAR) + (newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen] != 32);
+
+	LARGE_INTEGER time;
+	KeQuerySystemTime(&time);
+	chtime(Vcb->vde->pdode->KMCSFS.filecount, time.QuadPart, 5, Vcb->vde->pdode->KMCSFS);
+	chtime(Vcb->vde->pdode->KMCSFS.filecount, time.QuadPart, 1, Vcb->vde->pdode->KMCSFS);
+	chtime(Vcb->vde->pdode->KMCSFS.filecount, time.QuadPart, 3, Vcb->vde->pdode->KMCSFS);
+
+	Vcb->vde->pdode->KMCSFS.filecount++;
+	sync_write_phys(Vcb->vde->pdode->KMCSFS.DeviceObject, FileObject, 0, Vcb->vde->pdode->KMCSFS.filenamesend + 2 + 35 * Vcb->vde->pdode->KMCSFS.filecount, newtable, true);
+
 	return STATUS_SUCCESS;
 }
