@@ -351,7 +351,8 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 		goto exit;
 	}
 
-	if (RequestedDisposition == FILE_OPEN || RequestedDisposition == FILE_OPEN_IF)
+open:
+	if (RequestedDisposition == FILE_OPEN || RequestedDisposition == FILE_OPEN_IF || RequestedDisposition == FILE_CREATE)
 	{
 		unsigned long long index = get_filename_index(fn, Vcb->vde->pdode->KMCSFS);
 		if (index)
@@ -481,9 +482,20 @@ loaded:
 	}
 	else
 	{
+		if (options & FILE_DIRECTORY_FILE)
+		{
+			IrpSp->Parameters.Create.FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+		}
+		else
+		{
+			IrpSp->Parameters.Create.FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
+		}
 		Status = create_file(Irp, Vcb, FileObject, fn);
-		Irp->IoStatus.Information = NT_SUCCESS(Status) ? FILE_CREATED : 0;
-		granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
+		if (NT_SUCCESS(Status))
+		{
+			Irp->IoStatus.Information = FILE_CREATED;
+			goto open;
+		}
 	}
 
 	if (NT_SUCCESS(Status) && !(options & FILE_NO_INTERMEDIATE_BUFFERING))
