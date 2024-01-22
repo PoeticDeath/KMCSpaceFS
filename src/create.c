@@ -324,6 +324,10 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 		goto exit;
 	}
 
+	if (FileObject->FileName.Buffer[FileObject->FileName.Length / sizeof(WCHAR) - 1] == 92 && FileObject->FileName.Length > 2)
+	{
+		FileObject->FileName.Buffer[FileObject->FileName.Length / sizeof(WCHAR) - 1] = 0;
+	}
 	if (FileObject->FileName.Buffer[0] != *L"\\")
 	{
 		UNICODE_STRING fn2;
