@@ -816,7 +816,7 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 	Vcb->vde->pdode->KMCSFS.table = newtable;
 
 	Vcb->vde->pdode->KMCSFS.filenamesend = 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR);
-	Vcb->vde->pdode->KMCSFS.tableend = 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + 1;
+	Vcb->vde->pdode->KMCSFS.tableend = 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2;
 
 	LARGE_INTEGER time;
 	KeQuerySystemTime(&time);

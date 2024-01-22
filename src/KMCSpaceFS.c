@@ -2759,11 +2759,11 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 		IrpSp->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
 	}
 
-	ULONG RLength = Length + (LONGLONG)StartingOffset % 512;
-	IrpSp->Parameters.Write.Length = RLength + 512 - RLength % 512;
+	ULONG RLength = Length + (512 - (LONGLONG)StartingOffset % 512);
+	IrpSp->Parameters.Write.Length = RLength + (512 - RLength % 512);
 	IrpSp->Parameters.Write.ByteOffset = Offset;
 
-	PUCHAR RBuffer = ExAllocatePoolWithTag(NonPagedPool, sector_align(IrpSp->Parameters.Write.Length, 512), ALLOC_TAG);
+	PUCHAR RBuffer = ExAllocatePoolWithTag(NonPagedPool, IrpSp->Parameters.Write.Length, ALLOC_TAG);
 	if (!RBuffer)
 	{
 		ERR("out of memory\n");
@@ -2772,12 +2772,12 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 	}
 
 	sync_read_phys(DeviceObject, FileObject, Offset.QuadPart, 512, RBuffer, override);
-	sync_read_phys(DeviceObject, FileObject, Offset.QuadPart + IrpSp->Parameters.Write.Length - IrpSp->Parameters.Write.Length % 512, 512, RBuffer + IrpSp->Parameters.Write.Length - IrpSp->Parameters.Write.Length % 512, override);
+	sync_read_phys(DeviceObject, FileObject, Offset.QuadPart + IrpSp->Parameters.Write.Length - 512, 512, RBuffer + IrpSp->Parameters.Write.Length - 512, override);
 	RtlCopyMemory(RBuffer + (LONGLONG)StartingOffset % 512, Buffer, Length);
 
 	if (DeviceObject->Flags & DO_BUFFERED_IO)
 	{
-		Irp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPool, RLength, ALLOC_TAG);
+		Irp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPool, IrpSp->Parameters.Write.Length, ALLOC_TAG);
 		if (!Irp->AssociatedIrp.SystemBuffer)
 		{
 			ERR("out of memory\n");
@@ -2791,7 +2791,7 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 	}
 	else if (DeviceObject->Flags & DO_DIRECT_IO)
 	{
-		Irp->MdlAddress = IoAllocateMdl(RBuffer, RLength, false, false, NULL);
+		Irp->MdlAddress = IoAllocateMdl(RBuffer, IrpSp->Parameters.Write.Length, false, false, NULL);
 		if (!Irp->MdlAddress)
 		{
 			ERR("IoAllocateMdl failed\n");

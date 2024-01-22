@@ -269,6 +269,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	POOL_TYPE pool_type = IrpSp->Flags & SL_OPEN_PAGING_FILE ? NonPagedPool : PagedPool;
 	ACCESS_MASK granted_access;
 	UNICODE_STRING fn;
+	bool created = false;
 
 	Irp->IoStatus.Information = 0;
 
@@ -397,7 +398,7 @@ loaded:
 
 	if (NT_SUCCESS(Status))
 	{
-		if (RequestedDisposition == FILE_CREATE)
+		if (RequestedDisposition == FILE_CREATE && !created)
 		{
 			TRACE("file already exists, returning STATUS_OBJECT_NAME_COLLISION\n");
 			Status = STATUS_OBJECT_NAME_COLLISION;
@@ -494,6 +495,7 @@ loaded:
 		if (NT_SUCCESS(Status))
 		{
 			Irp->IoStatus.Information = FILE_CREATED;
+			created = true;
 			goto open;
 		}
 	}
