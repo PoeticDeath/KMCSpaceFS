@@ -829,3 +829,114 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 
 	return STATUS_SUCCESS;
 }
+
+bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size)
+{
+	if (size)
+	{
+		return false;
+	}
+	else
+	{
+		if (!KMCSFS->used_blocks)
+		{
+			unsigned long* used_bytes = ExAllocatePoolWithTag(NonPagedPool, (KMCSFS->size / KMCSFS->sectorsize - KMCSFS->tablesize) * sizeof(unsigned long), ALLOC_TAG);
+			if (!used_bytes)
+			{
+				ERR("out of memory\n");
+				return false;
+			}
+			RtlZeroMemory(used_bytes, (KMCSFS->size / KMCSFS->sectorsize - KMCSFS->tablesize) * sizeof(unsigned long));
+			bool notzero = false;
+			bool multisector = false;
+			unsigned cur = 0;
+			unsigned long long int0 = 0;
+			unsigned long long int1 = 0;
+			unsigned long long int2 = 0;
+			unsigned long long int3 = 0;
+			for (unsigned long long i = 0; i < KMCSFS->tablestrlen; i++)
+			{
+				if (KMCSFS->tablestr[i] == *"," || KMCSFS->tablestr[i] == *".")
+				{
+					if (notzero)
+					{
+						if (multisector)
+						{
+							for (unsigned long long o = 0; o < int0 - int3; o++)
+							{
+								used_bytes[int3 + o] += KMCSFS->sectorsize;
+								KMCSFS->used_blocks++;
+							}
+						}
+						switch (cur)
+						{
+						case 0:
+							used_bytes[int0] += KMCSFS->sectorsize;
+							KMCSFS->used_blocks++;
+							break;
+						case 1:
+							break;
+						case 2:
+							used_bytes[int0] += int2 - int1;
+							if (used_bytes[int0] >= KMCSFS->sectorsize)
+							{
+								KMCSFS->used_blocks++;
+							}
+							break;
+						}
+					}
+					cur = 0;
+					int0 = 0;
+					int1 = 0;
+					int2 = 0;
+					int3 = 0;
+					notzero = false;
+					multisector = false;
+				}
+				else if (KMCSFS->tablestr[i] == *";")
+				{
+					cur++;
+				}
+				else if (KMCSFS->tablestr[i] == *"-")
+				{
+					int3 = int0;
+					multisector = true;
+					cur = 0;
+					int0 = 0;
+					int1 = 0;
+					int2 = 0;
+				}
+				else
+				{
+					notzero = true;
+					switch (cur)
+					{
+					case 0:
+						int0 += toint(KMCSFS->tablestr[i] & 0xff);
+						if (KMCSFS->tablestr[i + 1] != *";" && KMCSFS->tablestr[i + 1] != *"," && KMCSFS->tablestr[i + 1] != *"." && KMCSFS->tablestr[i + 1] != *"-")
+						{
+							int0 *= 10;
+						}
+						break;
+					case 1:
+						int1 += toint(KMCSFS->tablestr[i] & 0xff);
+						if (KMCSFS->tablestr[i + 1] != *";" && KMCSFS->tablestr[i + 1] != *"," && KMCSFS->tablestr[i + 1] != *"." && KMCSFS->tablestr[i + 1] != *"-")
+						{
+							int1 *= 10;
+						}
+						break;
+					case 2:
+						int2 += toint(KMCSFS->tablestr[i] & 0xff);
+						if (KMCSFS->tablestr[i + 1] != *";" && KMCSFS->tablestr[i + 1] != *"," && KMCSFS->tablestr[i + 1] != *"." && KMCSFS->tablestr[i + 1] != *"-")
+						{
+							int2 *= 10;
+						}
+						break;
+					}
+				}
+			}
+			ExFreePool(used_bytes);
+		}
+		return true;
+	}
+}

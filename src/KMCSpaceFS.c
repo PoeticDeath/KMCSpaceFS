@@ -2261,7 +2261,14 @@ NTSTATUS utf8_to_utf16(WCHAR* dest, ULONG dest_max, ULONG* dest_len, char* src, 
 static void calculate_total_space(_In_ device_extension* Vcb, _Out_ uint64_t* totalsize, _Out_ uint64_t* freespace)
 {
 	*totalsize = Vcb->vde->pdode->KMCSFS.size / Vcb->vde->pdode->KMCSFS.sectorsize - Vcb->vde->pdode->KMCSFS.tablesize;
-	*freespace = *totalsize;//
+	if (find_block(&Vcb->vde->pdode->KMCSFS, 0, 0))
+	{
+		*freespace = *totalsize - Vcb->vde->pdode->KMCSFS.used_blocks;
+	}
+	else
+	{
+		*freespace = 0;
+	}
 }
 
 _Dispatch_type_(IRP_MJ_QUERY_VOLUME_INFORMATION)

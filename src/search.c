@@ -203,6 +203,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 
 		ExFreePool(GUIDPT);
 
+		KMCSFS.used_blocks = 0;
 		KMCSFS.DeviceObject = DeviceObject;
 		KMCSFS.size = (LastLBA - FirstLBA + 1) * 512;
 		KMCSFS.sectorsize = 1 << (9 + (data[0] & 0xff));
