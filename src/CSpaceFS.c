@@ -834,6 +834,183 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 {
 	if (size)
 	{
+		unsigned long* used_bytes = ExAllocatePoolWithTag(NonPagedPool, (KMCSFS->size / KMCSFS->sectorsize - KMCSFS->tablesize) * sizeof(unsigned long), ALLOC_TAG);
+		if (!used_bytes)
+		{
+			ERR("out of memory\n");
+			return false;
+		}
+		RtlZeroMemory(used_bytes, (KMCSFS->size / KMCSFS->sectorsize - KMCSFS->tablesize) * sizeof(unsigned long));
+		bool notzero = false;
+		bool multisector = false;
+		unsigned cur = 0;
+		unsigned long long int0 = 0;
+		unsigned long long int1 = 0;
+		unsigned long long int2 = 0;
+		unsigned long long int3 = 0;
+		unsigned long long curindex = 0;
+		unsigned long long cursize = 0;
+		for (unsigned long long i = 0; i < KMCSFS->tablestrlen; i++)
+		{
+			if (KMCSFS->tablestr[i] == *"," || KMCSFS->tablestr[i] == *".")
+			{
+				if (notzero)
+				{
+					if (multisector)
+					{
+						for (unsigned long long o = 0; o < int0 - int3; o++)
+						{
+							used_bytes[int3 + o] += KMCSFS->sectorsize;
+							if (curindex == index)
+							{
+								cursize += KMCSFS->sectorsize;
+							}
+						}
+					}
+					switch (cur)
+					{
+					case 0:
+						used_bytes[int0] += KMCSFS->sectorsize;
+						if (curindex == index)
+						{
+							cursize += KMCSFS->sectorsize;
+						}
+						break;
+					case 1:
+						break;
+					case 2:
+						used_bytes[int0] += int2 - int1;
+						if (curindex == index)
+						{
+							cursize += int2 - int1;
+						}
+						break;
+					}
+				}
+				cur = 0;
+				int0 = 0;
+				int1 = 0;
+				int2 = 0;
+				int3 = 0;
+				notzero = false;
+				multisector = false;
+				if (KMCSFS->tablestr[i] == *".")
+				{
+					curindex++;
+				}
+			}
+			else if (KMCSFS->tablestr[i] == *";")
+			{
+				cur++;
+			}
+			else if (KMCSFS->tablestr[i] == *"-")
+			{
+				int3 = int0;
+				multisector = true;
+				cur = 0;
+				int0 = 0;
+				int1 = 0;
+				int2 = 0;
+			}
+			else
+			{
+				notzero = true;
+				switch (cur)
+				{
+				case 0:
+					int0 += toint(KMCSFS->tablestr[i] & 0xff);
+					if (KMCSFS->tablestr[i + 1] != *";" && KMCSFS->tablestr[i + 1] != *"," && KMCSFS->tablestr[i + 1] != *"." && KMCSFS->tablestr[i + 1] != *"-")
+					{
+						int0 *= 10;
+					}
+					break;
+				case 1:
+					int1 += toint(KMCSFS->tablestr[i] & 0xff);
+					if (KMCSFS->tablestr[i + 1] != *";" && KMCSFS->tablestr[i + 1] != *"," && KMCSFS->tablestr[i + 1] != *"." && KMCSFS->tablestr[i + 1] != *"-")
+					{
+						int1 *= 10;
+					}
+					break;
+				case 2:
+					int2 += toint(KMCSFS->tablestr[i] & 0xff);
+					if (KMCSFS->tablestr[i + 1] != *";" && KMCSFS->tablestr[i + 1] != *"," && KMCSFS->tablestr[i + 1] != *"." && KMCSFS->tablestr[i + 1] != *"-")
+					{
+						int2 *= 10;
+					}
+					break;
+				}
+			}
+		}
+
+		unsigned long long loc = 0;
+		for (unsigned long long i = 0; i < KMCSFS->tablestrlen; i++)
+		{
+			if (KMCSFS->tablestr[i] == *".")
+			{
+				loc++;
+				if (loc == index + 1)
+				{
+					loc = i;
+					break;
+				}
+			}
+		}
+
+		unsigned long long cursector = 0;
+		unsigned long long blocksneeded = (size + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize;
+		for (unsigned long long i = 0; i < blocksneeded; i++)
+		{
+			if (cursize % KMCSFS->sectorsize)
+			{ // Last block was part sector
+
+			}
+			else
+			{ // Last block was whole sector
+				if (!(size % KMCSFS->sectorsize) || i < blocksneeded - 1)
+				{ // Full sector allocation
+					for (; cursector < (KMCSFS->size / KMCSFS->sectorsize - KMCSFS->tablesize); cursector++)
+					{
+						if (!used_bytes[cursector])
+						{
+							if (cursize)
+							{
+
+							}
+							else
+							{
+								char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 21, ALLOC_TAG);
+								if (!newtable)
+								{
+									ERR("out of memory\n");
+									ExFreePool(used_bytes);
+									return false;
+								}
+								RtlCopyMemory(newtable, KMCSFS->tablestr, loc);
+								char num[21] = {0};
+								sprintf(num, "%llu", cursector);
+								unsigned numlen = strlen(num);
+								RtlCopyMemory(newtable + loc, num, numlen);
+								RtlCopyMemory(newtable + loc + numlen, KMCSFS->tablestr + loc, KMCSFS->tablestrlen - loc);
+								ExFreePool(KMCSFS->tablestr);
+								KMCSFS->tablestr = newtable;
+								KMCSFS->tablestrlen += numlen;
+								if (i == blocksneeded - 1)
+								{
+									ExFreePool(used_bytes);
+									return true;
+								}
+							}
+						}
+					}
+				}
+				else
+				{ // Part sector allocation
+
+				}
+			}
+		}
+
+		ExFreePool(used_bytes);
 		return false;
 	}
 	else

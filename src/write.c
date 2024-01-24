@@ -52,6 +52,19 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 	}
 	unsigned long long start = offset.QuadPart;
 
+	if (start + length > size)
+	{
+		if (find_block(&Vcb->vde->pdode->KMCSFS, index, start + length - size))
+		{
+			size = start + length;
+		}
+		else
+		{
+			Status = STATUS_END_OF_FILE;
+			goto exit;
+		}
+	}
+
 	Status = write_file(fcb, buf, start, length, index, size, Irp);
 
 	if (NT_SUCCESS(Status))
