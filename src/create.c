@@ -391,6 +391,29 @@ open:
 			Status = STATUS_OBJECT_NAME_NOT_FOUND;
 		}
 	}
+	else if (RequestedDisposition == FILE_OVERWRITE || RequestedDisposition == FILE_OVERWRITE_IF)
+	{
+		unsigned long long index = get_filename_index(fn, Vcb->vde->pdode->KMCSFS);
+		if (index)
+		{
+			Status = STATUS_SUCCESS;
+			granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
+			if (options & FILE_DIRECTORY_FILE)
+			{
+				IrpSp->Parameters.Create.FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+			}
+			else
+			{
+				IrpSp->Parameters.Create.FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
+			}
+			chwinattrs(index, IrpSp->Parameters.Create.FileAttributes, Vcb->vde->pdode->KMCSFS);
+			// Set file size back to 0
+		}
+		else
+		{
+			Status = STATUS_OBJECT_NAME_NOT_FOUND;
+		}
+	}
 
 loaded:
 	/*if (Status == STATUS_REPARSE)
