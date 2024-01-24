@@ -402,7 +402,6 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 	}
 
 	uint8_t* buf = ExAllocatePoolWithTag(fcb->pool_type, sector_align(length, fcb->Vcb->vde->pdode->KMCSFS.sectorsize), ALLOC_TAG);
-
 	if (!buf)
 	{
 		ERR("out of memory\n");
@@ -432,9 +431,9 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 						filesize += fcb->Vcb->vde->pdode->KMCSFS.sectorsize;
 						if (filesize > start)
 						{
-							sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, IrpSp->FileObject, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, buf, true);
 							if (init)
 							{
+								sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, IrpSp->FileObject, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), min(sector_align(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, 512), sector_align(length, 512)), buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), true);
 								RtlCopyMemory(data, buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length));
 								*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
 								start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
@@ -442,6 +441,7 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 							}
 							else
 							{
+								sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, IrpSp->FileObject, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, buf, true);
 								RtlCopyMemory(data + *bytes_read, buf, min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read));
 								start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
 								*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
@@ -455,9 +455,9 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 					filesize += fcb->Vcb->vde->pdode->KMCSFS.sectorsize;
 					if (filesize > start)
 					{
-						sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, IrpSp->FileObject, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, buf, true);
 						if (init)
 						{
+							sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, IrpSp->FileObject, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), min(sector_align(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, 512), sector_align(length, 512)), buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), true);
 							RtlCopyMemory(data, buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length));
 							*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
 							start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
@@ -465,6 +465,7 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 						}
 						else
 						{
+							sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, IrpSp->FileObject, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, buf, true);
 							RtlCopyMemory(data + *bytes_read, buf, min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read));
 							start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
 							*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
