@@ -974,7 +974,29 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 						{
 							if (cursize)
 							{
-
+								char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 22, ALLOC_TAG);
+								if (!newtable)
+								{
+									ERR("out of memory\n");
+									ExFreePool(used_bytes);
+									return false;
+								}
+								RtlCopyMemory(newtable, KMCSFS->tablestr, loc);
+								newtable[loc] = *",";
+								char num[21] = {0};
+								sprintf(num, "%llu", cursector);
+								unsigned numlen = strlen(num);
+								RtlCopyMemory(newtable + loc + 1, num, numlen);
+								RtlCopyMemory(newtable + loc + numlen + 1, KMCSFS->tablestr + loc, KMCSFS->tablestrlen - loc);
+								ExFreePool(KMCSFS->tablestr);
+								KMCSFS->tablestr = newtable;
+								KMCSFS->tablestrlen += numlen + 1;
+								cursize += KMCSFS->sectorsize;
+								if (i == blocksneeded - 1)
+								{
+									ExFreePool(used_bytes);
+									return true;
+								}
 							}
 							else
 							{
@@ -994,6 +1016,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 								ExFreePool(KMCSFS->tablestr);
 								KMCSFS->tablestr = newtable;
 								KMCSFS->tablestrlen += numlen;
+								cursize += KMCSFS->sectorsize;
 								if (i == blocksneeded - 1)
 								{
 									ExFreePool(used_bytes);
