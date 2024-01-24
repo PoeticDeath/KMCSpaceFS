@@ -878,7 +878,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 							break;
 						case 2:
 							used_bytes[int0] += int2 - int1;
-							if (used_bytes[int0] >= KMCSFS->sectorsize)
+							if (used_bytes[int0] == KMCSFS->sectorsize)
 							{
 								KMCSFS->used_blocks++;
 							}
