@@ -992,6 +992,8 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 								KMCSFS->tablestr = newtable;
 								KMCSFS->tablestrlen += numlen + 1;
 								cursize += KMCSFS->sectorsize;
+								used_bytes[cursector] += KMCSFS->sectorsize;
+								KMCSFS->used_blocks++;
 								if (i == blocksneeded - 1)
 								{
 									ExFreePool(used_bytes);
@@ -1017,6 +1019,8 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 								KMCSFS->tablestr = newtable;
 								KMCSFS->tablestrlen += numlen;
 								cursize += KMCSFS->sectorsize;
+								used_bytes[cursector] += KMCSFS->sectorsize;
+								KMCSFS->used_blocks++;
 								if (i == blocksneeded - 1)
 								{
 									ExFreePool(used_bytes);
