@@ -994,11 +994,6 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 								cursize += KMCSFS->sectorsize;
 								used_bytes[cursector] += KMCSFS->sectorsize;
 								KMCSFS->used_blocks++;
-								if (i == blocksneeded - 1)
-								{
-									ExFreePool(used_bytes);
-									return true;
-								}
 							}
 							else
 							{
@@ -1021,12 +1016,8 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 								cursize += KMCSFS->sectorsize;
 								used_bytes[cursector] += KMCSFS->sectorsize;
 								KMCSFS->used_blocks++;
-								if (i == blocksneeded - 1)
-								{
-									ExFreePool(used_bytes);
-									return true;
-								}
 							}
+							break;
 						}
 					}
 				}
@@ -1038,7 +1029,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 		}
 
 		ExFreePool(used_bytes);
-		return false;
+		return true;
 	}
 	else
 	{
