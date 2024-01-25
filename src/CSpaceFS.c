@@ -992,6 +992,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 								ExFreePool(KMCSFS->tablestr);
 								KMCSFS->tablestr = newtable;
 								KMCSFS->tablestrlen += numlen + 1;
+								loc += numlen + 1;
 								cursize += KMCSFS->sectorsize;
 								used_bytes[cursector] += KMCSFS->sectorsize;
 								KMCSFS->used_blocks++;
@@ -1014,6 +1015,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 								ExFreePool(KMCSFS->tablestr);
 								KMCSFS->tablestr = newtable;
 								KMCSFS->tablestrlen += numlen;
+								loc += numlen;
 								cursize += KMCSFS->sectorsize;
 								used_bytes[cursector] += KMCSFS->sectorsize;
 								KMCSFS->used_blocks++;
@@ -1024,7 +1026,84 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 				}
 				else
 				{ // Part sector allocation
-
+					for (cursector = 0; cursector < (KMCSFS->size / KMCSFS->sectorsize - KMCSFS->tablesize); cursector++)
+					{
+						if (!used_bytes[cursector])
+						{
+							if (cursize)
+							{
+								char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 64, ALLOC_TAG);
+								if (!newtable)
+								{
+									ERR("out of memory\n");
+									ExFreePool(used_bytes);
+									return false;
+								}
+								RtlCopyMemory(newtable, KMCSFS->tablestr, loc);
+								newtable[loc] = *",";
+								char num1[21] = {0};
+								sprintf(num1, "%llu", cursector);
+								unsigned num1len = strlen(num1);
+								RtlCopyMemory(newtable + loc + 1, num1, num1len);
+								newtable[loc + 1 + num1len] = *";";
+								newtable[loc + 1 + num1len + 1] = *"0";
+								newtable[loc + 1 + num1len + 2] = *";";
+								char num3[21] = {0};
+								sprintf(num3, "%llu", size % KMCSFS->sectorsize);
+								unsigned num3len = strlen(num3);
+								RtlCopyMemory(newtable + loc + 1 + num1len + 3, num3, num3len);
+								RtlCopyMemory(newtable + loc + 1 + num1len + 3 + num3len, KMCSFS->tablestr + loc, KMCSFS->tablestrlen - loc);
+								ExFreePool(KMCSFS->tablestr);
+								KMCSFS->tablestr = newtable;
+								KMCSFS->tablestrlen += num1len + num3len + 4;
+								loc += num1len + num3len + 4;
+								cursize += size % KMCSFS->sectorsize;
+								used_bytes[cursector] += size % KMCSFS->sectorsize;
+								if (used_bytes[cursector] == KMCSFS->sectorsize)
+								{
+									KMCSFS->used_blocks++;
+								}
+							}
+							else
+							{
+								char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 63, ALLOC_TAG);
+								if (!newtable)
+								{
+									ERR("out of memory\n");
+									ExFreePool(used_bytes);
+									return false;
+								}
+								RtlCopyMemory(newtable, KMCSFS->tablestr, loc);
+								char num1[21] = {0};
+								sprintf(num1, "%llu", cursector);
+								unsigned num1len = strlen(num1);
+								RtlCopyMemory(newtable + loc, num1, num1len);
+								newtable[loc + num1len] = *";";
+								newtable[loc + num1len + 1] = *"0";
+								newtable[loc + num1len + 2] = *";";
+								char num3[21] = {0};
+								sprintf(num3, "%llu", size % KMCSFS->sectorsize);
+								unsigned num3len = strlen(num3);
+								RtlCopyMemory(newtable + loc + num1len + 3, num3, num3len);
+								RtlCopyMemory(newtable + loc + num1len + 3 + num3len, KMCSFS->tablestr + loc, KMCSFS->tablestrlen - loc);
+								ExFreePool(KMCSFS->tablestr);
+								KMCSFS->tablestr = newtable;
+								KMCSFS->tablestrlen += num1len + num3len + 3;
+								loc += num1len + num3len + 3;
+								cursize += size % KMCSFS->sectorsize;
+								used_bytes[cursector] += size % KMCSFS->sectorsize;
+								if (used_bytes[cursector] == KMCSFS->sectorsize)
+								{
+									KMCSFS->used_blocks++;
+								}
+							}
+							break;
+						}
+						else if (KMCSFS->sectorsize - used_bytes[cursector] > size % KMCSFS->sectorsize)
+						{
+							
+						}
+					}
 				}
 			}
 		}
