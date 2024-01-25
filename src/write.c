@@ -70,6 +70,11 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 	if (NT_SUCCESS(Status))
 	{
 		Irp->IoStatus.Information = length;
+		FileObject->CurrentByteOffset.QuadPart = start + length;
+	}
+	else
+	{
+		FileObject->CurrentByteOffset.QuadPart = start;
 	}
 
 exit:
