@@ -2778,8 +2778,14 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 		goto exit;
 	}
 
-	sync_read_phys(DeviceObject, FileObject, Offset.QuadPart, 512, RBuffer, override);
-	sync_read_phys(DeviceObject, FileObject, Offset.QuadPart + IrpSp->Parameters.Write.Length - 512, 512, RBuffer + IrpSp->Parameters.Write.Length - 512, override);
+	if (StartingOffset % 512)
+	{
+		sync_read_phys(DeviceObject, FileObject, Offset.QuadPart, 512, RBuffer, override);
+	}
+	if ((StartingOffset + Length) % 512)
+	{
+		sync_read_phys(DeviceObject, FileObject, Offset.QuadPart + IrpSp->Parameters.Write.Length - 512, 512, RBuffer + IrpSp->Parameters.Write.Length - 512, override);
+	}
 	RtlCopyMemory(RBuffer + (LONGLONG)StartingOffset % 512, Buffer, Length);
 
 	if (DeviceObject->Flags & DO_BUFFERED_IO)
