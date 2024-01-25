@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <assert.h>
 
+#define MAX_LABEL_SIZE 0x100
+
 typedef struct
 {
 	uint8_t uuid[16];

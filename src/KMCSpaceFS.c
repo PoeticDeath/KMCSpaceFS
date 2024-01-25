@@ -2865,6 +2865,167 @@ exit:
 	return Status;
 }
 
+static NTSTATUS set_label(_In_ device_extension* Vcb, _In_ FILE_FS_LABEL_INFORMATION* ffli)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+	ULONG labellen = ffli->VolumeLabelLength / sizeof(WCHAR);
+
+	TRACE("label = %.*S\n", (int)labellen, ffli->VolumeLabel);
+
+	if (labellen > MAX_LABEL_SIZE)
+	{
+		Status = STATUS_INVALID_VOLUME_LABEL;
+		goto end;
+	}
+
+	WCHAR labelname[] = L":";
+	UNICODE_STRING labelname_us;
+	labelname_us.Length = sizeof(labelname) - sizeof(WCHAR);
+	labelname_us.Buffer = labelname;
+	unsigned long long index = get_filename_index(labelname_us, Vcb->vde->pdode->KMCSFS);
+	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
+	char* label = ExAllocatePoolWithTag(NonPagedPool, labellen, ALLOC_TAG);
+	if (!label)
+	{
+		ERR("out of memory\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
+	}
+	fcb* fcb = create_fcb(Vcb, NonPagedPool);
+	if (!fcb)
+	{
+		ERR("out of memory\n");
+		ExFreePool(label);
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
+	}
+	PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+	if (!Irp2)
+	{
+		ERR("out of memory\n");
+		free_fcb(fcb);
+		reap_fcb(fcb);
+		ExFreePool(label);
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
+	}
+	Irp2->Flags |= IRP_NOCACHE;
+	for (unsigned i = 0; i < labellen; i++)
+	{
+		label[i] = ffli->VolumeLabel[i] & 0xff;
+	}
+	if (labellen != filesize)
+	{
+		if (labellen > filesize)
+		{
+			if (find_block(&Vcb->vde->pdode->KMCSFS, index, labellen - filesize))
+			{
+				filesize = labellen;
+			}
+			else
+			{
+				Status = STATUS_END_OF_FILE;
+				goto free;
+			}
+		}
+		else
+		{
+			// Shrink the file
+		}
+	}
+	Status = write_file(fcb, label, 0, labellen, index, filesize, Irp2);
+
+free:
+	IoFreeIrp(Irp2);
+	free_fcb(fcb);
+	reap_fcb(fcb);
+	ExFreePool(label);
+
+end:
+	TRACE("returning %08lx\n", Status);
+
+	return Status;
+}
+
+_Dispatch_type_(IRP_MJ_SET_VOLUME_INFORMATION)
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS __stdcall SetVolumeInformation(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+	NTSTATUS Status;
+	bool top_level;
+
+	FsRtlEnterFileSystem();
+
+	TRACE("set volume information\n");
+
+	top_level = is_top_level(Irp);
+
+	if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		Status = STATUS_INVALID_DEVICE_REQUEST;
+		goto end;
+	}
+	else if (!Vcb || Vcb->type != VCB_TYPE_FS)
+	{
+		Status = STATUS_INVALID_PARAMETER;
+		goto end;
+	}
+
+	Status = STATUS_NOT_IMPLEMENTED;
+
+	if (Vcb->readonly)
+	{
+		Status = STATUS_MEDIA_WRITE_PROTECTED;
+		goto end;
+	}
+
+	if (Vcb->removing)
+	{
+		Status = STATUS_ACCESS_DENIED;
+		goto end;
+	}
+
+	switch (IrpSp->Parameters.SetVolume.FsInformationClass)
+	{
+	case FileFsControlInformation:
+		ERR("STUB: FileFsControlInformation\n");
+		break;
+
+	case FileFsLabelInformation:
+		TRACE("FileFsLabelInformation\n");
+
+		Status = set_label(Vcb, Irp->AssociatedIrp.SystemBuffer);
+		break;
+
+	case FileFsObjectIdInformation:
+		ERR("STUB: FileFsObjectIdInformation\n");
+		break;
+
+	default:
+		WARN("Unrecognized FsInformationClass 0x%x\n", IrpSp->Parameters.SetVolume.FsInformationClass);
+		break;
+	}
+
+end:
+	Irp->IoStatus.Status = Status;
+	Irp->IoStatus.Information = 0;
+
+	TRACE("returning %08lx\n", Status);
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
+
+	FsRtlExitFileSystem();
+
+	return Status;
+}
+
 static bool is_device_removable(_In_ PDEVICE_OBJECT devobj)
 {
 	NTSTATUS Status;
@@ -3316,7 +3477,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	//DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION]          = SetInformation;
 	DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
-	//DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;
+	DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;
 	DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL]        = DirectoryControl;
 	DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL]      = FileSystemControl;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
