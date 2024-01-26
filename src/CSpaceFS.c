@@ -1119,6 +1119,9 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 				}
 				else
 				{ // Part sector allocation
+					char* tablestr = NULL;
+					unsigned long long* used_sector_bytes = NULL;
+					unsigned long long temptablestrlen = KMCSFS->tablestrlen;
 					for (cursector = 0; cursector < (KMCSFS->size / KMCSFS->sectorsize - KMCSFS->tablesize); cursector++)
 					{
 						if (!used_bytes[cursector])
@@ -1194,10 +1197,231 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 							}
 							break;
 						}
-						else if (KMCSFS->sectorsize - used_bytes[cursector] > size % KMCSFS->sectorsize)
+						else if (KMCSFS->sectorsize - used_bytes[cursector] >= size % KMCSFS->sectorsize)
 						{
-							
+							if (!tablestr)
+							{
+								tablestr = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen, ALLOC_TAG);
+								if (!tablestr)
+								{
+									ERR("out of memory\n");
+									ExFreePool(used_bytes);
+									return false;
+								}
+								RtlCopyMemory(tablestr, KMCSFS->tablestr, KMCSFS->tablestrlen);
+							}
+
+							if (!used_sector_bytes)
+							{
+								used_sector_bytes = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->sectorsize / sizeof(unsigned long long), ALLOC_TAG);
+								if (!used_sector_bytes)
+								{
+									ERR("out of memory\n");
+									ExFreePool(used_bytes);
+									ExFreePool(tablestr);
+									return false;
+								}
+							}
+							RtlZeroMemory(used_sector_bytes, KMCSFS->sectorsize / sizeof(unsigned long long));
+
+							cur = 0;
+							int0 = 0;
+							int1 = 0;
+							int2 = 0;
+							unsigned long long strsize = 0;
+
+							for (unsigned long long o = 0; o < temptablestrlen; o++)
+							{
+								strsize++;
+								if (tablestr[o] == *"," || tablestr[o] == *".")
+								{
+									switch (cur)
+									{
+									case 0:
+										if (int0 == cursector)
+										{
+											RtlCopyMemory(tablestr + o - strsize, tablestr + o, temptablestrlen - o);
+											temptablestrlen -= strsize;
+											o -= strsize;
+											break;
+										}
+										break;
+									case 1:
+										break;
+									case 2:
+										if (int0 == cursector)
+										{
+											for (unsigned long long p = int1; p < int2; p++)
+											{
+												used_sector_bytes[p / sizeof(unsigned long long) / 8] |= ((unsigned long long)1 << (p % (sizeof(unsigned long long) * 8)));
+											}
+											RtlCopyMemory(tablestr + o - strsize, tablestr + o, temptablestrlen - o);
+											temptablestrlen -= strsize;
+											o -= strsize;
+											break;
+										}
+										break;
+									}
+									cur = 0;
+									int0 = 0;
+									int1 = 0;
+									int2 = 0;
+									strsize = 0;
+								}
+								else if (tablestr[o] == *";")
+								{
+									cur++;
+								}
+								else if (tablestr[o] == *"-")
+								{
+									cur = 0;
+									int0 = 0;
+									int1 = 0;
+									int2 = 0;
+								}
+								else
+								{
+									switch (cur)
+									{
+									case 0:
+										int0 += toint(tablestr[o] & 0xff);
+										if (tablestr[o + 1] != *";" && tablestr[o + 1] != *"," && tablestr[o + 1] != *"." && tablestr[o + 1] != *"-")
+										{
+											int0 *= 10;
+										}
+										break;
+									case 1:
+										int1 += toint(tablestr[o] & 0xff);
+										if (tablestr[o + 1] != *";" && tablestr[o + 1] != *"," && tablestr[o + 1] != *"." && tablestr[o + 1] != *"-")
+										{
+											int1 *= 10;
+										}
+										break;
+									case 2:
+										int2 += toint(tablestr[o] & 0xff);
+										if (tablestr[o + 1] != *";" && tablestr[o + 1] != *"," && tablestr[o + 1] != *"." && tablestr[o + 1] != *"-")
+										{
+											int2 *= 10;
+										}
+										break;
+									}
+								}
+							}
+
+							unsigned long long freecount = 0;
+							unsigned long long offset = 0;
+							for (; offset < KMCSFS->sectorsize; offset++)
+							{
+								if (used_sector_bytes[offset / sizeof(unsigned long long) / 8] & ((unsigned long long)1 << (offset % (sizeof(unsigned long long) * 8))))
+								{
+									freecount = 0;
+									if (KMCSFS->sectorsize - offset < size % KMCSFS->sectorsize)
+									{
+										break;
+									}
+								}
+								else
+								{
+									freecount++;
+									if (freecount == size % KMCSFS->sectorsize)
+									{
+										break;
+									}
+								}
+							}
+
+							if (freecount == size % KMCSFS->sectorsize)
+							{
+								if (cursize)
+								{
+									char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 64, ALLOC_TAG);
+									if (!newtable)
+									{
+										ERR("out of memory\n");
+										ExFreePool(used_bytes);
+										ExFreePool(tablestr);
+										ExFreePool(used_sector_bytes);
+										return false;
+									}
+									RtlCopyMemory(newtable, KMCSFS->tablestr, loc);
+									newtable[loc] = *",";
+									char num1[21] = {0};
+									sprintf(num1, "%llu", cursector);
+									unsigned num1len = strlen(num1);
+									RtlCopyMemory(newtable + loc + 1, num1, num1len);
+									newtable[loc + 1 + num1len] = *";";
+									char num2[21] = {0};
+									sprintf(num2, "%llu", offset - size);
+									unsigned num2len = strlen(num2);
+									RtlCopyMemory(newtable + loc + 1 + num1len + 1, num2, num2len);
+									newtable[loc + 1 + num1len + 1 + num2len] = *";";
+									char num3[21] = {0};
+									sprintf(num3, "%llu", offset);
+									unsigned num3len = strlen(num3);
+									RtlCopyMemory(newtable + loc + 1 + num1len + 1 + num2len + 1, num3, num3len);
+									RtlCopyMemory(newtable + loc + 1 + num1len + 1 + num2len + 1 + num3len, KMCSFS->tablestr + loc, KMCSFS->tablestrlen - loc);
+									ExFreePool(KMCSFS->tablestr);
+									KMCSFS->tablestr = newtable;
+									KMCSFS->tablestrlen += num1len + 1 + num2len + 1 + num3len + 1;
+									loc += num1len + 1 + num2len + 1 + num3len + 1;
+									cursize += size % KMCSFS->sectorsize;
+									used_bytes[cursector] += size % KMCSFS->sectorsize;
+									size -= size % KMCSFS->sectorsize;
+									if (used_bytes[cursector] == KMCSFS->sectorsize)
+									{
+										KMCSFS->used_blocks++;
+									}
+								}
+								else
+								{
+									char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 63, ALLOC_TAG);
+									if (!newtable)
+									{
+										ERR("out of memory\n");
+										ExFreePool(used_bytes);
+										ExFreePool(tablestr);
+										ExFreePool(used_sector_bytes);
+										return false;
+									}
+									RtlCopyMemory(newtable, KMCSFS->tablestr, loc);
+									char num1[21] = {0};
+									sprintf(num1, "%llu", cursector);
+									unsigned num1len = strlen(num1);
+									RtlCopyMemory(newtable + loc, num1, num1len);
+									newtable[loc + num1len] = *";";
+									char num2[21] = {0};
+									sprintf(num2, "%llu", offset - size);
+									unsigned num2len = strlen(num2);
+									RtlCopyMemory(newtable + loc + num1len + 1, num2, num2len);
+									newtable[loc + num1len + 1 + num2len] = *";";
+									char num3[21] = {0};
+									sprintf(num3, "%llu", offset);
+									unsigned num3len = strlen(num3);
+									RtlCopyMemory(newtable + loc + num1len + 1 + num2len + 1, num3, num3len);
+									RtlCopyMemory(newtable + loc + num1len + 1 + num2len + 1 + num3len, KMCSFS->tablestr + loc, KMCSFS->tablestrlen - loc);
+									ExFreePool(KMCSFS->tablestr);
+									KMCSFS->tablestr = newtable;
+									KMCSFS->tablestrlen += num1len + 1 + num2len + 1 + num3len;
+									loc += num1len + 1 + num2len + 1 + num3len;
+									cursize += size % KMCSFS->sectorsize;
+									used_bytes[cursector] += size % KMCSFS->sectorsize;
+									size -= size % KMCSFS->sectorsize;
+									if (used_bytes[cursector] == KMCSFS->sectorsize)
+									{
+										KMCSFS->used_blocks++;
+									}
+								}
+								break;
+							}
 						}
+					}
+					if (tablestr)
+					{
+						ExFreePool(tablestr);
+					}
+					if (used_sector_bytes)
+					{
+						ExFreePool(used_sector_bytes);
 					}
 				}
 			}
