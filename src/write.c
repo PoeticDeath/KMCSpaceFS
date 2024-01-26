@@ -60,7 +60,7 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 		}
 		else
 		{
-			Status = STATUS_END_OF_FILE;
+			Status = STATUS_DISK_FULL;
 			goto exit;
 		}
 	}
