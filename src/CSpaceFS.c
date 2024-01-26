@@ -722,6 +722,91 @@ NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned 
 	return STATUS_SUCCESS;
 }
 
+static bool is_table_expandable(KMCSpaceFS KMCSFS, unsigned long long newsize)
+{
+	unsigned long long nearestsector = 0;
+
+	bool multisector = false;
+	unsigned cur = 0;
+	unsigned long long int0 = 0;
+	unsigned long long int1 = 0;
+	unsigned long long int2 = 0;
+	unsigned long long int3 = 0;
+
+	for (unsigned long long i = 0; i < KMCSFS.tablestrlen; i++)
+	{
+		if (KMCSFS.tablestr[i] == *"," || KMCSFS.tablestr[i] == *".")
+		{
+			if (multisector)
+			{
+				for (unsigned long long o = 0; o < int0 - int3; o++)
+				{
+					nearestsector = max(nearestsector, int3 + o);
+				}
+			}
+			switch (cur)
+			{
+			case 0:
+				nearestsector = max(nearestsector, int0);
+				break;
+			case 1:
+				break;
+			case 2:
+				nearestsector = max(nearestsector, int0);
+				break;
+			}
+			cur = 0;
+			int0 = 0;
+			int1 = 0;
+			int2 = 0;
+			int3 = 0;
+			multisector = false;
+		}
+		else if (KMCSFS.tablestr[i] == *";")
+		{
+			cur++;
+		}
+		else if (KMCSFS.tablestr[i] == *"-")
+		{
+			int3 = int0;
+			multisector = true;
+			cur = 0;
+			int0 = 0;
+			int1 = 0;
+			int2 = 0;
+		}
+		else
+		{
+			switch (cur)
+			{
+			case 0:
+				int0 += toint(KMCSFS.tablestr[i] & 0xff);
+				if (KMCSFS.tablestr[i + 1] != *";" && KMCSFS.tablestr[i + 1] != *"," && KMCSFS.tablestr[i + 1] != *"." && KMCSFS.tablestr[i + 1] != *"-")
+				{
+					int0 *= 10;
+				}
+				break;
+			case 1:
+				int1 += toint(KMCSFS.tablestr[i] & 0xff);
+				if (KMCSFS.tablestr[i + 1] != *";" && KMCSFS.tablestr[i + 1] != *"," && KMCSFS.tablestr[i + 1] != *"." && KMCSFS.tablestr[i + 1] != *"-")
+				{
+					int1 *= 10;
+				}
+				break;
+			case 2:
+				int2 += toint(KMCSFS.tablestr[i] & 0xff);
+				if (KMCSFS.tablestr[i + 1] != *";" && KMCSFS.tablestr[i + 1] != *"," && KMCSFS.tablestr[i + 1] != *"." && KMCSFS.tablestr[i + 1] != *"-")
+				{
+					int2 *= 10;
+				}
+				break;
+			}
+		}
+	}
+
+	return KMCSFS.size / KMCSFS.sectorsize - nearestsector > sector_align(newsize, KMCSFS.sectorsize) / KMCSFS.sectorsize;
+}
+
 NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, UNICODE_STRING fn)
 {
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -729,6 +814,12 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 	if ((fn.Buffer[fn.Length / sizeof(WCHAR) - 1] & 0xff) == 0)
 	{
 		fn.Length -= sizeof(WCHAR);
+	}
+
+	if (!is_table_expandable(Vcb->vde->pdode->KMCSFS, Vcb->vde->pdode->KMCSFS.filenamesend + 2 + fn.Length / sizeof(WCHAR) + 1 + 35 * (Vcb->vde->pdode->KMCSFS.filecount + 1)))
+	{
+		ERR("table is not expandable\n");
+		return STATUS_DISK_FULL;
 	}
 
 	char* newtablestr = ExAllocatePoolWithTag(NonPagedPool, Vcb->vde->pdode->KMCSFS.tablestrlen + 1, ALLOC_TAG);
