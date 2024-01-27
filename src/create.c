@@ -407,7 +407,7 @@ open:
 				IrpSp->Parameters.Create.FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
 			}
 			chwinattrs(index, IrpSp->Parameters.Create.FileAttributes, Vcb->vde->pdode->KMCSFS);
-			// Set file size back to 0
+			dealloc(&Vcb->vde->pdode->KMCSFS, index, get_file_size(index, Vcb->vde->pdode->KMCSFS), 0);
 		}
 		else
 		{

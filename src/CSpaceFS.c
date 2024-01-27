@@ -922,6 +922,189 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 	return STATUS_SUCCESS;
 }
 
+dealloc(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size, unsigned long long newsize)
+{
+	if (size > newsize)
+	{
+		unsigned long long loc = 0;
+		if (index)
+		{
+			for (unsigned long long i = 0; i < KMCSFS->tablestrlen; i++)
+			{
+				if (KMCSFS->tablestr[i] == *".")
+				{
+					loc++;
+					if (loc == index)
+					{
+						loc = i + 1;
+						break;
+					}
+				}
+			}
+		}
+
+		bool notzero = false;
+		bool multisector = false;
+		unsigned cur = 0;
+		unsigned long long int0 = 0;
+		unsigned long long int1 = 0;
+		unsigned long long int2 = 0;
+		unsigned long long int3 = 0;
+		unsigned long long filesize = 0;
+		unsigned long long offset = loc;
+
+		for (unsigned long long i = loc; i < KMCSFS->tablestrlen; i++)
+		{
+			if (KMCSFS->tablestr[i] == *"," || KMCSFS->tablestr[i] == *".")
+			{
+				if (notzero)
+				{
+					if (multisector)
+					{
+						unsigned long long o = 0;
+						for (; o < int0 - int3; o++)
+						{
+							filesize += KMCSFS->sectorsize;
+							if (filesize > newsize)
+							{
+								break;
+							}
+						}
+						if (filesize > newsize)
+						{
+							if (o)
+							{
+								if (o == 1)
+								{
+									char num0[21] = {0};
+									sprintf(num0, "%llu", int3);
+									unsigned num0len = strlen(num0);
+									RtlCopyMemory(KMCSFS->tablestr + offset + num0len, KMCSFS->tablestr + i, KMCSFS->tablestrlen - i + num0len);
+									RtlZeroMemory(KMCSFS->tablestr + KMCSFS->tablestrlen - i + offset + num0len, i - offset - num0len);
+									KMCSFS->tablestrlen -= i - offset - num0len;
+									i = offset + num0len;
+								}
+								else
+								{
+									char num0[21] = {0};
+									sprintf(num0, "%llu", int3);
+									unsigned num0len = strlen(num0);
+									char num1[21] = {0};
+									sprintf(num1, "%llu", int3 + o - 1);
+									unsigned num1len = strlen(num1);
+									RtlCopyMemory(KMCSFS->tablestr + offset + num0len + 1, num1, num1len);
+									RtlCopyMemory(KMCSFS->tablestr + offset + num0len + 1 + num1len, KMCSFS->tablestr + i, KMCSFS->tablestrlen - i + num0len + 1 + num1len);
+									RtlZeroMemory(KMCSFS->tablestr + KMCSFS->tablestrlen - i + offset + num0len + 1 + num1len, i - offset - num0len - 1 - num1len);
+									KMCSFS->tablestrlen -= i - offset - num0len - 1 - num1len;
+									i = offset + num0len + 1 + num1len;
+								}
+							}
+							else
+							{
+								RtlCopyMemory(KMCSFS->tablestr + offset, KMCSFS->tablestr + i, KMCSFS->tablestrlen - i);
+								RtlZeroMemory(KMCSFS->tablestr + KMCSFS->tablestrlen - i + offset, i - offset);
+								KMCSFS->tablestrlen -= i - offset;
+								i = offset;
+							}
+						}
+						else
+						{
+							offset = i;
+						}
+					}
+					else
+					{
+						switch (cur)
+						{
+						case 0:
+							filesize += KMCSFS->sectorsize;
+							if (filesize > newsize)
+							{
+								RtlCopyMemory(KMCSFS->tablestr + offset, KMCSFS->tablestr + i, KMCSFS->tablestrlen - i);
+								RtlZeroMemory(KMCSFS->tablestr + KMCSFS->tablestrlen - i + offset, i - offset);
+								KMCSFS->tablestrlen -= i - offset;
+								i = offset;
+							}
+							else
+							{
+								offset = i;
+							}
+							break;
+						case 1:
+							break;
+						case 2:
+							filesize += int2 - int1;
+							if (filesize > newsize)
+							{
+								RtlCopyMemory(KMCSFS->tablestr + offset, KMCSFS->tablestr + i, KMCSFS->tablestrlen - i);
+								RtlZeroMemory(KMCSFS->tablestr + KMCSFS->tablestrlen - i + offset, i - offset);
+								KMCSFS->tablestrlen -= i - offset;
+								i = offset;
+							}
+							else
+							{
+								offset = i;
+							}
+							break;
+						}
+					}
+				}
+				cur = 0;
+				int0 = 0;
+				int1 = 0;
+				int2 = 0;
+				int3 = 0;
+				multisector = false;
+				if (KMCSFS->tablestr[i] == *".")
+				{
+					break;
+				}
+			}
+			else if (KMCSFS->tablestr[i] == *";")
+			{
+				cur++;
+			}
+			else if (KMCSFS->tablestr[i] == *"-")
+			{
+				int3 = int0;
+				multisector = true;
+				cur = 0;
+				int0 = 0;
+				int1 = 0;
+				int2 = 0;
+			}
+			else
+			{
+				notzero = true;
+				switch (cur)
+				{
+				case 0:
+					int0 += toint(KMCSFS->tablestr[i] & 0xff);
+					if (KMCSFS->tablestr[i + 1] != *";" && KMCSFS->tablestr[i + 1] != *"," && KMCSFS->tablestr[i + 1] != *"." && KMCSFS->tablestr[i + 1] != *"-")
+					{
+						int0 *= 10;
+					}
+					break;
+				case 1:
+					int1 += toint(KMCSFS->tablestr[i] & 0xff);
+					if (KMCSFS->tablestr[i + 1] != *";" && KMCSFS->tablestr[i + 1] != *"," && KMCSFS->tablestr[i + 1] != *"." && KMCSFS->tablestr[i + 1] != *"-")
+					{
+						int1 *= 10;
+					}
+					break;
+				case 2:
+					int2 += toint(KMCSFS->tablestr[i] & 0xff);
+					if (KMCSFS->tablestr[i + 1] != *";" && KMCSFS->tablestr[i + 1] != *"," && KMCSFS->tablestr[i + 1] != *"." && KMCSFS->tablestr[i + 1] != *"-")
+					{
+						int2 *= 10;
+					}
+					break;
+				}
+			}
+		}
+	}
+}
+
 bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size)
 {
 	if (size)
