@@ -2924,13 +2924,15 @@ static NTSTATUS set_label(_In_ device_extension* Vcb, _In_ FILE_FS_LABEL_INFORMA
 			}
 			else
 			{
-				Status = STATUS_END_OF_FILE;
+				Status = STATUS_DISK_FULL;
 				goto free;
 			}
 		}
 		else
 		{
-			// Shrink the file
+			dealloc(&Vcb->vde->pdode->KMCSFS, index, filesize, 0);
+			find_block(&Vcb->vde->pdode->KMCSFS, index, labellen);
+			filesize = labellen;
 		}
 	}
 	Status = write_file(fcb, label, 0, labellen, index, filesize, Irp2);

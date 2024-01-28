@@ -333,7 +333,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 		UNICODE_STRING fn2;
 		if (FileObject->RelatedFileObject && FileObject->RelatedFileObject->FileName.Length > 2)
 		{
-			fn2.Length = FileObject->RelatedFileObject->FileName.Length + FileObject->FileName.Length + 2 * sizeof(WCHAR);
+			fn2.Length = FileObject->RelatedFileObject->FileName.Length + FileObject->FileName.Length + sizeof(WCHAR);
 			fn2.Buffer = ExAllocatePoolWithTag(pool_type, fn2.Length, ALLOC_TAG);
 			if (!fn2.Buffer)
 			{
@@ -358,7 +358,6 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 			fn2.Buffer[0] = *L"\\";
 			RtlCopyMemory(fn2.Buffer + 1, FileObject->FileName.Buffer, FileObject->FileName.Length);
 		}
-		fn2.Buffer[fn2.Length / sizeof(WCHAR) - 1] = 0;
 		ExFreePool(FileObject->FileName.Buffer);
 		FileObject->FileName = fn2;
 	}
@@ -538,9 +537,51 @@ loaded:
 		Status = create_file(Irp, Vcb, FileObject, fn);
 		if (NT_SUCCESS(Status))
 		{
-			Irp->IoStatus.Information = FILE_CREATED;
-			created = true;
-			goto open;
+			IrpSp->Parameters.Create.FileAttributes = 0;
+			UNICODE_STRING securityfn;
+			securityfn.Length = fn.Length - sizeof(WCHAR);
+			securityfn.Buffer = fn.Buffer + 1;
+			Status = create_file(Irp, Vcb, FileObject, securityfn);
+			if (NT_SUCCESS(Status))
+			{
+				char security[] = "O:WDG:WDD:P(A;;FA;;;WD)";
+				fcb* fcb = create_fcb(Vcb, NonPagedPool);
+				if (!fcb)
+				{
+					ERR("out of memory\n");
+					Status = STATUS_INSUFFICIENT_RESOURCES;
+				}
+				else
+				{
+					PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+					if (!Irp2)
+					{
+						ERR("out of memory\n");
+						free_fcb(fcb);
+						reap_fcb(fcb);
+						Status = STATUS_INSUFFICIENT_RESOURCES;
+					}
+					else
+					{
+						Irp2->Flags |= IRP_NOCACHE;
+						unsigned long long securityindex = get_filename_index(securityfn, Vcb->vde->pdode->KMCSFS);
+						if (find_block(&Vcb->vde->pdode->KMCSFS, securityindex, 23))
+						{
+							Status = write_file(fcb, security, 0, 23, securityindex, 23, Irp2);
+						}
+						else
+						{
+							Status = STATUS_DISK_FULL;
+						}
+					}
+				}
+				if (NT_SUCCESS(Status))
+				{
+					Irp->IoStatus.Information = FILE_CREATED;
+					created = true;
+					goto open;
+				}
+			}
 		}
 	}
 

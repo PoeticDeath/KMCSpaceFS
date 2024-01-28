@@ -114,9 +114,7 @@ char* decode(char* bytes, unsigned long long len)
 unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS KMCSFS)
 {
 	unsigned long long loc = 0;
-	unsigned long long FileNameLen = 0;
-
-	for (; FileName.Buffer[FileNameLen] != 0; FileNameLen++);
+	unsigned long long FileNameLen = FileName.Length / sizeof(WCHAR);
 	if (!FileNameLen)
 	{
 		return 0;
@@ -1425,7 +1423,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 
 						if (!used_sector_bytes)
 						{
-							used_sector_bytes = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->sectorsize / sizeof(unsigned long long), ALLOC_TAG);
+							used_sector_bytes = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->sectorsize / 8, ALLOC_TAG);
 							if (!used_sector_bytes)
 							{
 								ERR("out of memory\n");
@@ -1434,7 +1432,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 								return false;
 							}
 						}
-						RtlZeroMemory(used_sector_bytes, KMCSFS->sectorsize / sizeof(unsigned long long));
+						RtlZeroMemory(used_sector_bytes, KMCSFS->sectorsize / 8);
 
 						cur = 0;
 						int0 = 0;
