@@ -46,7 +46,7 @@ typedef struct _FILE_ID_EXTD_BOTH_DIR_INFORMATION
 } FILE_ID_EXTD_BOTH_DIR_INFORMATION, *PFILE_ID_EXTD_BOTH_DIR_INFORMATION;
 #endif
 
-static NTSTATUS query_directory(PIRP Irp)
+NTSTATUS query_directory(PIRP Irp)
 {
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	fcb* fcb = IrpSp->FileObject->FsContext;
@@ -191,6 +191,11 @@ static NTSTATUS query_directory(PIRP Irp)
 
 		if (filenamelen)
 		{
+			if (!buf)
+			{
+				Status = STATUS_BUFFER_OVERFLOW;
+				goto end;
+			}
 			Filename.Length = filenamelen * sizeof(WCHAR);
 			unsigned long long index = ccb->query_dir_index - 1;
 			unsigned long long CT = chtime(index, 0, 4, Vcb->vde->pdode->KMCSFS);

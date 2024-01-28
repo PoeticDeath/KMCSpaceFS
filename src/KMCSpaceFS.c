@@ -3476,7 +3476,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_READ]                     = Read;
 	DriverObject->MajorFunction[IRP_MJ_WRITE]                    = Write;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION]        = QueryInformation;
-	//DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION]          = SetInformation;
+	DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION]          = SetInformation;
 	DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = FlushBuffers;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = QueryVolumeInformation;
 	DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = SetVolumeInformation;

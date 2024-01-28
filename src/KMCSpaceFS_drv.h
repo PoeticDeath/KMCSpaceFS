@@ -381,10 +381,16 @@ _Dispatch_type_(IRP_MJ_DIRECTORY_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall DirectoryControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
+NTSTATUS query_directory(IN PIRP Irp);
+
 // in fileinfo.c
 _Dispatch_type_(IRP_MJ_QUERY_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall QueryInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+
+_Dispatch_type_(IRP_MJ_SET_INFORMATION)
+_Function_class_(DRIVER_DISPATCH)
+NTSTATUS __stdcall SetInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
 // in read.c
 _Dispatch_type_(IRP_MJ_READ)

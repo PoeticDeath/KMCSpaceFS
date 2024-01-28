@@ -142,6 +142,363 @@ typedef struct _FILE_LINKS_FULL_ID_INFORMATION
 
 #endif
 
+static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFILE_OBJECT FileObject, bool ex)
+{
+	fcb* fcb = FileObject->FsContext;
+	ccb* ccb = FileObject->FsContext2;
+	ULONG flags;
+	NTSTATUS Status;
+
+	if (ex)
+	{
+		FILE_DISPOSITION_INFORMATION_EX* fdi = Irp->AssociatedIrp.SystemBuffer;
+
+		flags = fdi->Flags;
+	}
+	else
+	{
+		FILE_DISPOSITION_INFORMATION* fdi = Irp->AssociatedIrp.SystemBuffer;
+
+		flags = fdi->DeleteFile ? FILE_DISPOSITION_DELETE : 0;
+	}
+
+	ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
+
+	TRACE("changing delete_on_close to %s for fcb %p\n", flags & FILE_DISPOSITION_DELETE ? "true" : "false", fcb);
+
+	unsigned long winattrs = chwinattrs(get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS), 0, Vcb->vde->pdode->KMCSFS);
+
+	TRACE("atts = %lx\n", winattrs);
+
+	if (winattrs & FILE_ATTRIBUTE_READONLY)
+	{
+		TRACE("not allowing readonly file to be deleted\n");
+		Status = STATUS_CANNOT_DELETE;
+		goto end;
+	}
+
+	if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
+	{
+		PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+		if (!Irp2)
+		{
+			ERR("out of memory\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto end;
+		}
+		Irp2->MdlAddress = NULL;
+		PIO_STACK_LOCATION IrpSp2 = IoGetCurrentIrpStackLocation(Irp2);
+		IrpSp2->FileObject = FileObject;
+		IrpSp2->Parameters.QueryDirectory.FileInformationClass = FileNamesInformation;
+		IrpSp2->Parameters.QueryDirectory.Length = 0;
+		unsigned long long backupdirindex = ccb->query_dir_index;
+		unsigned long long backupdiroffset = ccb->query_dir_offset;
+		ccb->query_dir_index = 0;
+		ccb->query_dir_offset = 0;
+		if (query_directory(Irp2) == STATUS_BUFFER_OVERFLOW)
+		{
+			Status = STATUS_DIRECTORY_NOT_EMPTY;
+			ccb->query_dir_index = backupdirindex;
+			ccb->query_dir_offset = backupdiroffset;
+			IoFreeIrp(Irp2);
+			goto end;
+		}
+		ccb->query_dir_index = backupdirindex;
+		ccb->query_dir_offset = backupdiroffset;
+		IoFreeIrp(Irp2);
+	}
+
+	if (!MmFlushImageSection(&fcb->nonpaged->segment_object, MmFlushForDelete))
+	{
+		if (!ex || flags & FILE_DISPOSITION_FORCE_IMAGE_SECTION_CHECK)
+		{
+			TRACE("trying to delete file which is being mapped as an image\n");
+			Status = STATUS_CANNOT_DELETE;
+			goto end;
+		}
+	}
+
+	FileObject->DeletePending = flags & FILE_DISPOSITION_DELETE;
+
+	Status = STATUS_SUCCESS;
+
+end:
+	ExReleaseResourceLite(fcb->Header.Resource);
+
+	// send notification that directory is about to be deleted
+	if (NT_SUCCESS(Status) && flags & FILE_DISPOSITION_DELETE && winattrs & FILE_ATTRIBUTE_DIRECTORY)
+	{
+		FsRtlNotifyFullChangeDirectory(Vcb->NotifySync, &Vcb->DirNotifyList, FileObject->FsContext, NULL, false, false, 0, NULL, NULL, NULL);
+	}
+
+	return Status;
+}
+
+static NTSTATUS set_end_of_file_information(device_extension* Vcb, PIRP Irp, PFILE_OBJECT FileObject, bool advance_only, bool prealloc)
+{
+	FILE_END_OF_FILE_INFORMATION* feofi = Irp->AssociatedIrp.SystemBuffer;
+	unsigned long long index = get_filename_index(((ccb*)FileObject->FsContext2)->filename, Vcb->vde->pdode->KMCSFS);
+	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
+	if (advance_only)
+	{
+		return STATUS_SUCCESS;
+	}
+	if (prealloc)
+	{
+		if (feofi->EndOfFile.QuadPart > filesize)
+		{
+			if (!find_block(&Vcb->vde->pdode->KMCSFS, index, feofi->EndOfFile.QuadPart - filesize))
+			{
+				return STATUS_DISK_FULL;
+			}
+		}
+		else if (feofi->EndOfFile.QuadPart < filesize)
+		{
+			dealloc(&Vcb->vde->pdode->KMCSFS, index, filesize, feofi->EndOfFile.QuadPart);
+		}
+	}
+	return STATUS_SUCCESS;
+}
+
+static NTSTATUS set_position_information(PFILE_OBJECT FileObject, PIRP Irp)
+{
+	FILE_POSITION_INFORMATION* fpi = (FILE_POSITION_INFORMATION*)Irp->AssociatedIrp.SystemBuffer;
+
+	TRACE("setting the position on %p to %I64x\n", FileObject, fpi->CurrentByteOffset.QuadPart);
+
+	// FIXME - make sure aligned for FO_NO_INTERMEDIATE_BUFFERING
+
+	FileObject->CurrentByteOffset = fpi->CurrentByteOffset;
+
+	return STATUS_SUCCESS;
+}
+
+_Dispatch_type_(IRP_MJ_SET_INFORMATION)
+_Function_class_(DRIVER_DISPATCH)
+NTSTATUS __stdcall SetInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+	NTSTATUS Status;
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+	fcb* fcb = IrpSp->FileObject->FsContext;
+	ccb* ccb = IrpSp->FileObject->FsContext2;
+	bool top_level;
+
+	FsRtlEnterFileSystem();
+
+	top_level = is_top_level(Irp);
+
+	Irp->IoStatus.Information = 0;
+
+	if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		Status = STATUS_INVALID_DEVICE_REQUEST;
+		goto end;
+	}
+	else if (!Vcb || Vcb->type != VCB_TYPE_FS)
+	{
+		Status = STATUS_INVALID_PARAMETER;
+		goto end;
+	}
+
+	if (!(Vcb->Vpb->Flags & VPB_MOUNTED))
+	{
+		Status = STATUS_ACCESS_DENIED;
+		goto end;
+	}
+
+	if (Vcb->readonly && IrpSp->Parameters.SetFile.FileInformationClass != FilePositionInformation)
+	{
+		Status = STATUS_MEDIA_WRITE_PROTECTED;
+		goto end;
+	}
+
+	if (!fcb)
+	{
+		ERR("no fcb\n");
+		Status = STATUS_INVALID_PARAMETER;
+		goto end;
+	}
+
+	if (!ccb)
+	{
+		ERR("no ccb\n");
+		Status = STATUS_INVALID_PARAMETER;
+		goto end;
+	}
+
+	Status = STATUS_NOT_IMPLEMENTED;
+
+	TRACE("set information\n");
+
+	switch (IrpSp->Parameters.SetFile.FileInformationClass)
+	{
+	case FileAllocationInformation:
+	{
+		TRACE("FileAllocationInformation\n");
+
+		if (Irp->RequestorMode == UserMode && !(ccb->access & FILE_WRITE_DATA))
+		{
+			WARN("insufficient privileges\n");
+			Status = STATUS_ACCESS_DENIED;
+			break;
+		}
+
+		Status = set_end_of_file_information(Vcb, Irp, IrpSp->FileObject, false, true);
+		break;
+	}
+
+	case FileBasicInformation:
+	{
+		TRACE("FileBasicInformation\n");
+
+		if (Irp->RequestorMode == UserMode && !(ccb->access & FILE_WRITE_ATTRIBUTES))
+		{
+			WARN("insufficient privileges\n");
+			Status = STATUS_ACCESS_DENIED;
+			break;
+		}
+
+		//Status = set_basic_information(Vcb, Irp, IrpSp->FileObject);
+
+		break;
+	}
+
+	case FileDispositionInformation:
+	{
+		TRACE("FileDispositionInformation\n");
+
+		if (Irp->RequestorMode == UserMode && !(ccb->access & DELETE))
+		{
+			WARN("insufficient privileges\n");
+			Status = STATUS_ACCESS_DENIED;
+			break;
+		}
+
+		Status = set_disposition_information(Vcb, Irp, IrpSp->FileObject, false);
+
+		break;
+	}
+
+	case FileEndOfFileInformation:
+	{
+		TRACE("FileEndOfFileInformation\n");
+
+		if (Irp->RequestorMode == UserMode && !(ccb->access & (FILE_WRITE_DATA | FILE_APPEND_DATA)))
+		{
+			WARN("insufficient privileges\n");
+			Status = STATUS_ACCESS_DENIED;
+			break;
+		}
+
+		Status = set_end_of_file_information(Vcb, Irp, IrpSp->FileObject, IrpSp->Parameters.SetFile.AdvanceOnly, false);
+
+		break;
+	}
+
+	case FileLinkInformation:
+		TRACE("FileLinkInformation\n");
+		//Status = set_link_information(Vcb, Irp, IrpSp->FileObject, IrpSp->Parameters.SetFile.FileObject, false);
+		break;
+
+	case FilePositionInformation:
+		TRACE("FilePositionInformation\n");
+		Status = set_position_information(IrpSp->FileObject, Irp);
+		break;
+
+	case FileRenameInformation:
+		TRACE("FileRenameInformation\n");
+		//Status = set_rename_information(Vcb, Irp, IrpSp->FileObject, IrpSp->Parameters.SetFile.FileObject, false);
+		break;
+
+	case FileValidDataLengthInformation:
+	{
+		TRACE("FileValidDataLengthInformation\n");
+
+		if (Irp->RequestorMode == UserMode && !(ccb->access & (FILE_WRITE_DATA | FILE_APPEND_DATA)))
+		{
+			WARN("insufficient privileges\n");
+			Status = STATUS_ACCESS_DENIED;
+			break;
+		}
+
+		//Status = set_valid_data_length_information(Vcb, Irp, IrpSp->FileObject);
+
+		break;
+	}
+
+#ifndef _MSC_VER
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
+#endif
+	case FileDispositionInformationEx:
+	{
+		TRACE("FileDispositionInformationEx\n");
+
+		if (Irp->RequestorMode == UserMode && !(ccb->access & DELETE))
+		{
+			WARN("insufficient privileges\n");
+			Status = STATUS_ACCESS_DENIED;
+			break;
+		}
+
+		Status = set_disposition_information(Vcb, Irp, IrpSp->FileObject, true);
+
+		break;
+	}
+
+	case FileRenameInformationEx:
+		TRACE("FileRenameInformationEx\n");
+		//Status = set_rename_information(Vcb, Irp, IrpSp->FileObject, IrpSp->Parameters.SetFile.FileObject, true);
+		break;
+
+	case FileLinkInformationEx:
+		TRACE("FileLinkInformationEx\n");
+		//Status = set_link_information(Vcb, Irp, IrpSp->FileObject, IrpSp->Parameters.SetFile.FileObject, true);
+		break;
+
+	case FileCaseSensitiveInformation:
+		TRACE("FileCaseSensitiveInformation\n");
+
+		if (Irp->RequestorMode == UserMode && !(ccb->access & FILE_WRITE_ATTRIBUTES))
+		{
+			WARN("insufficient privileges\n");
+			Status = STATUS_ACCESS_DENIED;
+			break;
+		}
+
+		//Status = set_case_sensitive_information(Irp);
+		break;
+
+	case FileStorageReserveIdInformation:
+		WARN("unimplemented FileInformationClass FileStorageReserveIdInformation\n");
+		break;
+
+#ifndef _MSC_VER
+#pragma GCC diagnostic pop
+#endif
+
+	default:
+		WARN("unknown FileInformationClass %u\n", IrpSp->Parameters.SetFile.FileInformationClass);
+	}
+
+end:
+	Irp->IoStatus.Status = Status;
+
+	TRACE("returning %08lx\n", Status);
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
+
+	FsRtlExitFileSystem();
+
+	return Status;
+}
+
 static NTSTATUS fill_in_file_basic_information(FILE_BASIC_INFORMATION* fbi, LONG* length, fcb* fcb, unsigned long long index)
 {
 	RtlZeroMemory(fbi, sizeof(FILE_BASIC_INFORMATION));
