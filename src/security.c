@@ -2238,22 +2238,22 @@ static const WCHAR SDDL_INHERITED[]         = {'I','D',0};
 static const WCHAR SDDL_AUDIT_SUCCESS[]     = {'S','A',0};
 static const WCHAR SDDL_AUDIT_FAILURE[]     = {'F','A',0};
 
-unsigned short get_char_typeW(WCHAR ch)
+static unsigned short get_char_typeW(WCHAR ch)
 {
 	return wine_wctype_table[wine_wctype_table[ch >> 8] + (ch & 0xff)];
 }
 
-int isalphaW(WCHAR wc)
+static int isalphaW(WCHAR wc)
 {
 	return get_char_typeW(wc) & (C1_ALPHA | C1_LOWER | C1_UPPER);
 }
 
-int isspaceW(WCHAR wc)
+static int isspaceW(WCHAR wc)
 {
 	return get_char_typeW(wc) & C1_SPACE;
 }
 
-DWORD WINAPI CharUpperBuffW(LPWSTR str, DWORD len)
+static DWORD WINAPI CharUpperBuffW(LPWSTR str, DWORD len)
 {
 	DWORD ret = len;
 	if (!str) return 0; /* YES */
@@ -2268,7 +2268,7 @@ static inline WCHAR toupperW(WCHAR c)
 	return tmp;
 }
 
-long int strtolW(const WCHAR* nptr, WCHAR** endptr, int base)
+static long int strtolW(const WCHAR* nptr, WCHAR** endptr, int base)
 {
 	int negative;
 	register unsigned long int cutoff;
@@ -2412,7 +2412,7 @@ noconv:
 	return 0L;
 }
 
-unsigned long int strtoulW(const WCHAR* nptr, WCHAR** endptr, int base)
+static unsigned long int strtoulW(const WCHAR* nptr, WCHAR** endptr, int base)
 {
 	int negative;
 	register unsigned long int cutoff;
@@ -2660,27 +2660,27 @@ static const WELLKNOWNRID WellKnownRids[] =
 	{{'R','S'}, WinAccountRasAndIasServersSid, DOMAIN_ALIAS_RID_RAS_SERVERS},
 };
 
-DWORD WINAPI GetSidLengthRequired(UCHAR nSubAuthorityCount)
+static DWORD WINAPI GetSidLengthRequired(UCHAR nSubAuthorityCount)
 {
 	return (DWORD)RtlLengthRequiredSid(nSubAuthorityCount);
 }
 
-PUCHAR WINAPI GetSidSubAuthorityCount(PSID pSid)
+static PUCHAR WINAPI GetSidSubAuthorityCount(PSID pSid)
 {
 	return RtlSubAuthorityCountSid(pSid);
 }
 
-long int atolW(const WCHAR* str)
+static long int atolW(const WCHAR* str)
 {
 	return strtolW(str, (WCHAR**)0, 10);
 }
 
-int atoiW(const WCHAR* str)
+static int atoiW(const WCHAR* str)
 {
 	return (int)atolW(str);
 }
 
-BOOL ADVAPI_GetComputerSid(PSID sid)
+static BOOL ADVAPI_GetComputerSid(PSID sid)
 {
 	static const struct /* same fields as struct SID */
 	{
@@ -3376,7 +3376,7 @@ lend:
 	return bret;
 }
 
-BOOL WINAPI ConvertStringSecurityDescriptorToSecurityDescriptorW(LPCWSTR StringSecurityDescriptor, DWORD StringSDRevision, PSECURITY_DESCRIPTOR* SecurityDescriptor, PULONG SecurityDescriptorSize)
+static BOOL WINAPI ConvertStringSecurityDescriptorToSecurityDescriptorW(LPCWSTR StringSecurityDescriptor, DWORD StringSDRevision, PSECURITY_DESCRIPTOR* SecurityDescriptor, PULONG SecurityDescriptorSize)
 {
 	DWORD cBytes;
 	SECURITY_DESCRIPTOR* psd;
@@ -3610,6 +3610,867 @@ end:
 	}
 
 	TRACE("returning %08lx\n", Status);
+
+	FsRtlExitFileSystem();
+
+	return Status;
+}
+
+static int __cdecl sprintfW(WCHAR* _Buffer, const WCHAR* _Format, ...)
+{
+	unsigned long long _BufferLen = wcslen(_Buffer);
+	char* _buffer = ExAllocatePoolWithTag(NonPagedPool, _BufferLen, ALLOC_TAG);
+	if (!_buffer)
+	{
+		return 0;
+	}
+	unsigned long long _FormatLen = wcslen(_Format);
+	char* _format = ExAllocatePoolWithTag(NonPagedPool, _FormatLen, ALLOC_TAG);
+	if (!_format)
+	{
+		ExFreePool(_buffer);
+		return 0;
+	}
+	for (unsigned long long i = 0; i < _BufferLen; i++)
+	{
+		_buffer[i] = _Buffer[i] & 0xff;
+	}
+	for (unsigned long long i = 0; i < _FormatLen; i++)
+	{
+		_format[i] = _Format[i] & 0xff;
+	}
+	va_list args;
+	va_start(args, _Format);
+	vsprintf(_buffer, _format, args);
+	va_end(args);
+	ExFreePool(_format);
+	unsigned long long ret = strlen(_buffer);
+	ExFreePool(_Buffer);
+	_Buffer = ExAllocatePoolWithTag(NonPagedPool, (ret + 1) * sizeof(WCHAR), ALLOC_TAG);
+	if (!_Buffer)
+	{
+		ExFreePool(_buffer);
+		return 0;
+	}
+	for (unsigned long long i = 0; i < ret; i++)
+	{
+		_Buffer[i] = _buffer[i] & 0xff;
+	}
+	_Buffer[ret] = 0;
+	ExFreePool(_buffer);
+	return ret;
+}
+
+static void DumpString(LPCWSTR string, int cch, WCHAR** pwptr, ULONG* plen)
+{
+	if (cch == -1)
+	{
+		cch = strlenW(string);
+	}
+
+	if (plen)
+	{
+		*plen += cch;
+	}
+
+	if (pwptr)
+	{
+		RtlCopyMemory(*pwptr, string, sizeof(WCHAR) * cch);
+		*pwptr += cch;
+	}
+}
+
+static BOOL DumpSidNumeric(PSID psid, WCHAR** pwptr, ULONG* plen)
+{
+	DWORD i;
+	WCHAR fmt[] = {'S','-','%','u','-','%','d',0};
+	WCHAR subauthfmt[] = {'-','%','u',0};
+	WCHAR buf[26];
+	SID* pisid = psid;
+
+	if (!RtlValidSid(psid) || pisid->Revision != SDDL_REVISION)
+	{
+		return FALSE;
+	}
+
+	if (pisid->IdentifierAuthority.Value[0] || pisid->IdentifierAuthority.Value[1])
+	{
+		ERR("not matching MS' bugs\n");
+		return FALSE;
+	}
+
+	sprintfW(buf, fmt, pisid->Revision, MAKELONG(MAKEWORD(pisid->IdentifierAuthority.Value[5], pisid->IdentifierAuthority.Value[4]), MAKEWORD(pisid->IdentifierAuthority.Value[3], pisid->IdentifierAuthority.Value[2])));
+	DumpString(buf, -1, pwptr, plen);
+
+	for (i = 0; i < pisid->SubAuthorityCount; i++)
+	{
+		sprintfW(buf, subauthfmt, pisid->SubAuthority[i]);
+		DumpString(buf, -1, pwptr, plen);
+	}
+	return TRUE;
+}
+
+static BOOL DumpSid(PSID psid, WCHAR** pwptr, ULONG* plen)
+{
+	size_t i;
+	for (i = 0; i < sizeof(WellKnownSids) / sizeof(WellKnownSids[0]); i++)
+	{
+		if (WellKnownSids[i].wstr[0] && RtlEqualSid(psid, (PSID) & (WellKnownSids[i].Sid.Revision)))
+		{
+			DumpString(WellKnownSids[i].wstr, 2, pwptr, plen);
+			return TRUE;
+		}
+	}
+
+	return DumpSidNumeric(psid, pwptr, plen);
+}
+
+static const LPCWSTR AceRightBitNames[32] =
+{
+		SDDL_CREATE_CHILD,        /*  0 */
+		SDDL_DELETE_CHILD,
+		SDDL_LIST_CHILDREN,
+		SDDL_SELF_WRITE,
+		SDDL_READ_PROPERTY,       /*  4 */
+		SDDL_WRITE_PROPERTY,
+		SDDL_DELETE_TREE,
+		SDDL_LIST_OBJECT,
+		SDDL_CONTROL_ACCESS,      /*  8 */
+		NULL,
+		NULL,
+		NULL,
+		NULL,                     /* 12 */
+		NULL,
+		NULL,
+		NULL,
+		SDDL_STANDARD_DELETE,     /* 16 */
+		SDDL_READ_CONTROL,
+		SDDL_WRITE_DAC,
+		SDDL_WRITE_OWNER,
+		NULL,                     /* 20 */
+		NULL,
+		NULL,
+		NULL,
+		NULL,                     /* 24 */
+		NULL,
+		NULL,
+		NULL,
+		SDDL_GENERIC_ALL,         /* 28 */
+		SDDL_GENERIC_EXECUTE,
+		SDDL_GENERIC_WRITE,
+		SDDL_GENERIC_READ
+};
+
+static void DumpRights(DWORD mask, WCHAR** pwptr, ULONG* plen)
+{
+	static const WCHAR fmtW[] = {'0','x','%','x',0};
+	WCHAR buf[15];
+	size_t i;
+
+	if (mask == 0)
+	{
+		return;
+	}
+
+	/* first check if the right have name */
+	for (i = 0; i < sizeof(AceRights) / sizeof(AceRights[0]); i++)
+	{
+		if (AceRights[i].wstr == NULL)
+		{
+			break;
+		}
+		if (mask == AceRights[i].value)
+		{
+			DumpString(AceRights[i].wstr, -1, pwptr, plen);
+			return;
+		}
+	}
+
+	/* then check if it can be built from bit names */
+	for (i = 0; i < 32; i++)
+	{
+		if ((mask & (1 << i)) && (AceRightBitNames[i] == NULL))
+		{
+			/* can't be built from bit names */
+			sprintfW(buf, fmtW, mask);
+			DumpString(buf, -1, pwptr, plen);
+			return;
+		}
+	}
+
+	/* build from bit names */
+	for (i = 0; i < 32; i++)
+	{
+		if (mask & (1 << i))
+		{
+			DumpString(AceRightBitNames[i], -1, pwptr, plen);
+		}
+	}
+}
+
+static BOOL DumpAce(LPVOID pace, WCHAR** pwptr, ULONG* plen)
+{
+	ACCESS_ALLOWED_ACE* piace; /* all the supported ACEs have the same memory layout */
+	static const WCHAR openbr = '(';
+	static const WCHAR closebr = ')';
+	static const WCHAR semicolon = ';';
+
+	if (((PACE_HEADER)pace)->AceType > SYSTEM_ALARM_ACE_TYPE || ((PACE_HEADER)pace)->AceSize < sizeof(ACCESS_ALLOWED_ACE))
+	{
+		return FALSE;
+	}
+
+	piace = pace;
+	DumpString(&openbr, 1, pwptr, plen);
+	switch (piace->Header.AceType)
+	{
+	case ACCESS_ALLOWED_ACE_TYPE:
+		DumpString(SDDL_ACCESS_ALLOWED, -1, pwptr, plen);
+		break;
+	case ACCESS_DENIED_ACE_TYPE:
+		DumpString(SDDL_ACCESS_DENIED, -1, pwptr, plen);
+		break;
+	case SYSTEM_AUDIT_ACE_TYPE:
+		DumpString(SDDL_AUDIT, -1, pwptr, plen);
+		break;
+	case SYSTEM_ALARM_ACE_TYPE:
+		DumpString(SDDL_ALARM, -1, pwptr, plen);
+		break;
+	}
+	DumpString(&semicolon, 1, pwptr, plen);
+
+	if (piace->Header.AceFlags & OBJECT_INHERIT_ACE)
+	{
+		DumpString(SDDL_OBJECT_INHERIT, -1, pwptr, plen);
+	}
+	if (piace->Header.AceFlags & CONTAINER_INHERIT_ACE)
+	{
+		DumpString(SDDL_CONTAINER_INHERIT, -1, pwptr, plen);
+	}
+	if (piace->Header.AceFlags & NO_PROPAGATE_INHERIT_ACE)
+	{
+		DumpString(SDDL_NO_PROPAGATE, -1, pwptr, plen);
+	}
+	if (piace->Header.AceFlags & INHERIT_ONLY_ACE)
+	{
+		DumpString(SDDL_INHERIT_ONLY, -1, pwptr, plen);
+	}
+	if (piace->Header.AceFlags & INHERITED_ACE)
+	{
+		DumpString(SDDL_INHERITED, -1, pwptr, plen);
+	}
+	if (piace->Header.AceFlags & SUCCESSFUL_ACCESS_ACE_FLAG)
+	{
+		DumpString(SDDL_AUDIT_SUCCESS, -1, pwptr, plen);
+	}
+	if (piace->Header.AceFlags & FAILED_ACCESS_ACE_FLAG)
+	{
+		DumpString(SDDL_AUDIT_FAILURE, -1, pwptr, plen);
+	}
+	DumpString(&semicolon, 1, pwptr, plen);
+	DumpRights(piace->Mask, pwptr, plen);
+	DumpString(&semicolon, 1, pwptr, plen);
+	/* objects not supported */
+	DumpString(&semicolon, 1, pwptr, plen);
+	/* objects not supported */
+	DumpString(&semicolon, 1, pwptr, plen);
+	if (!DumpSid((PSID)&piace->SidStart, pwptr, plen))
+	{
+		return FALSE;
+	}
+	DumpString(&closebr, 1, pwptr, plen);
+	return TRUE;
+}
+
+static const WCHAR Protected[] = {'P',0};
+static const WCHAR AutoInheritReq[] = {'A','R',0};
+static const WCHAR AutoInherited[] = {'A','I',0};
+
+static BOOL DumpAcl(PACL pacl, WCHAR** pwptr, ULONG* plen, BOOL protected, BOOL autoInheritReq, BOOL autoInherited)
+{
+	WORD count;
+	int i;
+
+	if (protected)
+	{
+		DumpString(Protected, -1, pwptr, plen);
+	}
+	if (autoInheritReq)
+	{
+		DumpString(AutoInheritReq, -1, pwptr, plen);
+	}
+	if (autoInherited)
+	{
+		DumpString(AutoInherited, -1, pwptr, plen);
+	}
+
+	if (pacl == NULL)
+	{
+		return TRUE;
+	}
+
+	count = pacl->AceCount;
+	for (i = 0; i < count; i++)
+	{
+		LPVOID ace;
+		if (!NT_SUCCESS(RtlGetAce(pacl, i, &ace)))
+		{
+			return FALSE;
+		}
+		if (!DumpAce(ace, pwptr, plen))
+		{
+			return FALSE;
+		}
+	}
+
+	return TRUE;
+}
+
+static BOOL WINAPI GetSecurityDescriptorOwner(PSECURITY_DESCRIPTOR pSecurityDescriptor, PSID* pOwner, LPBOOL lpbOwnerDefaulted)
+{
+	BOOLEAN OwnerDefaulted;
+	NTSTATUS Status;
+
+	Status = RtlGetOwnerSecurityDescriptor(pSecurityDescriptor, pOwner, &OwnerDefaulted);
+	*lpbOwnerDefaulted = (BOOL)OwnerDefaulted;
+
+	if (!NT_SUCCESS(Status))
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static BOOL DumpOwner(PSECURITY_DESCRIPTOR SecurityDescriptor, WCHAR** pwptr, ULONG* plen)
+{
+	static const WCHAR prefix[] = {'O',':',0};
+	BOOL bDefaulted;
+	PSID psid;
+
+	if (!GetSecurityDescriptorOwner(SecurityDescriptor, &psid, &bDefaulted))
+	{
+		return FALSE;
+	}
+
+	if (psid == NULL)
+	{
+		return TRUE;
+	}
+
+	DumpString(prefix, -1, pwptr, plen);
+	if (!DumpSid(psid, pwptr, plen))
+	{
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static BOOL WINAPI GetSecurityDescriptorGroup(PSECURITY_DESCRIPTOR pSecurityDescriptor, PSID* pGroup, LPBOOL lpbGroupDefaulted)
+{
+	BOOLEAN GroupDefaulted;
+	NTSTATUS Status;
+
+	Status = RtlGetGroupSecurityDescriptor(pSecurityDescriptor, pGroup, &GroupDefaulted);
+	*lpbGroupDefaulted = (BOOL)GroupDefaulted;
+
+	if (!NT_SUCCESS(Status))
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static BOOL DumpGroup(PSECURITY_DESCRIPTOR SecurityDescriptor, WCHAR** pwptr, ULONG* plen)
+{
+	static const WCHAR prefix[] = {'G',':',0};
+	BOOL bDefaulted;
+	PSID psid;
+
+	if (!GetSecurityDescriptorGroup(SecurityDescriptor, &psid, &bDefaulted))
+	{
+		return FALSE;
+	}
+
+	if (psid == NULL)
+	{
+		return TRUE;
+	}
+
+	DumpString(prefix, -1, pwptr, plen);
+	if (!DumpSid(psid, pwptr, plen))
+	{
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static NTSTATUS NTAPI RtlGetControlSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor, OUT PSECURITY_DESCRIPTOR_CONTROL Control, OUT PULONG Revision)
+{
+	PISECURITY_DESCRIPTOR Sd = (PISECURITY_DESCRIPTOR)SecurityDescriptor;
+
+	/* Read current revision, even if invalid */
+	*Revision = Sd->Revision;
+
+	/* Fail on invalid revision */
+	if (Sd->Revision != SECURITY_DESCRIPTOR_REVISION)
+	{
+		return STATUS_UNKNOWN_REVISION;
+	}
+
+	/* Read current control */
+	*Control = Sd->Control;
+
+	/* All good */
+	return STATUS_SUCCESS;
+}
+
+static BOOL WINAPI GetSecurityDescriptorControl(PSECURITY_DESCRIPTOR pSecurityDescriptor, PSECURITY_DESCRIPTOR_CONTROL pControl, LPDWORD lpdwRevision)
+{
+	NTSTATUS Status;
+
+	Status = RtlGetControlSecurityDescriptor(pSecurityDescriptor, pControl, (PULONG)lpdwRevision);
+	if (!NT_SUCCESS(Status))
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static BOOL WINAPI GetSecurityDescriptorDacl(PSECURITY_DESCRIPTOR pSecurityDescriptor, LPBOOL lpbDaclPresent, PACL* pDacl, LPBOOL lpbDaclDefaulted)
+{
+	BOOLEAN DaclPresent;
+	BOOLEAN DaclDefaulted;
+	NTSTATUS Status;
+
+	Status = RtlGetDaclSecurityDescriptor(pSecurityDescriptor, &DaclPresent, pDacl, &DaclDefaulted);
+	*lpbDaclPresent = (BOOL)DaclPresent;
+	*lpbDaclDefaulted = (BOOL)DaclDefaulted;
+
+	if (!NT_SUCCESS(Status))
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static BOOL DumpDacl(PSECURITY_DESCRIPTOR SecurityDescriptor, WCHAR** pwptr, ULONG* plen)
+{
+	static const WCHAR dacl[] = {'D',':',0};
+	SECURITY_DESCRIPTOR_CONTROL control;
+	BOOL present, defaulted;
+	DWORD revision;
+	PACL pacl;
+
+	if (!GetSecurityDescriptorDacl(SecurityDescriptor, &present, &pacl, &defaulted))
+	{
+		return FALSE;
+	}
+
+	if (!GetSecurityDescriptorControl(SecurityDescriptor, &control, &revision))
+	{
+		return FALSE;
+	}
+
+	if (!present)
+	{
+		return TRUE;
+	}
+
+	DumpString(dacl, 2, pwptr, plen);
+	if (!DumpAcl(pacl, pwptr, plen, control & SE_DACL_PROTECTED, control & SE_DACL_AUTO_INHERIT_REQ, control & SE_DACL_AUTO_INHERITED))
+	{
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static BOOL WINAPI GetSecurityDescriptorSacl(PSECURITY_DESCRIPTOR pSecurityDescriptor, LPBOOL lpbSaclPresent, PACL* pSacl, LPBOOL lpbSaclDefaulted)
+{
+	BOOLEAN SaclPresent;
+	BOOLEAN SaclDefaulted;
+	NTSTATUS Status;
+
+	Status = RtlGetSaclSecurityDescriptor(pSecurityDescriptor, &SaclPresent, pSacl, &SaclDefaulted);
+	*lpbSaclPresent = (BOOL)SaclPresent;
+	*lpbSaclDefaulted = (BOOL)SaclDefaulted;
+
+	if (!NT_SUCCESS(Status))
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static BOOL DumpSacl(PSECURITY_DESCRIPTOR SecurityDescriptor, WCHAR** pwptr, ULONG* plen)
+{
+	static const WCHAR sacl[] = {'S',':',0};
+	SECURITY_DESCRIPTOR_CONTROL control;
+	BOOL present, defaulted;
+	DWORD revision;
+	PACL pacl;
+
+	if (!GetSecurityDescriptorSacl(SecurityDescriptor, &present, &pacl, &defaulted))
+	{
+		return FALSE;
+	}
+
+	if (!GetSecurityDescriptorControl(SecurityDescriptor, &control, &revision))
+	{
+		return FALSE;
+	}
+
+	if (!present)
+	{
+		return TRUE;
+	}
+
+	DumpString(sacl, 2, pwptr, plen);
+	if (!DumpAcl(pacl, pwptr, plen, control & SE_SACL_PROTECTED, control & SE_SACL_AUTO_INHERIT_REQ, control & SE_SACL_AUTO_INHERITED))
+	{
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static BOOL WINAPI ConvertSecurityDescriptorToStringSecurityDescriptorW(PSECURITY_DESCRIPTOR SecurityDescriptor, DWORD SDRevision, SECURITY_INFORMATION RequestedInformation, LPWSTR* OutputString, PULONG OutputLen)
+{
+	ULONG len;
+	WCHAR* wptr, *wstr;
+
+	if (SDRevision != SDDL_REVISION)
+	{
+		ERR("Program requested unknown SDDL revision %d\n", SDRevision);
+		return FALSE;
+	}
+
+	len = 0;
+	if (RequestedInformation & OWNER_SECURITY_INFORMATION)
+	{
+		if (!DumpOwner(SecurityDescriptor, NULL, &len))
+		{
+			return FALSE;
+		}
+	}
+	if (RequestedInformation & GROUP_SECURITY_INFORMATION)
+	{
+		if (!DumpGroup(SecurityDescriptor, NULL, &len))
+		{
+			return FALSE;
+		}
+	}
+	if (RequestedInformation & DACL_SECURITY_INFORMATION)
+	{
+		if (!DumpDacl(SecurityDescriptor, NULL, &len))
+		{
+			return FALSE;
+		}
+	}
+	if (RequestedInformation & SACL_SECURITY_INFORMATION)
+	{
+		if (!DumpSacl(SecurityDescriptor, NULL, &len))
+		{
+			return FALSE;
+		}
+	}
+
+	wstr = wptr = ExAllocatePoolWithTag(PagedPool, (len + 1) * sizeof(WCHAR), ALLOC_TAG);
+	if (!wstr)
+	{
+		ERR("out of memory\n");
+		return FALSE;
+	}
+
+	if (RequestedInformation & OWNER_SECURITY_INFORMATION)
+	{
+		if (!DumpOwner(SecurityDescriptor, &wptr, NULL))
+		{
+			ExFreePool(wstr);
+			return FALSE;
+		}
+	}
+	if (RequestedInformation & GROUP_SECURITY_INFORMATION)
+	{
+		if (!DumpGroup(SecurityDescriptor, &wptr, NULL))
+		{
+			ExFreePool(wstr);
+			return FALSE;
+		}
+	}
+	if (RequestedInformation & DACL_SECURITY_INFORMATION)
+	{
+		if (!DumpDacl(SecurityDescriptor, &wptr, NULL))
+		{
+			ExFreePool(wstr);
+			return FALSE;
+		}
+	}
+	if (RequestedInformation & SACL_SECURITY_INFORMATION)
+	{
+		if (!DumpSacl(SecurityDescriptor, &wptr, NULL))
+		{
+			ExFreePool(wstr);
+			return FALSE;
+		}
+	}
+	*wptr = 0;
+
+	TRACE("ret: %d\n", len);
+	*OutputString = wstr;
+	if (OutputLen)
+	{
+		*OutputLen = strlenW(*OutputString) + 1;
+	}
+	return TRUE;
+}
+
+static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject, SECURITY_DESCRIPTOR* sd, PSECURITY_INFORMATION flags, PIRP Irp)
+{
+	NTSTATUS Status = STATUS_INSUFFICIENT_RESOURCES;
+	fcb* fcb = FileObject->FsContext;
+	ccb* ccb = FileObject->FsContext2;
+	SECURITY_DESCRIPTOR* oldsd = NULL;
+	char* security = NULL;
+	char* Newsecurity = NULL;
+	WCHAR* securityW = NULL;
+	WCHAR* NewsecurityW = NULL;
+	PIRP Irp2 = NULL;
+	SECURITY_DESCRIPTOR* SD = NULL;
+
+	TRACE("(%p, %p, %p, %lx)\n", Vcb, FileObject, sd, *flags);
+
+	if (Vcb->readonly)
+	{
+		return STATUS_MEDIA_WRITE_PROTECTED;
+	}
+
+	if (!fcb || !ccb)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
+
+	UNICODE_STRING securityfile;
+	securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
+	securityfile.Buffer = ccb->filename.Buffer + 1;
+	unsigned long long index = get_filename_index(securityfile, Vcb->vde->pdode->KMCSFS);
+	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
+	security = ExAllocatePoolWithTag(NonPagedPool, filesize, ALLOC_TAG);
+	if (!security)
+	{
+		ERR("out of memory\n");
+		goto end;
+	}
+	unsigned long long bytes_read = 0;
+	Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+	if (!Irp2)
+	{
+		ERR("out of memory\n");
+		goto end;
+	}
+	Irp2->Flags |= IRP_NOCACHE;
+	read_file(fcb, security, 0, filesize, index, &bytes_read, Irp2);
+	if (bytes_read != filesize)
+	{
+		ERR("read_file returned %I64u\n", bytes_read);
+		Status = STATUS_INTERNAL_ERROR;
+		goto end;
+	}
+
+	securityW = ExAllocatePoolWithTag(NonPagedPool, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
+	if (!securityW)
+	{
+		ERR("out of memory\n");
+		goto end;
+	}
+
+	for (unsigned long long i = 0; i < filesize; i++)
+	{
+		securityW[i] = security[i] & 0xff;
+	}
+	securityW[filesize] = 0;
+
+	ULONG BUFLEN = 0;
+	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(securityW, SDDL_REVISION, &SD, &BUFLEN))
+	{
+		goto end;
+	}
+
+	oldsd = SD;
+	Status = SeSetSecurityDescriptorInfo(NULL, flags, sd, (void**)&SD, PagedPool, IoGetFileObjectGenericMapping());
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("SeSetSecurityDescriptorInfo returned %08lx\n", Status);
+		goto end;
+	}
+
+	ULONG NewBUFLEN = 0;
+	if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(SD, SDDL_REVISION, OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | SACL_SECURITY_INFORMATION, &NewsecurityW, &NewBUFLEN))
+	{
+		ERR("ConvertSecurityDescriptorToStringSecurityDescriptorW failed\n");
+		goto end;
+	}
+
+	Newsecurity = ExAllocatePoolWithTag(NonPagedPool, NewBUFLEN + 1, ALLOC_TAG);
+	if (!Newsecurity)
+	{
+		ERR("out of memory\n");
+		goto end;
+	}
+
+	for (unsigned long long i = 0; i < NewBUFLEN; i++)
+	{
+		Newsecurity[i] = NewsecurityW[i] & 0xff;
+	}
+	Newsecurity[NewBUFLEN] = 0;
+
+	if (NewBUFLEN != filesize)
+	{
+		if (NewBUFLEN > filesize)
+		{
+			if (find_block(&Vcb->vde->pdode->KMCSFS, index, NewBUFLEN - filesize))
+			{
+				filesize = NewBUFLEN;
+			}
+			else
+			{
+				Status = STATUS_DISK_FULL;
+				goto end;
+			}
+		}
+		else
+		{
+			dealloc(&Vcb->vde->pdode->KMCSFS, index, filesize, 0);
+			find_block(&Vcb->vde->pdode->KMCSFS, index, NewBUFLEN);
+			filesize = NewBUFLEN;
+		}
+	}
+	Status = write_file(fcb, Newsecurity, 0, NewBUFLEN, index, filesize, Irp2);
+
+end:
+	ExReleaseResourceLite(fcb->Header.Resource);
+
+	if (security)
+	{
+		ExFreePool(security);
+	}
+	if (securityW)
+	{
+		ExFreePool(securityW);
+	}
+	if (Irp2)
+	{
+		IoFreeIrp(Irp2);
+	}
+	if (SD)
+	{
+		ExFreePool(SD);
+	}
+	if (oldsd)
+	{
+		ExFreePool(oldsd);
+	}
+	if (NewsecurityW)
+	{
+		ExFreePool(NewsecurityW);
+	}
+	if (Newsecurity)
+	{
+		ExFreePool(Newsecurity);
+	}
+
+	return Status;
+}
+
+_Dispatch_type_(IRP_MJ_SET_SECURITY)
+_Function_class_(DRIVER_DISPATCH)
+NTSTATUS __stdcall SetSecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+	NTSTATUS Status;
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	ccb* ccb = FileObject ? FileObject->FsContext2 : NULL;
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+	ULONG access_req = 0;
+	bool top_level;
+
+	FsRtlEnterFileSystem();
+
+	TRACE("set security\n");
+
+	top_level = is_top_level(Irp);
+
+	if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		Status = STATUS_INVALID_DEVICE_REQUEST;
+		goto end;
+	}
+	else if (!Vcb || Vcb->type != VCB_TYPE_FS)
+	{
+		Status = STATUS_INVALID_PARAMETER;
+		goto end;
+	}
+
+	if (!ccb)
+	{
+		ERR("no ccb\n");
+		Status = STATUS_INVALID_PARAMETER;
+		goto end;
+	}
+
+	Status = STATUS_SUCCESS;
+
+	Irp->IoStatus.Information = 0;
+
+	if (IrpSp->Parameters.SetSecurity.SecurityInformation & OWNER_SECURITY_INFORMATION)
+	{
+		TRACE("OWNER_SECURITY_INFORMATION\n");
+		access_req |= WRITE_OWNER;
+	}
+
+	if (IrpSp->Parameters.SetSecurity.SecurityInformation & GROUP_SECURITY_INFORMATION)
+	{
+		TRACE("GROUP_SECURITY_INFORMATION\n");
+		access_req |= WRITE_OWNER;
+	}
+
+	if (IrpSp->Parameters.SetSecurity.SecurityInformation & DACL_SECURITY_INFORMATION)
+	{
+		TRACE("DACL_SECURITY_INFORMATION\n");
+		access_req |= WRITE_DAC;
+	}
+
+	if (IrpSp->Parameters.SetSecurity.SecurityInformation & SACL_SECURITY_INFORMATION)
+	{
+		TRACE("SACL_SECURITY_INFORMATION\n");
+		access_req |= ACCESS_SYSTEM_SECURITY;
+	}
+
+	if (Irp->RequestorMode == UserMode && (ccb->access & access_req) != access_req)
+	{
+		Status = STATUS_ACCESS_DENIED;
+		WARN("insufficient privileges\n");
+		goto end;
+	}
+
+	Status = set_file_security(DeviceObject->DeviceExtension, FileObject, IrpSp->Parameters.SetSecurity.SecurityDescriptor, &IrpSp->Parameters.SetSecurity.SecurityInformation, Irp);
+
+end:
+	Irp->IoStatus.Status = Status;
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	TRACE("returning %08lx\n", Status);
+
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
 
 	FsRtlExitFileSystem();
 

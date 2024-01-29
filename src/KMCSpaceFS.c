@@ -617,7 +617,7 @@ exit:
 	return Status;
 }
 
-void do_shutdown(PIRP Irp)
+static void do_shutdown(PIRP Irp)
 {
 	LIST_ENTRY* le;
 	bus_device_extension* bde;
@@ -808,7 +808,7 @@ end:
 	return Status;
 }
 
-bool is_KMCSpaceFS(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject)
+static bool is_KMCSpaceFS(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject)
 {
 	bool found = false;
 	uint8_t* table = NULL, * data = ExAllocatePoolWithTag(NonPagedPool, 512, ALLOC_TAG);
@@ -3487,7 +3487,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL]             = LockControl;
 	//DriverObject->MajorFunction[IRP_MJ_CLEANUP]                  = Cleanup;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = QuerySecurity;
-	//DriverObject->MajorFunction[IRP_MJ_SET_SECURITY]             = SetSecurity;
+	DriverObject->MajorFunction[IRP_MJ_SET_SECURITY]             = SetSecurity;
 	DriverObject->MajorFunction[IRP_MJ_POWER]                    = Power;
 	DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL]           = SystemControl;
 	DriverObject->MajorFunction[IRP_MJ_PNP]                      = Pnp;
