@@ -142,6 +142,92 @@ typedef struct _FILE_LINKS_FULL_ID_INFORMATION
 
 #endif
 
+static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJECT FileObject)
+{
+	FILE_BASIC_INFORMATION* fbi = Irp->AssociatedIrp.SystemBuffer;
+	fcb* fcb = FileObject->FsContext;
+	ccb* ccb = FileObject->FsContext2;
+	NTSTATUS Status;
+
+	if (!ccb)
+	{
+		ERR("ccb was NULL\n");
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	TRACE("file = %p, attributes = %lx\n", FileObject, fbi->FileAttributes);
+
+	ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
+
+	if (fbi->FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+	{
+		WARN("attempted to set FILE_ATTRIBUTE_DIRECTORY on non-directory\n");
+		Status = STATUS_INVALID_PARAMETER;
+		goto end;
+	}
+
+	unsigned long long index = get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS);
+
+	// times of -2 are some sort of undocumented behaviour to do with LXSS
+
+	if (fbi->CreationTime.QuadPart == -2)
+	{
+		fbi->CreationTime.QuadPart = 0;
+	}
+
+	if (fbi->LastAccessTime.QuadPart == -2)
+	{
+		fbi->LastAccessTime.QuadPart = 0;
+	}
+
+	if (fbi->LastWriteTime.QuadPart == -2)
+	{
+		fbi->LastWriteTime.QuadPart = 0;
+	}
+
+	if (fbi->ChangeTime.QuadPart == -2)
+	{
+		fbi->ChangeTime.QuadPart = 0;
+	}
+
+	if (fbi->CreationTime.QuadPart != 0)
+	{
+		chtime(index, fbi->CreationTime.QuadPart, 5, Vcb->vde->pdode->KMCSFS);
+	}
+
+	if (fbi->LastAccessTime.QuadPart != 0)
+	{
+		chtime(index, fbi->LastAccessTime.QuadPart, 1, Vcb->vde->pdode->KMCSFS);
+	}
+
+	if (fbi->LastWriteTime.QuadPart != 0)
+	{
+		chtime(index, fbi->LastWriteTime.QuadPart, 3, Vcb->vde->pdode->KMCSFS);
+	}
+
+	// FileAttributes == 0 means don't set - undocumented, but seen in fastfat
+	if (fbi->FileAttributes != 0)
+	{
+		unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
+		if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			fbi->FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+		}
+		if (winattrs & FILE_ATTRIBUTE_REPARSE_POINT)
+		{
+			fbi->FileAttributes |= FILE_ATTRIBUTE_REPARSE_POINT;
+		}
+		chwinattrs(index, fbi->FileAttributes, Vcb->vde->pdode->KMCSFS);
+	}
+
+	Status = STATUS_SUCCESS;
+
+end:
+	ExReleaseResourceLite(fcb->Header.Resource);
+
+	return Status;
+}
+
 static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFILE_OBJECT FileObject, bool ex)
 {
 	fcb* fcb = FileObject->FsContext;
@@ -359,7 +445,7 @@ NTSTATUS __stdcall SetInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			break;
 		}
 
-		//Status = set_basic_information(Vcb, Irp, IrpSp->FileObject);
+		Status = set_basic_information(Vcb, Irp, IrpSp->FileObject);
 
 		break;
 	}

@@ -23,6 +23,10 @@ static const GUID GUID_ECP_ATOMIC_CREATE = {0x4720bd83, 0x52ac, 0x4104, {0xa1, 0
 static const GUID GUID_ECP_QUERY_ON_CREATE = {0x1aca62e9, 0xabb4, 0x4ff2, {0xbb, 0x5c, 0x1c, 0x79, 0x02, 0x5e, 0x41, 0x7f}};
 static const GUID GUID_ECP_CREATE_REDIRECTION = {0x188d6bd6, 0xa126, 0x4fa8, {0xbd, 0xf2, 0x1c, 0xcd, 0xf8, 0x96, 0xf3, 0xe0}};
 
+#ifndef SL_IGNORE_READONLY_ATTRIBUTE
+#define SL_IGNORE_READONLY_ATTRIBUTE 0x40 // introduced in Windows 10, not in mingw
+#endif
+
 typedef struct
 {
 	device_extension* Vcb;
@@ -378,9 +382,27 @@ open:
 		unsigned long long index = get_filename_index(fn, Vcb->vde->pdode->KMCSFS);
 		if (index)
 		{
+			unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
+			if (winattrs & FILE_ATTRIBUTE_READONLY && !(IrpSp->Flags & SL_IGNORE_READONLY_ATTRIBUTE))
+			{
+				ACCESS_MASK allowed = READ_CONTROL | SYNCHRONIZE | ACCESS_SYSTEM_SECURITY | FILE_READ_DATA | FILE_READ_ATTRIBUTES | FILE_EXECUTE | FILE_LIST_DIRECTORY | FILE_TRAVERSE;
+				if (!Vcb->readonly)
+				{
+					allowed |= DELETE | WRITE_OWNER | WRITE_DAC | FILE_WRITE_ATTRIBUTES;
+					if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
+					{
+						allowed |= FILE_ADD_SUBDIRECTORY | FILE_ADD_FILE | FILE_DELETE_CHILD;
+					}
+				}
+				granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess & allowed;
+				IrpSp->Parameters.Create.SecurityContext->AccessState->PreviouslyGrantedAccess &= allowed;
+			}
+			else
+			{
+				granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
+			}
 			Status = STATUS_SUCCESS;
-			granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
-			if (chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_REPARSE_POINT)
+			if (winattrs & FILE_ATTRIBUTE_REPARSE_POINT)
 			{
 				Status = STATUS_REPARSE;
 			}
@@ -395,18 +417,26 @@ open:
 		unsigned long long index = get_filename_index(fn, Vcb->vde->pdode->KMCSFS);
 		if (index)
 		{
-			Status = STATUS_SUCCESS;
-			granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
-			if (options & FILE_DIRECTORY_FILE)
+			if (chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_READONLY && !(IrpSp->Flags & SL_IGNORE_READONLY_ATTRIBUTE))
 			{
-				IrpSp->Parameters.Create.FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+				Status = STATUS_ACCESS_DENIED;
+				goto exit;
 			}
 			else
 			{
-				IrpSp->Parameters.Create.FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
+				Status = STATUS_SUCCESS;
+				granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
+				if (options & FILE_DIRECTORY_FILE)
+				{
+					IrpSp->Parameters.Create.FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+				}
+				else
+				{
+					IrpSp->Parameters.Create.FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
+				}
+				chwinattrs(index, IrpSp->Parameters.Create.FileAttributes, Vcb->vde->pdode->KMCSFS);
+				dealloc(&Vcb->vde->pdode->KMCSFS, index, get_file_size(index, Vcb->vde->pdode->KMCSFS), 0);
 			}
-			chwinattrs(index, IrpSp->Parameters.Create.FileAttributes, Vcb->vde->pdode->KMCSFS);
-			dealloc(&Vcb->vde->pdode->KMCSFS, index, get_file_size(index, Vcb->vde->pdode->KMCSFS), 0);
 		}
 		else
 		{

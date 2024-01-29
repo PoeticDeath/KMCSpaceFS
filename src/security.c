@@ -3574,6 +3574,7 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		{
 			RtlCopyMemory(sd, SD, BUFLEN);
 		}
+		ExFreePool(SD);
 	}
 
 	IoFreeIrp(Irp2);
