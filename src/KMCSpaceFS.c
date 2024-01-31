@@ -569,6 +569,117 @@ void uninit(_In_ device_extension* Vcb)
 	IoDeleteDevice(Vcb->devobj);
 }
 
+_Dispatch_type_(IRP_MJ_CLEANUP)
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	NTSTATUS Status;
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	device_extension* Vcb = DeviceObject->DeviceExtension;
+	fcb* fcb = FileObject->FsContext;
+	bool top_level;
+
+	FsRtlEnterFileSystem();
+
+	TRACE("cleanup\n");
+
+	top_level = is_top_level(Irp);
+
+	if (Vcb && Vcb->type == VCB_TYPE_VOLUME)
+	{
+		Irp->IoStatus.Information = 0;
+		Status = STATUS_SUCCESS;
+		goto exit;
+	}
+	else if (DeviceObject == devobj)
+	{
+		TRACE("closing file system\n");
+		Status = STATUS_SUCCESS;
+		goto exit;
+	}
+	else if (!Vcb || Vcb->type != VCB_TYPE_FS)
+	{
+		Status = STATUS_INVALID_PARAMETER;
+		goto exit;
+	}
+
+	if (FileObject->Flags & FO_CLEANUP_COMPLETE)
+	{
+		TRACE("FileObject %p already cleaned up\n", FileObject);
+		Status = STATUS_SUCCESS;
+		goto exit;
+	}
+
+	if (!fcb)
+	{
+		ERR("fcb was NULL\n");
+		Status = STATUS_INVALID_PARAMETER;
+		goto exit;
+	}
+
+	// We have to use the pointer to Vcb stored in the fcb, as we can receive cleanup
+	// messages belonging to other devices.
+
+	if (FileObject && FileObject->FsContext)
+	{
+		ccb* ccb;
+
+		ccb = FileObject->FsContext2;
+
+		TRACE("cleanup called for FileObject %p\n", FileObject);
+		TRACE("fileref %p, refcount = %li, open_count = %li\n", fileref, fileref ? fileref->refcount : 0, fileref ? fileref->open_count : 0);
+
+		ExAcquireResourceSharedLite(&fcb->Vcb->tree_lock, true);
+
+		if (ccb)
+		{
+			FsRtlNotifyCleanup(fcb->Vcb->NotifySync, &fcb->Vcb->DirNotifyList, ccb);
+		}
+
+		if (ccb && ccb->options & FILE_DELETE_ON_CLOSE)
+		{
+			if (delete_file(&Vcb->vde->pdode->KMCSFS, get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS)))
+			{
+				UNICODE_STRING securityfile;
+				securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
+				securityfile.Buffer = ccb->filename.Buffer + 1;
+				if (!delete_file(&Vcb->vde->pdode->KMCSFS, get_filename_index(securityfile, Vcb->vde->pdode->KMCSFS)))
+				{
+					WARN("failed to delete security file\n");
+				}
+			}
+			else
+			{
+				WARN("failed to delete file\n");
+			}
+		}
+
+		ExReleaseResourceLite(&fcb->Vcb->tree_lock);
+
+		FileObject->Flags |= FO_CLEANUP_COMPLETE;
+	}
+
+	Status = STATUS_SUCCESS;
+
+exit:
+	TRACE("returning %08lx\n", Status);
+
+	Irp->IoStatus.Status = Status;
+	Irp->IoStatus.Information = 0;
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	if (top_level)
+	{
+		IoSetTopLevelIrp(NULL);
+	}
+
+	FsRtlExitFileSystem();
+
+	return Status;
+}
+
 _Dispatch_type_(IRP_MJ_LOCK_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall LockControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
@@ -3485,7 +3596,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = DeviceControl;
 	DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = Shutdown;
 	DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL]             = LockControl;
-	//DriverObject->MajorFunction[IRP_MJ_CLEANUP]                  = Cleanup;
+	DriverObject->MajorFunction[IRP_MJ_CLEANUP]                  = Cleanup;
 	DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = QuerySecurity;
 	DriverObject->MajorFunction[IRP_MJ_SET_SECURITY]             = SetSecurity;
 	DriverObject->MajorFunction[IRP_MJ_POWER]                    = Power;

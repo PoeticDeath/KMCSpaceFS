@@ -375,6 +375,7 @@ NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned 
 NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, UNICODE_STRING fn);
 bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size);
 dealloc(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size, unsigned long long newsize);
+bool delete_file(KMCSpaceFS* KMCSFS, unsigned long long index);
 
 // in dirctrl.c
 _Dispatch_type_(IRP_MJ_DIRECTORY_CONTROL)

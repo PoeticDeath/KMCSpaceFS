@@ -1752,3 +1752,111 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 		return true;
 	}
 }
+
+bool delete_file(KMCSpaceFS* KMCSFS, unsigned long long index)
+{
+	char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->filenamesend + 2 + 35 * (KMCSFS->filecount - 1), ALLOC_TAG);
+	if (!newtable)
+	{
+		ERR("out of memory\n");
+		return false;
+	}
+	RtlZeroMemory(newtable, KMCSFS->filenamesend + 2 + 35 * (KMCSFS->filecount - 1));
+	char* newtablestr = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen, ALLOC_TAG);
+	if (!newtablestr)
+	{
+		ERR("out of memory\n");
+		ExFreePool(newtable);
+		return false;
+	}
+	RtlZeroMemory(newtablestr, KMCSFS->tablestrlen);
+	unsigned long long tableloc = 0;
+	if (index)
+	{
+		for (unsigned long long i = 0; i < KMCSFS->tablestrlen; i++)
+		{
+			if (KMCSFS->tablestr[i] == *".")
+			{
+				tableloc++;
+				if (tableloc == index)
+				{
+					tableloc = i + 1;
+					break;
+				}
+			}
+		}
+	}
+	unsigned long long tablelen = 0;
+	for (unsigned long long i = tableloc; i < KMCSFS->tablestrlen; i++)
+	{
+		if (KMCSFS->tablestr[i] == *".")
+		{
+			tablelen = max(i - tableloc, 1);
+			break;
+		}
+	}
+	unsigned long long loc = KMCSFS->tableend;
+	if (index)
+	{
+		loc = 0;
+		for (unsigned long long i = KMCSFS->tableend; i < KMCSFS->filenamesend + 1; i++)
+		{
+			if (KMCSFS->table[i] == *"\xff")
+			{
+				loc++;
+				if (loc == index + 1)
+				{
+					loc = i;
+					break;
+				}
+			}
+		}
+	}
+	unsigned long long len = 0;
+	for (unsigned long long i = loc + 1; i < KMCSFS->filenamesend + 1; i++)
+	{
+		if (KMCSFS->table[i] == *"\xff")
+		{
+			len = i - loc;
+			break;
+		}
+	}
+	unsigned long long tablestrlen = KMCSFS->tablestrlen - tablelen;
+	RtlCopyMemory(newtablestr, KMCSFS->tablestr, tableloc);
+	RtlCopyMemory(newtablestr + tableloc, KMCSFS->tablestr + tableloc + tablelen, KMCSFS->tablestrlen - tableloc - tablelen);
+	char* newtablestren = encode(newtablestr, tablestrlen);
+	if (!newtablestren)
+	{
+		ERR("out of memory\n");
+		ExFreePool(newtable);
+		ExFreePool(newtablestr);
+		return false;
+	}
+	unsigned long long extratablesize = 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 35 * (KMCSFS->filecount - 1);
+	unsigned long long tablesize = (extratablesize + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize - 1;
+	newtable[0] = KMCSFS->table[0];
+	newtable[1] = (tablesize >> 24) & 0xff;
+	newtable[2] = (tablesize >> 16) & 0xff;
+	newtable[3] = (tablesize >> 8) & 0xff;
+	newtable[4] = tablesize & 0xff;
+	RtlCopyMemory(newtable + 5, newtablestren, (tablestrlen + tablestrlen % 2) / 2);
+	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2, KMCSFS->table + KMCSFS->tableend, loc - KMCSFS->tableend);
+	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + loc - KMCSFS->tableend, KMCSFS->table + loc + len, KMCSFS->filenamesend - loc - len + 2);
+	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2, KMCSFS->table + KMCSFS->filenamesend + 2, 24 * index);
+	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 24 * index, KMCSFS->table + KMCSFS->filenamesend + 2 + 24 * (index + 1), 24 * (KMCSFS->filecount - index - 1));
+	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 24 * (KMCSFS->filecount - 1), KMCSFS->table + KMCSFS->filenamesend + 2 + 24 * KMCSFS->filecount, 11 * index);
+	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 24 * (KMCSFS->filecount - 1) + 11 * index, KMCSFS->table + KMCSFS->filenamesend + 2 + 24 * KMCSFS->filecount + 11 * (index + 1), 11 * (KMCSFS->filecount - index - 1));
+	sync_write_phys(KMCSFS->DeviceObject, 0, 0, 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 35 * (KMCSFS->filecount - 1), newtable, true);
+	KMCSFS->used_blocks -= get_file_size(index, *KMCSFS) / KMCSFS->sectorsize;
+	ExFreePool(KMCSFS->table);
+	KMCSFS->table = newtable;
+	KMCSFS->tablesize = tablesize + 1;
+	KMCSFS->extratablesize = extratablesize;
+	KMCSFS->filenamesend = 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len;
+	KMCSFS->tableend = 5 + (tablestrlen + tablestrlen % 2) / 2;
+	ExFreePool(KMCSFS->tablestr);
+	KMCSFS->tablestr = newtablestr;
+	KMCSFS->tablestrlen = tablestrlen;
+	KMCSFS->filecount--;
+	return true;
+}
