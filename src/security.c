@@ -3382,8 +3382,6 @@ static BOOL WINAPI ConvertStringSecurityDescriptorToSecurityDescriptorW(LPCWSTR 
 	SECURITY_DESCRIPTOR* psd;
 	BOOL bret = FALSE;
 
-	TRACE("%s\n", debugstr_w(StringSecurityDescriptor));
-
 	if (!StringSecurityDescriptor || !SecurityDescriptor || StringSDRevision != SID_REVISION)
 	{
 		goto lend;
@@ -4367,13 +4365,13 @@ end:
 	{
 		IoFreeIrp(Irp2);
 	}
+	if (oldsd && oldsd != SD)
+	{
+		ExFreePool(oldsd);
+	}
 	if (SD)
 	{
 		ExFreePool(SD);
-	}
-	if (oldsd)
-	{
-		ExFreePool(oldsd);
 	}
 	if (NewsecurityW)
 	{

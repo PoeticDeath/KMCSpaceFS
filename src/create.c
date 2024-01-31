@@ -331,6 +331,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	if (FileObject->FileName.Buffer[FileObject->FileName.Length / sizeof(WCHAR) - 1] == 92 && FileObject->FileName.Length > 2)
 	{
 		FileObject->FileName.Buffer[FileObject->FileName.Length / sizeof(WCHAR) - 1] = 0;
+		FileObject->FileName.Length -= sizeof(WCHAR);
 	}
 	if (FileObject->FileName.Buffer[0] != *L"\\")
 	{
@@ -574,7 +575,7 @@ loaded:
 			Status = create_file(Irp, Vcb, FileObject, securityfn);
 			if (NT_SUCCESS(Status))
 			{
-				char security[] = "O:WDG:WDD:P(A;;FA;;;WD)";
+				uint8_t* security = {"O:WDG:WDD:P(A;;FA;;;WD)"};
 				fcb* fcb = create_fcb(Vcb, NonPagedPool);
 				if (!fcb)
 				{

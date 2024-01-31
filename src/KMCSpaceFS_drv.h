@@ -51,10 +51,10 @@ extern uint32_t debug_log_level;
 #define MSG(fn, s, level, ...) (!log_started || level <= debug_log_level) ? _debug_message(fn, s, ##__VA_ARGS__) : (void)0
 void _debug_message(_In_ const char* func, _In_ char* s, ...) __attribute__((format(printf, 2, 3)));
 #else
-#define MSG(s, ...) do { } while(0)
+#define MSG(s, ...) DbgPrint("KMCSpaceFS MSG : %s : " s, funcname, ##__VA_ARGS__)
 #endif
 
-#define TRACE(s, ...) do { } while(0)
+#define TRACE(s, ...) DbgPrint("KMCSpaceFS TRACE : %s : " s, funcname, ##__VA_ARGS__)
 #define WARN(s, ...) MSG(funcname, s, 2, ##__VA_ARGS__)
 #define ERR(s, ...) DbgPrint("KMCSpaceFS ERR : %s : " s, funcname, ##__VA_ARGS__)
 

@@ -1646,6 +1646,39 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 		}
 
 		ExFreePool(used_bytes);
+		if (!size)
+		{
+			unsigned long long extratblesize = (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend + 2 + 35 * KMCSFS->filecount;
+			unsigned long long tablesize = (extratblesize + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize - 1;
+			char* newtable = ExAllocatePoolWithTag(NonPagedPool, extratblesize, ALLOC_TAG);
+			if (!newtable)
+			{
+				ERR("out of memory - could not write to disk\n");
+				return !size;
+			}
+			char* newtablestren = encode(KMCSFS->tablestr, KMCSFS->tablestrlen);
+			if (!newtablestren)
+			{
+				ERR("out of memory - could not write to disk\n");
+				ExFreePool(newtable);
+				return !size;
+			}
+			newtable[0] = KMCSFS->table[0];
+			newtable[1] = (tablesize >> 24) & 0xff;
+			newtable[2] = (tablesize >> 16) & 0xff;
+			newtable[3] = (tablesize >> 8) & 0xff;
+			newtable[4] = tablesize & 0xff;
+			RtlCopyMemory(newtable + 5, newtablestren, (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2);
+			ExFreePool(newtablestren);
+			RtlCopyMemory(newtable + 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2, KMCSFS->table + KMCSFS->tableend, extratblesize - 5 - (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2);
+			KMCSFS->extratablesize = extratblesize;
+			KMCSFS->tablesize = 1 + tablesize;
+			KMCSFS->filenamesend = 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend;
+			KMCSFS->tableend = 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2;
+			ExFreePool(KMCSFS->table);
+			KMCSFS->table = newtable;
+			sync_write_phys(KMCSFS->DeviceObject, 0, 0, extratblesize, newtable, true);
+		}
 		return !size;
 	}
 	else
@@ -1850,7 +1883,7 @@ bool delete_file(KMCSpaceFS* KMCSFS, unsigned long long index)
 	KMCSFS->used_blocks -= get_file_size(index, *KMCSFS) / KMCSFS->sectorsize;
 	ExFreePool(KMCSFS->table);
 	KMCSFS->table = newtable;
-	KMCSFS->tablesize = tablesize + 1;
+	KMCSFS->tablesize = 1 + tablesize;
 	KMCSFS->extratablesize = extratablesize;
 	KMCSFS->filenamesend = 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len;
 	KMCSFS->tableend = 5 + (tablestrlen + tablestrlen % 2) / 2;

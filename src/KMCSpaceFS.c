@@ -628,7 +628,6 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 		ccb = FileObject->FsContext2;
 
 		TRACE("cleanup called for FileObject %p\n", FileObject);
-		TRACE("fileref %p, refcount = %li, open_count = %li\n", fileref, fileref ? fileref->refcount : 0, fileref ? fileref->open_count : 0);
 
 		ExAcquireResourceSharedLite(&fcb->Vcb->tree_lock, true);
 

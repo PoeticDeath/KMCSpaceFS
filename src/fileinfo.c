@@ -277,6 +277,7 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 		IrpSp2->FileObject = FileObject;
 		IrpSp2->Parameters.QueryDirectory.FileInformationClass = FileNamesInformation;
 		IrpSp2->Parameters.QueryDirectory.Length = 0;
+		IrpSp2->Parameters.QueryDirectory.FileName = NULL;
 		unsigned long long backupdirindex = ccb->query_dir_index;
 		unsigned long long backupdiroffset = ccb->query_dir_offset;
 		ccb->query_dir_index = 0;
@@ -1088,7 +1089,6 @@ NTSTATUS __stdcall QueryInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	fcb = IrpSp->FileObject->FsContext;
 	TRACE("fcb = %p\n", fcb);
-	TRACE("fcb->subvol = %p\n", fcb->subvol);
 
 	Status = query_info(fcb->Vcb, IrpSp->FileObject, Irp);
 
