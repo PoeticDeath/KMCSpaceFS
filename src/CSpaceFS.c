@@ -820,7 +820,7 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 		return STATUS_DISK_FULL;
 	}
 
-	char* newtablestr = ExAllocatePoolWithTag(NonPagedPool, Vcb->vde->pdode->KMCSFS.tablestrlen + 1, ALLOC_TAG);
+	char* newtablestr = ExAllocatePoolWithTag(NonPagedPool, Vcb->vde->pdode->KMCSFS.tablestrlen + 2, ALLOC_TAG);
 	if (!newtablestr)
 	{
 		ERR("out of memory\n");
@@ -846,6 +846,7 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 		newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen] = 46;
 		Vcb->vde->pdode->KMCSFS.tablestrlen++;
 	}
+	newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen + 1] = 0;
 
 	ExFreePool(Vcb->vde->pdode->KMCSFS.tablestr);
 	Vcb->vde->pdode->KMCSFS.tablestr = newtablestr;

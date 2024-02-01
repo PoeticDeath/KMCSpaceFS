@@ -638,6 +638,7 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 
 		if (ccb && ccb->options & FILE_DELETE_ON_CLOSE)
 		{
+			TRACE("deleting file\n");
 			if (delete_file(&Vcb->vde->pdode->KMCSFS, get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS)))
 			{
 				UNICODE_STRING securityfile;

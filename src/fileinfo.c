@@ -284,6 +284,7 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 		ccb->query_dir_offset = 0;
 		if (query_directory(Irp2) == STATUS_BUFFER_OVERFLOW)
 		{
+			TRACE("directory not empty\n");
 			Status = STATUS_DIRECTORY_NOT_EMPTY;
 			ccb->query_dir_index = backupdirindex;
 			ccb->query_dir_offset = backupdiroffset;

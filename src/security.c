@@ -3617,13 +3617,13 @@ end:
 static int __cdecl sprintfW(WCHAR* _Buffer, const WCHAR* _Format, ...)
 {
 	unsigned long long _BufferLen = wcslen(_Buffer);
-	char* _buffer = ExAllocatePoolWithTag(NonPagedPool, _BufferLen, ALLOC_TAG);
+	char* _buffer = ExAllocatePoolWithTag(NonPagedPool, _BufferLen + 1, ALLOC_TAG);
 	if (!_buffer)
 	{
 		return 0;
 	}
 	unsigned long long _FormatLen = wcslen(_Format);
-	char* _format = ExAllocatePoolWithTag(NonPagedPool, _FormatLen, ALLOC_TAG);
+	char* _format = ExAllocatePoolWithTag(NonPagedPool, _FormatLen + 1, ALLOC_TAG);
 	if (!_format)
 	{
 		ExFreePool(_buffer);
@@ -3633,23 +3633,18 @@ static int __cdecl sprintfW(WCHAR* _Buffer, const WCHAR* _Format, ...)
 	{
 		_buffer[i] = _Buffer[i] & 0xff;
 	}
+	_buffer[_BufferLen] = 0;
 	for (unsigned long long i = 0; i < _FormatLen; i++)
 	{
 		_format[i] = _Format[i] & 0xff;
 	}
+	_format[_FormatLen] = 0;
 	va_list args;
 	va_start(args, _Format);
 	vsprintf(_buffer, _format, args);
 	va_end(args);
 	ExFreePool(_format);
 	unsigned long long ret = strlen(_buffer);
-	ExFreePool(_Buffer);
-	_Buffer = ExAllocatePoolWithTag(NonPagedPool, (ret + 1) * sizeof(WCHAR), ALLOC_TAG);
-	if (!_Buffer)
-	{
-		ExFreePool(_buffer);
-		return 0;
-	}
 	for (unsigned long long i = 0; i < ret; i++)
 	{
 		_Buffer[i] = _buffer[i] & 0xff;
@@ -4221,7 +4216,7 @@ static BOOL WINAPI ConvertSecurityDescriptorToStringSecurityDescriptorW(PSECURIT
 	*OutputString = wstr;
 	if (OutputLen)
 	{
-		*OutputLen = strlenW(*OutputString) + 1;
+		*OutputLen = strlenW(*OutputString);
 	}
 	return TRUE;
 }
