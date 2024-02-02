@@ -2006,7 +2006,7 @@ static NTSTATUS __stdcall FileSystemControl(_In_ PDEVICE_OBJECT DeviceObject, _I
 		Status = mount_vol(DeviceObject, Irp);
 		break;
 
-		/*case IRP_MN_KERNEL_CALL:
+		case IRP_MN_KERNEL_CALL:
 			TRACE("IRP_MN_KERNEL_CALL\n");
 
 			Status = fsctl_request(DeviceObject, &Irp, IrpSp->Parameters.FileSystemControl.FsControlCode);
@@ -2018,7 +2018,7 @@ static NTSTATUS __stdcall FileSystemControl(_In_ PDEVICE_OBJECT DeviceObject, _I
 			Status = fsctl_request(DeviceObject, &Irp, IrpSp->Parameters.FileSystemControl.FsControlCode);
 			break;
 
-		case IRP_MN_VERIFY_VOLUME:
+		/*case IRP_MN_VERIFY_VOLUME:
 			TRACE("IRP_MN_VERIFY_VOLUME\n");
 
 			Status = verify_volume(DeviceObject);

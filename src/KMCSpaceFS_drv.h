@@ -44,18 +44,8 @@ extern uint32_t no_pnp;
 #define __attribute__(x)
 #endif
 
-#ifdef _DEBUG
-extern bool log_started;
-extern uint32_t debug_log_level;
-
-#define MSG(fn, s, level, ...) (!log_started || level <= debug_log_level) ? _debug_message(fn, s, ##__VA_ARGS__) : (void)0
-void _debug_message(_In_ const char* func, _In_ char* s, ...) __attribute__((format(printf, 2, 3)));
-#else
-#define MSG(s, ...) DbgPrint("KMCSpaceFS MSG : %s : " s, funcname, ##__VA_ARGS__)
-#endif
-
 #define TRACE(s, ...) DbgPrint("KMCSpaceFS TRACE : %s : " s, funcname, ##__VA_ARGS__)
-#define WARN(s, ...) MSG(funcname, s, 2, ##__VA_ARGS__)
+#define WARN(s, ...) DbgPrint("KMCSpaceFS WARN : %s : ", s, funcname, ##__VA_ARGS__)
 #define ERR(s, ...) DbgPrint("KMCSpaceFS ERR : %s : " s, funcname, ##__VA_ARGS__)
 
 #define ALLOC_TAG 0x7442484D //'MHBt'
@@ -415,6 +405,7 @@ NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
 // in fsctl.c
 NTSTATUS dismount_volume(device_extension* Vcb, bool shutdown, PIRP Irp);
+NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type);
 
 // not in DDK headers - taken from winternl.h
 typedef struct _LDR_DATA_TABLE_ENTRY
@@ -467,8 +458,3 @@ typedef struct _PEB
 	PVOID Reserved7[1];
 	ULONG SessionId;
 } PEB, *PPEB;
-
-#ifdef _MSC_VER
-__kernel_entry
-NTSTATUS NTAPI ZwQueryInformationProcess(IN HANDLE ProcessHandle, IN PROCESSINFOCLASS ProcessInformationClass, OUT PVOID ProcessInformation, IN ULONG ProcessInformationLength, OUT PULONG ReturnLength OPTIONAL);
-#endif

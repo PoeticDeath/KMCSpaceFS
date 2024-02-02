@@ -328,6 +328,8 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 		goto exit;
 	}
 
+	TRACE("(%.*S)\n", (int)(FileObject->FileName.Length / sizeof(WCHAR)), FileObject->FileName.Buffer);
+
 	if (FileObject->FileName.Length)
 	{
 		if (FileObject->FileName.Buffer[FileObject->FileName.Length / sizeof(WCHAR) - 1] == 42 && FileObject->FileName.Length > 2)
@@ -388,8 +390,20 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 			ExFreePool(FileObject->FileName.Buffer);
 			FileObject->FileName = fn2;
 		}
+		fn = FileObject->FileName;
 	}
-	fn = FileObject->FileName;
+	else
+	{
+		fn.Length = sizeof(WCHAR);
+		fn.Buffer = ExAllocatePoolWithTag(pool_type, fn.Length, ALLOC_TAG);
+		if (!fn.Buffer)
+		{
+			ERR("out of memory\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+		fn.Buffer[0] = *L"\\";
+	}
 
 	TRACE("(%.*S)\n", (int)(fn.Length / sizeof(WCHAR)), fn.Buffer);
 	TRACE("FileObject = %p\n", FileObject);
