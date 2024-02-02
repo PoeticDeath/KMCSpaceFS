@@ -638,20 +638,54 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 
 		if (ccb && ccb->options & FILE_DELETE_ON_CLOSE)
 		{
-			TRACE("deleting file\n");
-			if (delete_file(&Vcb->vde->pdode->KMCSFS, get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS)))
+			unsigned long long index = get_filename_index(ccb->filename, fcb->Vcb->vde->pdode->KMCSFS);
+			unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
+			bool can_delete = true;
+			if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
 			{
-				UNICODE_STRING securityfile;
-				securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
-				securityfile.Buffer = ccb->filename.Buffer + 1;
-				if (!delete_file(&Vcb->vde->pdode->KMCSFS, get_filename_index(securityfile, Vcb->vde->pdode->KMCSFS)))
+				PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+				if (!Irp2)
 				{
-					WARN("failed to delete security file\n");
+					ERR("out of memory\n");
+					Status = STATUS_INSUFFICIENT_RESOURCES;
+					goto exit;
 				}
+				Irp2->MdlAddress = NULL;
+				PIO_STACK_LOCATION IrpSp2 = IoGetCurrentIrpStackLocation(Irp2);
+				IrpSp2->FileObject = FileObject;
+				IrpSp2->Parameters.QueryDirectory.FileInformationClass = FileNamesInformation;
+				IrpSp2->Parameters.QueryDirectory.Length = 0;
+				IrpSp2->Parameters.QueryDirectory.FileName = NULL;
+				unsigned long long backupdirindex = ccb->query_dir_index;
+				unsigned long long backupdiroffset = ccb->query_dir_offset;
+				ccb->query_dir_index = 0;
+				ccb->query_dir_offset = 0;
+				if (query_directory(Irp2) == STATUS_BUFFER_OVERFLOW)
+				{
+					TRACE("directory not empty\n");
+					can_delete = false;
+				}
+				ccb->query_dir_index = backupdirindex;
+				ccb->query_dir_offset = backupdiroffset;
+				IoFreeIrp(Irp2);
 			}
-			else
+			if (can_delete)
 			{
-				WARN("failed to delete file\n");
+				TRACE("deleting file\n");
+				if (delete_file(&Vcb->vde->pdode->KMCSFS, index))
+				{
+					UNICODE_STRING securityfile;
+					securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
+					securityfile.Buffer = ccb->filename.Buffer + 1;
+					if (!delete_file(&Vcb->vde->pdode->KMCSFS, get_filename_index(securityfile, Vcb->vde->pdode->KMCSFS)))
+					{
+						WARN("failed to delete security file\n");
+					}
+				}
+				else
+				{
+					WARN("failed to delete file\n");
+				}
 			}
 		}
 

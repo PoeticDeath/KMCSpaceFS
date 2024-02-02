@@ -330,10 +330,30 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 
 	if (FileObject->FileName.Length)
 	{
-		if (FileObject->FileName.Buffer[FileObject->FileName.Length / sizeof(WCHAR) - 1] == 92 && FileObject->FileName.Length > 2)
+		if (FileObject->FileName.Buffer[FileObject->FileName.Length / sizeof(WCHAR) - 1] == 42 && FileObject->FileName.Length > 2)
 		{
+			if (RequestedDisposition & FILE_CREATE)
+			{
+				Status = STATUS_OBJECT_NAME_INVALID;
+				goto exit;
+			}
 			FileObject->FileName.Buffer[FileObject->FileName.Length / sizeof(WCHAR) - 1] = 0;
 			FileObject->FileName.Length -= sizeof(WCHAR);
+		}
+		if (FileObject->FileName.Buffer[FileObject->FileName.Length / sizeof(WCHAR) - 1] == 92 && FileObject->FileName.Length > 2)
+		{
+			if (RequestedDisposition & FILE_CREATE && !(options & FILE_DIRECTORY_FILE))
+			{
+				Status = STATUS_OBJECT_NAME_INVALID;
+				goto exit;
+			}
+			FileObject->FileName.Buffer[FileObject->FileName.Length / sizeof(WCHAR) - 1] = 0;
+			FileObject->FileName.Length -= sizeof(WCHAR);
+		}
+		if (FileObject->FileName.Buffer[FileObject->FileName.Length / sizeof(WCHAR) - 1] == 92 && FileObject->FileName.Length > 2)
+		{
+			Status = STATUS_OBJECT_NAME_INVALID;
+			goto exit;
 		}
 		if (FileObject->FileName.Buffer[0] != *L"\\")
 		{
