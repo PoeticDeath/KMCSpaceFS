@@ -331,19 +331,16 @@ static NTSTATUS set_end_of_file_information(device_extension* Vcb, PIRP Irp, PFI
 	{
 		return STATUS_SUCCESS;
 	}
-	if (prealloc)
+	if (feofi->EndOfFile.QuadPart > filesize)
 	{
-		if (feofi->EndOfFile.QuadPart > filesize)
+		if (!find_block(&Vcb->vde->pdode->KMCSFS, index, feofi->EndOfFile.QuadPart - filesize))
 		{
-			if (!find_block(&Vcb->vde->pdode->KMCSFS, index, feofi->EndOfFile.QuadPart - filesize))
-			{
-				return STATUS_DISK_FULL;
-			}
+			return STATUS_DISK_FULL;
 		}
-		else if (feofi->EndOfFile.QuadPart < filesize)
-		{
-			dealloc(&Vcb->vde->pdode->KMCSFS, index, filesize, feofi->EndOfFile.QuadPart);
-		}
+	}
+	else if (feofi->EndOfFile.QuadPart < filesize)
+	{
+		dealloc(&Vcb->vde->pdode->KMCSFS, index, filesize, feofi->EndOfFile.QuadPart);
 	}
 	return STATUS_SUCCESS;
 }
