@@ -840,13 +840,14 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 	{
 		newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen - 1] = 46;
 		newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen] = 32;
+		newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen + 1] = 0;
 	}
 	else
 	{
 		newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen] = 46;
+		newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen + 1] = 0;
 		Vcb->vde->pdode->KMCSFS.tablestrlen++;
 	}
-	newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen + 1] = 0;
 
 	ExFreePool(Vcb->vde->pdode->KMCSFS.tablestr);
 	Vcb->vde->pdode->KMCSFS.tablestr = newtablestr;
