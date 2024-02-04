@@ -1447,22 +1447,19 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 							strsize++;
 							if (tablestr[o] == *"," || tablestr[o] == *".")
 							{
-								switch (cur)
+								if (int0 == cursector)
 								{
-								case 0:
-									if (int0 == cursector)
+									o++;
+									switch (cur)
 									{
+									case 0:
 										RtlCopyMemory(tablestr + o - strsize, tablestr + o, temptablestrlen - o);
 										temptablestrlen -= strsize;
 										o -= strsize;
 										break;
-									}
-									break;
-								case 1:
-									break;
-								case 2:
-									if (int0 == cursector)
-									{
+									case 1:
+										break;
+									case 2:
 										for (unsigned long long p = int1; p < int2; p++)
 										{
 											used_sector_bytes[p / sizeof(unsigned long long) / 8] |= ((unsigned long long)1 << (p % (sizeof(unsigned long long) * 8)));
@@ -1472,7 +1469,6 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 										o -= strsize;
 										break;
 									}
-									break;
 								}
 								cur = 0;
 								int0 = 0;

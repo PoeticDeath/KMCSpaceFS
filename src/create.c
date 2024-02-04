@@ -641,6 +641,9 @@ loaded:
 						{
 							Status = STATUS_DISK_FULL;
 						}
+						IoFreeIrp(Irp2);
+						free_fcb(fcb);
+						reap_fcb(fcb);
 					}
 				}
 				if (NT_SUCCESS(Status))
