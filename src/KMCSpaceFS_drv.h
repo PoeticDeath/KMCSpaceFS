@@ -179,7 +179,7 @@ typedef struct _device_extension
 	LIST_ENTRY DirNotifyList;
 	PFILE_OBJECT root_file;
 	PAGED_LOOKASIDE_LIST fcb_lookaside;
-	PAGED_LOOKASIDE_LIST fcb_np_lookaside;
+	NPAGED_LOOKASIDE_LIST fcb_np_lookaside;
 	LIST_ENTRY list_entry;
 } device_extension;
 
