@@ -45,8 +45,7 @@ uint32_t debug_log_level = 0;
 uint32_t mount_flush_interval = 30;
 uint32_t mount_readonly = 0;
 uint32_t no_pnp = 0;
-bool log_started = false;
-UNICODE_STRING log_device, log_file, registry_path;
+UNICODE_STRING registry_path;
 tIoUnregisterPlugPlayNotificationEx fIoUnregisterPlugPlayNotificationEx;
 void* notification_entry = NULL, *notification_entry2 = NULL, *notification_entry3 = NULL;
 ERESOURCE pdo_list_lock;
@@ -91,201 +90,13 @@ static void __stdcall DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
 
 	// FIXME - free volumes and their devpaths
 
-#ifdef _DEBUG
-	if (comfo)
-	{
-		ObDereferenceObject(comfo);
-	}
-
-	if (log_handle)
-	{
-		ZwClose(log_handle);
-	}
-#endif
-
 	ExDeleteResourceLite(&pdo_list_lock);
-
-	if (log_device.Buffer)
-	{
-		ExFreePool(log_device.Buffer);
-	}
-
-	if (log_file.Buffer)
-	{
-		ExFreePool(log_file.Buffer);
-	}
 
 	if (registry_path.Buffer)
 	{
 		ExFreePool(registry_path.Buffer);
 	}
-
-#ifdef _DEBUG
-	ExDeleteResourceLite(&log_lock);
-#endif
 }
-
-#ifdef _DEBUG
-PFILE_OBJECT comfo = NULL;
-PDEVICE_OBJECT comdo = NULL;
-HANDLE log_handle = NULL;
-ERESOURCE log_lock;
-HANDLE serial_thread_handle = NULL;
-
-_Function_class_(IO_COMPLETION_ROUTINE)
-static NTSTATUS __stdcall dbg_completion(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp, _In_ PVOID conptr)
-{
-	read_context* context = conptr;
-
-	UNUSED(DeviceObject);
-
-	context->iosb = Irp->IoStatus;
-	KeSetEvent(&context->Event, 0, false);
-
-	return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-#define DEBUG_MESSAGE_LEN 1024
-
-void _debug_message(_In_ const char* func, _In_ char* s, ...)
-{
-	LARGE_INTEGER offset;
-	PIO_STACK_LOCATION IrpSp;
-	NTSTATUS Status;
-	PIRP Irp;
-	va_list ap;
-	char* buf2, *buf;
-	read_context context;
-	uint32_t length;
-
-	buf2 = ExAllocatePoolWithTag(NonPagedPool, DEBUG_MESSAGE_LEN, ALLOC_TAG);
-
-	if (!buf2)
-	{
-		DbgPrint("Couldn't allocate buffer in debug_message\n");
-		return;
-	}
-
-	sprintf(buf2, "%p:%s:", (void*)PsGetCurrentThread(), func);
-	buf = &buf2[strlen(buf2)];
-
-	va_start(ap, s);
-
-	RtlStringCbVPrintfA(buf, DEBUG_MESSAGE_LEN - strlen(buf2), s, ap);
-
-	ExAcquireResourceSharedLite(&log_lock, true);
-
-	if (!log_started || (log_device.Length == 0 && log_file.Length == 0))
-	{
-		DbgPrint(buf2);
-	}
-	else if (log_device.Length > 0)
-	{
-		if (!comdo)
-		{
-			DbgPrint(buf2);
-			goto exit2;
-		}
-
-		length = (uint32_t)strlen(buf2);
-
-		offset.u.LowPart = 0;
-		offset.u.HighPart = 0;
-
-		RtlZeroMemory(&context, sizeof(read_context));
-
-		KeInitializeEvent(&context.Event, NotificationEvent, false);
-
-		Irp = IoAllocateIrp(comdo->StackSize, false);
-
-		if (!Irp)
-		{
-			DbgPrint("IoAllocateIrp failed\n");
-			goto exit2;
-		}
-
-		IrpSp = IoGetNextIrpStackLocation(Irp);
-		IrpSp->MajorFunction = IRP_MJ_WRITE;
-		IrpSp->FileObject = comfo;
-
-		if (comdo->Flags & DO_BUFFERED_IO)
-		{
-			Irp->AssociatedIrp.SystemBuffer = buf2;
-
-			Irp->Flags = IRP_BUFFERED_IO;
-		}
-		else if (comdo->Flags & DO_DIRECT_IO)
-		{
-			Irp->MdlAddress = IoAllocateMdl(buf2, length, false, false, NULL);
-			if (!Irp->MdlAddress)
-			{
-				DbgPrint("IoAllocateMdl failed\n");
-				goto exit;
-			}
-
-			MmBuildMdlForNonPagedPool(Irp->MdlAddress);
-		}
-		else
-		{
-			Irp->UserBuffer = buf2;
-		}
-
-		IrpSp->Parameters.Write.Length = length;
-		IrpSp->Parameters.Write.ByteOffset = offset;
-
-		Irp->UserIosb = &context.iosb;
-
-		Irp->UserEvent = &context.Event;
-
-		IoSetCompletionRoutine(Irp, dbg_completion, &context, true, true, true);
-
-		Status = IoCallDriver(comdo, Irp);
-
-		if (Status == STATUS_PENDING)
-		{
-			KeWaitForSingleObject(&context.Event, Executive, KernelMode, false, NULL);
-			Status = context.iosb.Status;
-		}
-
-		if (comdo->Flags & DO_DIRECT_IO)
-		{
-			IoFreeMdl(Irp->MdlAddress);
-		}
-
-		if (!NT_SUCCESS(Status))
-		{
-			DbgPrint("failed to write to COM1 - error %08lx\n", Status);
-			goto exit;
-		}
-
-	exit:
-		IoFreeIrp(Irp);
-	}
-	else if (log_handle != NULL)
-	{
-		IO_STATUS_BLOCK iosb;
-
-		length = (uint32_t)strlen(buf2);
-
-		Status = ZwWriteFile(log_handle, NULL, NULL, NULL, &iosb, buf2, length, NULL, NULL);
-
-		if (!NT_SUCCESS(Status))
-		{
-			DbgPrint("failed to write to file - error %08lx\n", Status);
-		}
-	}
-
-exit2:
-	ExReleaseResourceLite(&log_lock);
-
-	va_end(ap);
-
-	if (buf2)
-	{
-		ExFreePool(buf2);
-	}
-}
-#endif
 
 #if defined(_X86_) || defined(_AMD64_)
 static void check_cpu()
@@ -351,156 +162,6 @@ static void check_cpu()
 	{
 		TRACE("AVX2 is not supported\n");
 	}
-}
-#endif
-
-#ifdef _DEBUG
-static void init_serial(bool first_time);
-
-_Function_class_(KSTART_ROUTINE)
-static void __stdcall serial_thread(void* context)
-{
-	LARGE_INTEGER due_time;
-	KTIMER timer;
-
-	UNUSED(context);
-
-	KeInitializeTimer(&timer);
-
-	due_time.QuadPart = (uint64_t)-10000000;
-
-	KeSetTimer(&timer, due_time, NULL);
-
-	while (true)
-	{
-		KeWaitForSingleObject(&timer, Executive, KernelMode, false, NULL);
-
-		init_serial(false);
-
-		if (comdo)
-		{
-			break;
-		}
-
-		KeSetTimer(&timer, due_time, NULL);
-	}
-
-	KeCancelTimer(&timer);
-
-	PsTerminateSystemThread(STATUS_SUCCESS);
-
-	serial_thread_handle = NULL;
-}
-
-static void init_serial(bool first_time)
-{
-	NTSTATUS Status;
-
-	Status = IoGetDeviceObjectPointer(&log_device, FILE_WRITE_DATA, &comfo, &comdo);
-	if (!NT_SUCCESS(Status))
-	{
-		ERR("IoGetDeviceObjectPointer returned %08lx\n", Status);
-
-		if (first_time)
-		{
-			OBJECT_ATTRIBUTES oa;
-
-			InitializeObjectAttributes(&oa, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
-
-			Status = PsCreateSystemThread(&serial_thread_handle, 0, &oa, NULL, NULL, serial_thread, NULL);
-			if (!NT_SUCCESS(Status))
-			{
-				ERR("PsCreateSystemThread returned %08lx\n", Status);
-				return;
-			}
-		}
-	}
-}
-
-static void init_logging()
-{
-	ExAcquireResourceExclusiveLite(&log_lock, true);
-
-	if (log_device.Length > 0)
-	{
-		init_serial(true);
-	}
-	else if (log_file.Length > 0)
-	{
-		NTSTATUS Status;
-		OBJECT_ATTRIBUTES oa;
-		IO_STATUS_BLOCK iosb;
-		char* dateline;
-		LARGE_INTEGER time;
-		TIME_FIELDS tf;
-
-		InitializeObjectAttributes(&oa, &log_file, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
-
-		Status = ZwCreateFile(&log_handle, FILE_WRITE_DATA, &oa, &iosb, NULL, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_OPEN_IF, FILE_NON_DIRECTORY_FILE | FILE_WRITE_THROUGH | FILE_SYNCHRONOUS_IO_ALERT, NULL, 0);
-		if (!NT_SUCCESS(Status))
-		{
-			ERR("ZwCreateFile returned %08lx\n", Status);
-			goto end;
-		}
-
-		if (iosb.Information == FILE_OPENED)
-		{ // already exists
-			FILE_STANDARD_INFORMATION fsi;
-			FILE_POSITION_INFORMATION fpi;
-
-			static const char delim[] = "\n---\n";
-
-			// move to end of file
-
-			Status = ZwQueryInformationFile(log_handle, &iosb, &fsi, sizeof(FILE_STANDARD_INFORMATION), FileStandardInformation);
-			if (!NT_SUCCESS(Status))
-			{
-				ERR("ZwQueryInformationFile returned %08lx\n", Status);
-				goto end;
-			}
-
-			fpi.CurrentByteOffset = fsi.EndOfFile;
-
-			Status = ZwSetInformationFile(log_handle, &iosb, &fpi, sizeof(FILE_POSITION_INFORMATION), FilePositionInformation);
-			if (!NT_SUCCESS(Status))
-			{
-				ERR("ZwSetInformationFile returned %08lx\n", Status);
-				goto end;
-			}
-
-			Status = ZwWriteFile(log_handle, NULL, NULL, NULL, &iosb, (void*)delim, sizeof(delim) - 1, NULL, NULL);
-			if (!NT_SUCCESS(Status))
-			{
-				ERR("ZwWriteFile returned %08lx\n", Status);
-				goto end;
-			}
-		}
-
-		dateline = ExAllocatePoolWithTag(PagedPool, 256, ALLOC_TAG);
-
-		if (!dateline)
-		{
-			ERR("out of memory\n");
-			goto end;
-		}
-
-		KeQuerySystemTime(&time);
-
-		RtlTimeToTimeFields(&time, &tf);
-
-		sprintf(dateline, "Starting logging at %04i-%02i-%02i %02i:%02i:%02i\n", tf.Year, tf.Month, tf.Day, tf.Hour, tf.Minute, tf.Second);
-
-		Status = ZwWriteFile(log_handle, NULL, NULL, NULL, &iosb, dateline, (ULONG)strlen(dateline), NULL, NULL);
-		ExFreePool(dateline);
-		if (!NT_SUCCESS(Status))
-		{
-			ERR("ZwWriteFile returned %08lx\n", Status);
-			goto end;
-		}
-	}
-
-end:
-	ExReleaseResourceLite(&log_lock);
 }
 #endif
 
@@ -848,15 +509,6 @@ static void do_shutdown(PIRP Irp)
 
 		le = le2;
 	}
-
-#ifdef _DEBUG
-	if (comfo)
-	{
-		ObDereferenceObject(comfo);
-		comdo = NULL;
-		comfo = NULL;
-	}
-#endif
 
 	IoUnregisterFileSystem(devobj);
 
@@ -3574,14 +3226,6 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 
 	is_windows_8 = ver.dwMajorVersion > 6 || (ver.dwMajorVersion == 6 && ver.dwMinorVersion >= 2);
 
-#ifdef _DEBUG
-	ExInitializeResourceLite(&log_lock);
-#endif
-	log_device.Buffer = NULL;
-	log_device.Length = log_device.MaximumLength = 0;
-	log_file.Buffer = NULL;
-	log_file.Length = log_file.MaximumLength = 0;
-
 	registry_path.Length = registry_path.MaximumLength = RegistryPath->Length;
 	registry_path.Buffer = ExAllocatePoolWithTag(PagedPool, registry_path.Length, ALLOC_TAG);
 
@@ -3594,15 +3238,6 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	RtlCopyMemory(registry_path.Buffer, RegistryPath->Buffer, registry_path.Length);
 
 	read_registry(&registry_path, false);
-
-#ifdef _DEBUG
-	if (debug_log_level > 0)
-	{
-		init_logging();
-	}
-
-	log_started = true;
-#endif
 
 	TRACE("DriverEntry\n");
 
