@@ -826,14 +826,6 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 		ERR("out of memory\n");
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
-	char* newtable = ExAllocatePoolWithTag(NonPagedPool, Vcb->vde->pdode->KMCSFS.filenamesend + 2 + fn.Length / sizeof(WCHAR) + 1 + 35 * (Vcb->vde->pdode->KMCSFS.filecount + 1), ALLOC_TAG);
-	if (!newtable)
-	{
-		ERR("out of memory\n");
-		ExFreePool(newtablestr);
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-	RtlZeroMemory(newtable, Vcb->vde->pdode->KMCSFS.filenamesend + 2 + fn.Length / sizeof(WCHAR) + 1 + 35 * (Vcb->vde->pdode->KMCSFS.filecount + 1));
 
 	RtlCopyMemory(newtablestr, Vcb->vde->pdode->KMCSFS.tablestr, Vcb->vde->pdode->KMCSFS.tablestrlen);
 	if (newtablestr[Vcb->vde->pdode->KMCSFS.tablestrlen - 1] == 32)
@@ -849,8 +841,14 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 		Vcb->vde->pdode->KMCSFS.tablestrlen++;
 	}
 
-	ExFreePool(Vcb->vde->pdode->KMCSFS.tablestr);
-	Vcb->vde->pdode->KMCSFS.tablestr = newtablestr;
+	char* newtable = ExAllocatePoolWithTag(NonPagedPool, 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR) + 2 + 35 * (Vcb->vde->pdode->KMCSFS.filecount + 1), ALLOC_TAG);
+	if (!newtable)
+	{
+		ERR("out of memory\n");
+		ExFreePool(newtablestr);
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	RtlZeroMemory(newtable, 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR) + 2 + 35 * (Vcb->vde->pdode->KMCSFS.filecount + 1));
 
 	char* newtablestren = encode(newtablestr, Vcb->vde->pdode->KMCSFS.tablestrlen);
 	if (!newtablestren)
@@ -860,6 +858,9 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 		ExFreePool(newtable);
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
+
+	ExFreePool(Vcb->vde->pdode->KMCSFS.tablestr);
+	Vcb->vde->pdode->KMCSFS.tablestr = newtablestr;
 
 	newtable[0] = Vcb->vde->pdode->KMCSFS.table[0];
 	unsigned long long extratablesize = 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 2 + fn.Length / sizeof(WCHAR) + 1 + 35 * (Vcb->vde->pdode->KMCSFS.filecount + 1);
@@ -1646,7 +1647,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 		ExFreePool(used_bytes);
 		if (!size)
 		{
-			unsigned long long extratblesize = (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend + 2 + 35 * KMCSFS->filecount;
+			unsigned long long extratblesize = 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend + 2 + 35 * KMCSFS->filecount;
 			unsigned long long tablesize = (extratblesize + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize - 1;
 			char* newtable = ExAllocatePoolWithTag(NonPagedPool, extratblesize, ALLOC_TAG);
 			if (!newtable)
