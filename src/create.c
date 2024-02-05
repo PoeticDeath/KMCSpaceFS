@@ -39,7 +39,7 @@ fcb* create_fcb(device_extension* Vcb, POOL_TYPE pool_type)
 {
 	fcb* fcb;
 
-	if (pool_type == NonPagedPool)
+	if (pool_type == NonPagedPoolNx)
 	{
 		fcb = ExAllocatePoolWithTag(pool_type, sizeof(struct _fcb), ALLOC_TAG);
 		if (!fcb)
@@ -74,7 +74,7 @@ fcb* create_fcb(device_extension* Vcb, POOL_TYPE pool_type)
 	{
 		ERR("out of memory\n");
 
-		if (pool_type == NonPagedPool)
+		if (pool_type == NonPagedPoolNx)
 		{
 			ExFreePool(fcb);
 		}
@@ -270,7 +270,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	ULONG options;
 	NTSTATUS Status = STATUS_INVALID_PARAMETER;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
-	POOL_TYPE pool_type = IrpSp->Flags & SL_OPEN_PAGING_FILE ? NonPagedPool : PagedPool;
+	POOL_TYPE pool_type = IrpSp->Flags & SL_OPEN_PAGING_FILE ? NonPagedPoolNx : PagedPool;
 	ACCESS_MASK granted_access;
 	UNICODE_STRING fn;
 	bool created = false;
@@ -546,7 +546,7 @@ loaded:
 			goto exit;
 		}
 
-		ccb* ccb = ExAllocatePoolWithTag(NonPagedPool, sizeof(*ccb), ALLOC_TAG);
+		ccb* ccb = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(*ccb), ALLOC_TAG);
 		if (!ccb)
 		{
 			ERR("out of memory\n");
@@ -614,7 +614,7 @@ loaded:
 			if (NT_SUCCESS(Status))
 			{
 				uint8_t* security = {"O:WDG:WDD:P(A;;FA;;;WD)"};
-				fcb* fcb = create_fcb(Vcb, NonPagedPool);
+				fcb* fcb = create_fcb(Vcb, NonPagedPoolNx);
 				if (!fcb)
 				{
 					ERR("out of memory\n");
@@ -931,7 +931,7 @@ NTSTATUS __stdcall Create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			goto exit;
 		}
 
-		ccb = ExAllocatePoolWithTag(NonPagedPool, sizeof(*ccb), ALLOC_TAG);
+		ccb = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(*ccb), ALLOC_TAG);
 		if (!ccb)
 		{
 			ERR("out of memory\n");

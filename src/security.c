@@ -3232,7 +3232,7 @@ static BOOL ParseStringSecurityDescriptorToSecurityDescriptor(LPCWSTR StringSecu
 
 	*cBytes = sizeof(SECURITY_DESCRIPTOR_RELATIVE);
 
-	tok = ExAllocatePoolWithTag(NonPagedPool, (wcslen(StringSecurityDescriptor) + 1) * sizeof(WCHAR), ALLOC_TAG);
+	tok = ExAllocatePoolWithTag(NonPagedPoolNx, (wcslen(StringSecurityDescriptor) + 1) * sizeof(WCHAR), ALLOC_TAG);
 	if (!tok) goto lend;
 
 	if (SecurityDescriptor)
@@ -3393,7 +3393,7 @@ static BOOL WINAPI ConvertStringSecurityDescriptorToSecurityDescriptorW(LPCWSTR 
 		goto lend;
 	}
 
-	psd = *SecurityDescriptor = ExAllocatePoolWithTag(NonPagedPool, cBytes, ALLOC_TAG);
+	psd = *SecurityDescriptor = ExAllocatePoolWithTag(NonPagedPoolNx, cBytes, ALLOC_TAG);
 	if (!psd) goto lend;
 
 	psd->Revision = SID_REVISION;
@@ -3504,14 +3504,14 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	securityfile.Buffer = ccb->filename.Buffer + 1;
 	unsigned long long index = get_filename_index(securityfile, Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-	char* security = ExAllocatePoolWithTag(NonPagedPool, filesize, ALLOC_TAG);
+	char* security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
 	if (!security)
 	{
 		ERR("out of memory\n");
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 	unsigned long long bytes_read = 0;
-	fcb* fcb = create_fcb(Vcb, NonPagedPool);
+	fcb* fcb = create_fcb(Vcb, NonPagedPoolNx);
 	if (!fcb)
 	{
 		ERR("out of memory\n");
@@ -3539,7 +3539,7 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		return STATUS_INTERNAL_ERROR;
 	}
 
-	WCHAR* securityW = ExAllocatePoolWithTag(NonPagedPool, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
+	WCHAR* securityW = ExAllocatePoolWithTag(NonPagedPoolNx, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
 	if (!securityW)
 	{
 		ERR("out of memory\n");
@@ -3617,13 +3617,13 @@ end:
 static int __cdecl sprintfW(WCHAR* _Buffer, const WCHAR* _Format, ...)
 {
 	unsigned long long _BufferLen = wcslen(_Buffer);
-	char* _buffer = ExAllocatePoolWithTag(NonPagedPool, _BufferLen + 1, ALLOC_TAG);
+	char* _buffer = ExAllocatePoolWithTag(NonPagedPoolNx, _BufferLen + 1, ALLOC_TAG);
 	if (!_buffer)
 	{
 		return 0;
 	}
 	unsigned long long _FormatLen = wcslen(_Format);
-	char* _format = ExAllocatePoolWithTag(NonPagedPool, _FormatLen + 1, ALLOC_TAG);
+	char* _format = ExAllocatePoolWithTag(NonPagedPoolNx, _FormatLen + 1, ALLOC_TAG);
 	if (!_format)
 	{
 		ExFreePool(_buffer);
@@ -4253,7 +4253,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 	securityfile.Buffer = ccb->filename.Buffer + 1;
 	unsigned long long index = get_filename_index(securityfile, Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-	security = ExAllocatePoolWithTag(NonPagedPool, filesize, ALLOC_TAG);
+	security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
 	if (!security)
 	{
 		ERR("out of memory\n");
@@ -4275,7 +4275,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 		goto end;
 	}
 
-	securityW = ExAllocatePoolWithTag(NonPagedPool, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
+	securityW = ExAllocatePoolWithTag(NonPagedPoolNx, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
 	if (!securityW)
 	{
 		ERR("out of memory\n");
@@ -4309,7 +4309,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 		goto end;
 	}
 
-	Newsecurity = ExAllocatePoolWithTag(NonPagedPool, NewBUFLEN + 1, ALLOC_TAG);
+	Newsecurity = ExAllocatePoolWithTag(NonPagedPoolNx, NewBUFLEN + 1, ALLOC_TAG);
 	if (!Newsecurity)
 	{
 		ERR("out of memory\n");

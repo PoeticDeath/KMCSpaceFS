@@ -200,7 +200,7 @@ NTSTATUS vol_read(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	if (vc->devobj->Flags & DO_BUFFERED_IO)
 	{
-		Irp2->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPool, IrpSp->Parameters.Read.Length, ALLOC_TAG);
+		Irp2->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, IrpSp->Parameters.Read.Length, ALLOC_TAG);
 		if (!Irp2->AssociatedIrp.SystemBuffer)
 		{
 			ERR("out of memory\n");
@@ -211,7 +211,7 @@ NTSTATUS vol_read(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 		Irp2->Flags |= IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER | IRP_INPUT_OPERATION;
 
-		Irp2->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+		Irp2->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute);
 	}
 	else if (vc->devobj->Flags & DO_DIRECT_IO)
 	{
@@ -219,7 +219,7 @@ NTSTATUS vol_read(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 	else
 	{
-		Irp2->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+		Irp2->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute);
 	}
 
 	IrpSp2->Parameters.Read.Length = IrpSp->Parameters.Read.Length;
@@ -299,11 +299,11 @@ NTSTATUS vol_write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	if (vc->devobj->Flags & DO_BUFFERED_IO)
 	{
-		Irp2->AssociatedIrp.SystemBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+		Irp2->AssociatedIrp.SystemBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute);
 
 		Irp2->Flags |= IRP_BUFFERED_IO;
 
-		Irp2->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+		Irp2->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute);
 	}
 	else if (vc->devobj->Flags & DO_DIRECT_IO)
 	{
@@ -311,7 +311,7 @@ NTSTATUS vol_write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 	else
 	{
-		Irp2->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+		Irp2->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute);
 	}
 
 	IrpSp2->Parameters.Write.Length = IrpSp->Parameters.Write.Length;
@@ -938,7 +938,7 @@ NTSTATUS mountmgr_add_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devp
 
 	mmdltsize = (ULONG)offsetof(MOUNTMGR_DRIVE_LETTER_TARGET, DeviceName[0]) + devpath->Length;
 
-	mmdlt = ExAllocatePoolWithTag(NonPagedPool, mmdltsize, ALLOC_TAG);
+	mmdlt = ExAllocatePoolWithTag(NonPagedPoolNx, mmdltsize, ALLOC_TAG);
 	if (!mmdlt)
 	{
 		ERR("out of memory\n");
@@ -1180,7 +1180,7 @@ void add_volume_device(KMCSpaceFS KMCSFS, PUNICODE_STRING devpath, uint64_t leng
 				return;
 			}
 
-			pdode = ExAllocatePoolWithTag(NonPagedPool, sizeof(pdo_device_extension), ALLOC_TAG);
+			pdode = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(pdo_device_extension), ALLOC_TAG);
 
 			if (!pdode)
 			{

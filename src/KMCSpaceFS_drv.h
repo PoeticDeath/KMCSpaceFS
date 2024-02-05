@@ -253,7 +253,7 @@ static __inline void* map_user_buffer(PIRP Irp, ULONG priority)
 	}
 	else
 	{
-		return MmGetSystemAddressForMdlSafe(Irp->MdlAddress, priority);
+		return MmGetSystemAddressForMdlSafe(Irp->MdlAddress, priority | MdlMappingNoExecute);
 	}
 }
 

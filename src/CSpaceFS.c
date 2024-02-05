@@ -24,13 +24,13 @@ void init_maps()
 	static const char charmap[] = "0123456789-,.; ";
 	unsigned p = 0;
 	unsigned c;
-	emap = ExAllocatePoolWithTag(NonPagedPool, 65536 * sizeof(unsigned), ALLOC_TAG);
+	emap = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(unsigned), ALLOC_TAG);
 	if (!emap)
 	{
 		ERR("out of memory\n");
 		return;
 	}
-	dmap = ExAllocatePoolWithTag(NonPagedPool, 256 * sizeof(unsigned), ALLOC_TAG);
+	dmap = ExAllocatePoolWithTag(NonPagedPoolNx, 256 * sizeof(unsigned), ALLOC_TAG);
 	if (!dmap)
 	{
 		ERR("out of memory\n");
@@ -54,7 +54,7 @@ char* encode(char* str, unsigned long long len)
 	if (len % 2)
 	{
 		len++;
-		alc = ExAllocatePoolWithTag(NonPagedPool, len, ALLOC_TAG);
+		alc = ExAllocatePoolWithTag(NonPagedPoolNx, len, ALLOC_TAG);
 		if (!alc)
 		{
 			ERR("out of memory\n");
@@ -64,7 +64,7 @@ char* encode(char* str, unsigned long long len)
 		alc[len - 1] = 32;
 		alc[len - 2] = 46;
 	}
-	char* bytes = ExAllocatePoolWithTag(NonPagedPool, len / 2 + 1, ALLOC_TAG);
+	char* bytes = ExAllocatePoolWithTag(NonPagedPoolNx, len / 2 + 1, ALLOC_TAG);
 	if (!bytes)
 	{
 		ERR("out of memory\n");
@@ -95,7 +95,7 @@ char* encode(char* str, unsigned long long len)
 
 char* decode(char* bytes, unsigned long long len)
 {
-	char* str = ExAllocatePoolWithTag(NonPagedPool, (len + 1) * 2, ALLOC_TAG);
+	char* str = ExAllocatePoolWithTag(NonPagedPoolNx, (len + 1) * 2, ALLOC_TAG);
 	if (!str)
 	{
 		ERR("out of memory\n");
@@ -820,7 +820,7 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 		return STATUS_DISK_FULL;
 	}
 
-	char* newtablestr = ExAllocatePoolWithTag(NonPagedPool, Vcb->vde->pdode->KMCSFS.tablestrlen + 2, ALLOC_TAG);
+	char* newtablestr = ExAllocatePoolWithTag(NonPagedPoolNx, Vcb->vde->pdode->KMCSFS.tablestrlen + 2, ALLOC_TAG);
 	if (!newtablestr)
 	{
 		ERR("out of memory\n");
@@ -841,7 +841,7 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 		Vcb->vde->pdode->KMCSFS.tablestrlen++;
 	}
 
-	char* newtable = ExAllocatePoolWithTag(NonPagedPool, 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR) + 2 + 35 * (Vcb->vde->pdode->KMCSFS.filecount + 1), ALLOC_TAG);
+	char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR) + 2 + 35 * (Vcb->vde->pdode->KMCSFS.filecount + 1), ALLOC_TAG);
 	if (!newtable)
 	{
 		ERR("out of memory\n");
@@ -1107,7 +1107,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 {
 	if (size)
 	{
-		unsigned long* used_bytes = ExAllocatePoolWithTag(NonPagedPool, (KMCSFS->size / KMCSFS->sectorsize - KMCSFS->tablesize) * sizeof(unsigned long), ALLOC_TAG);
+		unsigned long* used_bytes = ExAllocatePoolWithTag(NonPagedPoolNx, (KMCSFS->size / KMCSFS->sectorsize - KMCSFS->tablesize) * sizeof(unsigned long), ALLOC_TAG);
 		if (!used_bytes)
 		{
 			ERR("out of memory\n");
@@ -1246,7 +1246,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 		{
 			if (cursize % KMCSFS->sectorsize)
 			{ // Last block was part sector
-				tempdata = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->sectorsize, ALLOC_TAG);
+				tempdata = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->sectorsize, ALLOC_TAG);
 				if (!tempdata)
 				{
 					ERR("out of memory\n");
@@ -1279,7 +1279,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 					{
 						if (cursize)
 						{
-							char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 22, ALLOC_TAG);
+							char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->tablestrlen + 22, ALLOC_TAG);
 							if (!newtable)
 							{
 								ERR("out of memory\n");
@@ -1304,7 +1304,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 						}
 						else
 						{
-							char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 21, ALLOC_TAG);
+							char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->tablestrlen + 21, ALLOC_TAG);
 							if (!newtable)
 							{
 								ERR("out of memory\n");
@@ -1341,7 +1341,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 					{
 						if (cursize)
 						{
-							char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 64, ALLOC_TAG);
+							char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->tablestrlen + 64, ALLOC_TAG);
 							if (!newtable)
 							{
 								ERR("out of memory\n");
@@ -1376,7 +1376,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 						}
 						else
 						{
-							char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 63, ALLOC_TAG);
+							char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->tablestrlen + 63, ALLOC_TAG);
 							if (!newtable)
 							{
 								ERR("out of memory\n");
@@ -1414,7 +1414,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 					{
 						if (!tablestr)
 						{
-							tablestr = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen, ALLOC_TAG);
+							tablestr = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->tablestrlen, ALLOC_TAG);
 							if (!tablestr)
 							{
 								ERR("out of memory\n");
@@ -1426,7 +1426,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 
 						if (!used_sector_bytes)
 						{
-							used_sector_bytes = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->sectorsize / 8, ALLOC_TAG);
+							used_sector_bytes = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->sectorsize / 8, ALLOC_TAG);
 							if (!used_sector_bytes)
 							{
 								ERR("out of memory\n");
@@ -1544,7 +1544,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 						{
 							if (cursize)
 							{
-								char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 64, ALLOC_TAG);
+								char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->tablestrlen + 64, ALLOC_TAG);
 								if (!newtable)
 								{
 									ERR("out of memory\n");
@@ -1585,7 +1585,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 							}
 							else
 							{
-								char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen + 63, ALLOC_TAG);
+								char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->tablestrlen + 63, ALLOC_TAG);
 								if (!newtable)
 								{
 									ERR("out of memory\n");
@@ -1649,7 +1649,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 		{
 			unsigned long long extratblesize = 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend + 2 + 35 * KMCSFS->filecount;
 			unsigned long long tablesize = (extratblesize + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize - 1;
-			char* newtable = ExAllocatePoolWithTag(NonPagedPool, extratblesize, ALLOC_TAG);
+			char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, extratblesize, ALLOC_TAG);
 			if (!newtable)
 			{
 				ERR("out of memory - could not write to disk\n");
@@ -1684,7 +1684,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 	{
 		if (!KMCSFS->used_blocks)
 		{
-			unsigned long* used_bytes = ExAllocatePoolWithTag(NonPagedPool, (KMCSFS->size / KMCSFS->sectorsize - KMCSFS->tablesize) * sizeof(unsigned long), ALLOC_TAG);
+			unsigned long* used_bytes = ExAllocatePoolWithTag(NonPagedPoolNx, (KMCSFS->size / KMCSFS->sectorsize - KMCSFS->tablesize) * sizeof(unsigned long), ALLOC_TAG);
 			if (!used_bytes)
 			{
 				ERR("out of memory\n");
@@ -1787,14 +1787,14 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 
 bool delete_file(KMCSpaceFS* KMCSFS, unsigned long long index)
 {
-	char* newtable = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->filenamesend + 2 + 35 * (KMCSFS->filecount - 1), ALLOC_TAG);
+	char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->filenamesend + 2 + 35 * (KMCSFS->filecount - 1), ALLOC_TAG);
 	if (!newtable)
 	{
 		ERR("out of memory\n");
 		return false;
 	}
 	RtlZeroMemory(newtable, KMCSFS->filenamesend + 2 + 35 * (KMCSFS->filecount - 1));
-	char* newtablestr = ExAllocatePoolWithTag(NonPagedPool, KMCSFS->tablestrlen, ALLOC_TAG);
+	char* newtablestr = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->tablestrlen, ALLOC_TAG);
 	if (!newtablestr)
 	{
 		ERR("out of memory\n");

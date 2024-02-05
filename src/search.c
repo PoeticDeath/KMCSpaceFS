@@ -155,7 +155,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 	}
 
 	toread = (ULONG)sector_align(512, sector_size);
-	data = ExAllocatePoolWithTag(NonPagedPool, toread, ALLOC_TAG);
+	data = ExAllocatePoolWithTag(NonPagedPoolNx, toread, ALLOC_TAG);
 	if (!data)
 	{
 		ERR("out of memory\n");
@@ -180,7 +180,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 			return false;
 		}
 		uint8_t* GUIDPT = NULL;
-		GUIDPT = ExAllocatePoolWithTag(NonPagedPool, 16384, ALLOC_TAG);
+		GUIDPT = ExAllocatePoolWithTag(NonPagedPoolNx, 16384, ALLOC_TAG);
 		if (!GUIDPT)
 		{
 			ERR("out of memory\n");
@@ -210,7 +210,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 		KMCSFS.tablesize = 1 + (data[4] & 0xff) + ((data[3] & 0xff) << 8) + ((data[2] & 0xff) << 16) + ((data[1] & 0xff) << 24);
 		KMCSFS.extratablesize = (unsigned long long)KMCSFS.sectorsize * KMCSFS.tablesize;
 
-		table = ExAllocatePoolWithTag(NonPagedPool, KMCSFS.extratablesize, ALLOC_TAG);
+		table = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS.extratablesize, ALLOC_TAG);
 		if (!table)
 		{
 			ERR("out of memory\n");
@@ -974,7 +974,7 @@ static void mountmgr_process_drive(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devi
 					MOUNTDEV_NAME* mdn2;
 					ULONG mdnsize = (ULONG)offsetof(MOUNTDEV_NAME, Name[0]) + mdn.NameLength;
 
-					mdn2 = ExAllocatePoolWithTag(NonPagedPool, mdnsize, ALLOC_TAG);
+					mdn2 = ExAllocatePoolWithTag(NonPagedPoolNx, mdnsize, ALLOC_TAG);
 					if (!mdn2)
 					{
 						ERR("out of memory\n");
@@ -1140,7 +1140,7 @@ void __stdcall mountmgr_thread(_In_ void* context)
 		{
 			MOUNTMGR_MOUNT_POINTS* mmps2;
 
-			mmps2 = ExAllocatePoolWithTag(NonPagedPool, mmps.Size, ALLOC_TAG);
+			mmps2 = ExAllocatePoolWithTag(NonPagedPoolNx, mmps.Size, ALLOC_TAG);
 			if (!mmps2)
 			{
 				ERR("out of memory\n");

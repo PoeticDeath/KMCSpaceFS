@@ -105,7 +105,7 @@ NTSTATUS query_directory(PIRP Irp)
 	Irp->IoStatus.Information = 0;
 	unsigned long old_offset = 0;
 
-	WCHAR* filename = ExAllocatePoolWithTag(NonPagedPool, 256 * sizeof(WCHAR), ALLOC_TAG);
+	WCHAR* filename = ExAllocatePoolWithTag(NonPagedPoolNx, 256 * sizeof(WCHAR), ALLOC_TAG);
 	if (!filename)
 	{
 		ERR("out of memory\n");

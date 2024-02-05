@@ -71,7 +71,7 @@ static bool get_system_root()
 			return false;
 		}
 
-		target.Buffer = ExAllocatePoolWithTag(NonPagedPool, retlen, ALLOC_TAG);
+		target.Buffer = ExAllocatePoolWithTag(NonPagedPoolNx, retlen, ALLOC_TAG);
 		if (!target.Buffer)
 		{
 			ERR("out of memory\n");
@@ -242,7 +242,7 @@ static void mountmgr_notification(KMCSpaceFS_UUID* uuid)
 
 	mmtnlen = offsetof(MOUNTMGR_TARGET_NAME, DeviceName[0]) + sizeof(KMCSPACEFS_VOLUME_PREFIX) + (36 * sizeof(WCHAR));
 
-	mmtn = ExAllocatePoolWithTag(NonPagedPool, mmtnlen, ALLOC_TAG);
+	mmtn = ExAllocatePoolWithTag(NonPagedPoolNx, mmtnlen, ALLOC_TAG);
 	if (!mmtn)
 	{
 		ERR("out of memory\n");

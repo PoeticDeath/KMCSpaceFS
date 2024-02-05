@@ -478,7 +478,7 @@ static void do_shutdown(PIRP Irp)
 
 			vde->removing = true;
 
-			newvpb = ExAllocatePoolWithTag(NonPagedPool, sizeof(VPB), ALLOC_TAG);
+			newvpb = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(VPB), ALLOC_TAG);
 			if (!newvpb)
 			{
 				ERR("out of memory\n");
@@ -608,7 +608,7 @@ end:
 static bool is_KMCSpaceFS(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject)
 {
 	bool found = false;
-	uint8_t* table = NULL, * data = ExAllocatePoolWithTag(NonPagedPool, 512, ALLOC_TAG);
+	uint8_t* table = NULL, * data = ExAllocatePoolWithTag(NonPagedPoolNx, 512, ALLOC_TAG);
 	if (!data)
 	{
 		ERR("out of memory\n");
@@ -623,7 +623,7 @@ static bool is_KMCSpaceFS(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject)
 		KMCSFS.tablesize = 1 + (data[4] & 0xff) + ((data[3] & 0xff) << 8) + ((data[2] & 0xff) << 16) + ((data[1] & 0xff) << 24);
 		KMCSFS.extratablesize = (unsigned long long)KMCSFS.sectorsize * KMCSFS.tablesize;
 
-		table = ExAllocatePoolWithTag(NonPagedPool, KMCSFS.extratablesize, ALLOC_TAG);
+		table = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS.extratablesize, ALLOC_TAG);
 		if (!table)
 		{
 			ERR("out of memory\n");
@@ -704,7 +704,7 @@ static void __stdcall check_after_wakeup(PDEVICE_OBJECT DeviceObject, PVOID con)
 
 				WARN("forcing remount\n");
 
-				newvpb = ExAllocatePoolWithTag(NonPagedPool, sizeof(VPB), ALLOC_TAG);
+				newvpb = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(VPB), ALLOC_TAG);
 				if (!newvpb)
 				{
 					ERR("out of memory\n");
@@ -1192,7 +1192,7 @@ void reap_fcb(fcb* fcb)
 
 	FsRtlUninitializeFileLock(&fcb->lock);
 
-	if (fcb->pool_type == NonPagedPool)
+	if (fcb->pool_type == NonPagedPoolNx)
 	{
 		ExFreePool(fcb);
 	}
@@ -1432,7 +1432,7 @@ static NTSTATUS mount_vol(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 	}
 
 	InitializeListHead(&Vcb->devices);
-	dev = ExAllocatePoolWithTag(NonPagedPool, sizeof(device), ALLOC_TAG);
+	dev = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(device), ALLOC_TAG);
 	if (!dev)
 	{
 		ERR("out of memory\n");
@@ -1462,7 +1462,7 @@ static NTSTATUS mount_vol(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 	FsRtlNotifyInitializeSync(&Vcb->NotifySync);
 
 	ExInitializePagedLookasideList(&Vcb->fcb_lookaside, NULL, NULL, 0, sizeof(fcb), ALLOC_TAG, 0);
-	ExInitializeNPagedLookasideList(&Vcb->fcb_np_lookaside, NULL, NULL, 0, sizeof(fcb_nonpaged), ALLOC_TAG, 0);
+	ExInitializeNPagedLookasideList(&Vcb->fcb_np_lookaside, NULL, NULL, POOL_NX_ALLOCATION, sizeof(fcb_nonpaged), ALLOC_TAG, 0);
 	init_lookaside = true;
 
 	Vcb->Vpb = IrpSp->Parameters.MountVolume.Vpb;
@@ -1473,7 +1473,7 @@ static NTSTATUS mount_vol(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 		Vcb->readonly = true;
 	}
 
-	Vcb->volume_fcb = create_fcb(Vcb, NonPagedPool);
+	Vcb->volume_fcb = create_fcb(Vcb, NonPagedPoolNx);
 	if (!Vcb->volume_fcb)
 	{
 		ERR("out of memory\n");
@@ -1484,7 +1484,7 @@ static NTSTATUS mount_vol(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 	Vcb->volume_fcb->Vcb = Vcb;
 	Vcb->volume_fcb->sd = NULL;
 
-	root_fcb = create_fcb(Vcb, NonPagedPool);
+	root_fcb = create_fcb(Vcb, NonPagedPoolNx);
 	if (!root_fcb)
 	{
 		ERR("out of memory\n");
@@ -2245,7 +2245,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		labelname_us.Buffer = labelname;
 		unsigned long long index = get_filename_index(labelname_us, Vcb->vde->pdode->KMCSFS);
 		unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-		char* label = ExAllocatePoolWithTag(NonPagedPool, filesize + 1, ALLOC_TAG);
+		char* label = ExAllocatePoolWithTag(NonPagedPoolNx, filesize + 1, ALLOC_TAG);
 		if (!label)
 		{
 			ERR("out of memory\n");
@@ -2253,7 +2253,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 			break;
 		}
 		unsigned long long bytes_read = 0;
-		fcb* fcb = create_fcb(Vcb, NonPagedPool);
+		fcb* fcb = create_fcb(Vcb, NonPagedPoolNx);
 		if (!fcb)
 		{
 			ERR("out of memory\n");
@@ -2457,7 +2457,7 @@ NTSTATUS sync_read_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT File
 
 	if (DeviceObject->Flags & DO_BUFFERED_IO)
 	{
-		Irp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPool, Length, ALLOC_TAG);
+		Irp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, Length, ALLOC_TAG);
 		if (!Irp->AssociatedIrp.SystemBuffer)
 		{
 			ERR("out of memory\n");
@@ -2567,7 +2567,7 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 	IrpSp->Parameters.Write.Length = RLength + (512 - RLength % 512) % 512;
 	IrpSp->Parameters.Write.ByteOffset = Offset;
 
-	PUCHAR RBuffer = ExAllocatePoolWithTag(NonPagedPool, IrpSp->Parameters.Write.Length + 512, ALLOC_TAG);
+	PUCHAR RBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, IrpSp->Parameters.Write.Length + 512, ALLOC_TAG);
 	if (!RBuffer)
 	{
 		ERR("out of memory\n");
@@ -2587,7 +2587,7 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 
 	if (DeviceObject->Flags & DO_BUFFERED_IO)
 	{
-		Irp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPool, IrpSp->Parameters.Write.Length + 512, ALLOC_TAG);
+		Irp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, IrpSp->Parameters.Write.Length + 512, ALLOC_TAG);
 		if (!Irp->AssociatedIrp.SystemBuffer)
 		{
 			ERR("out of memory\n");
@@ -2681,14 +2681,14 @@ static NTSTATUS set_label(_In_ device_extension* Vcb, _In_ FILE_FS_LABEL_INFORMA
 	labelname_us.Buffer = labelname;
 	unsigned long long index = get_filename_index(labelname_us, Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-	char* label = ExAllocatePoolWithTag(NonPagedPool, labellen, ALLOC_TAG);
+	char* label = ExAllocatePoolWithTag(NonPagedPoolNx, labellen, ALLOC_TAG);
 	if (!label)
 	{
 		ERR("out of memory\n");
 		Status = STATUS_INSUFFICIENT_RESOURCES;
 		goto end;
 	}
-	fcb* fcb = create_fcb(Vcb, NonPagedPool);
+	fcb* fcb = create_fcb(Vcb, NonPagedPoolNx);
 	if (!fcb)
 	{
 		ERR("out of memory\n");
@@ -2908,7 +2908,7 @@ void init_device(_In_ device_extension* Vcb, _Inout_ device* dev, _In_ bool get_
 	}
 
 	aptelen = sizeof(ATA_PASS_THROUGH_EX) + 512;
-	apte = ExAllocatePoolWithTag(NonPagedPool, aptelen, ALLOC_TAG);
+	apte = ExAllocatePoolWithTag(NonPagedPoolNx, aptelen, ALLOC_TAG);
 	if (!apte)
 	{
 		ERR("out of memory\n");
