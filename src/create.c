@@ -563,7 +563,8 @@ loaded:
 		ccb->query_dir_offset = 0;
 		ccb->query_dir_index = 0;
 		ccb->access = granted_access;
-		RtlInitUnicodeString(&ccb->filename, fn.Buffer);
+		ccb->filename.Buffer = fn.Buffer;
+		ccb->filename.Length = fn.Length;
 
 		InterlockedIncrement(&Vcb->open_files);
 
