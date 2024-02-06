@@ -3395,6 +3395,7 @@ static BOOL WINAPI ConvertStringSecurityDescriptorToSecurityDescriptorW(LPCWSTR 
 
 	psd = *SecurityDescriptor = ExAllocatePoolWithTag(NonPagedPoolNx, cBytes, ALLOC_TAG);
 	if (!psd) goto lend;
+	RtlZeroMemory(psd, cBytes);
 
 	psd->Revision = SID_REVISION;
 	psd->Control |= SE_SELF_RELATIVE;
