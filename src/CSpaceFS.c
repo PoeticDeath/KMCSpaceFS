@@ -1823,7 +1823,7 @@ bool delete_file(KMCSpaceFS* KMCSFS, unsigned long long index)
 	{
 		if (KMCSFS->tablestr[i] == *".")
 		{
-			tablelen = max(i - tableloc, 1);
+			tablelen = i - tableloc + 1;
 			break;
 		}
 	}
