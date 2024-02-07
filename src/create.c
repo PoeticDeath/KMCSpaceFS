@@ -274,6 +274,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	ACCESS_MASK granted_access;
 	UNICODE_STRING fn;
 	bool created = false;
+	unsigned long long index = 0;
 
 	Irp->IoStatus.Information = 0;
 
@@ -417,7 +418,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 open:
 	if (RequestedDisposition == FILE_OPEN || RequestedDisposition == FILE_OPEN_IF || RequestedDisposition == FILE_CREATE)
 	{
-		unsigned long long index = get_filename_index(fn, Vcb->vde->pdode->KMCSFS);
+		index = get_filename_index(fn, Vcb->vde->pdode->KMCSFS);
 		if (index)
 		{
 			unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
@@ -452,7 +453,7 @@ open:
 	}
 	else if (RequestedDisposition == FILE_OVERWRITE || RequestedDisposition == FILE_OVERWRITE_IF)
 	{
-		unsigned long long index = get_filename_index(fn, Vcb->vde->pdode->KMCSFS);
+		index = get_filename_index(fn, Vcb->vde->pdode->KMCSFS);
 		if (index)
 		{
 			if (chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_READONLY && !(IrpSp->Flags & SL_IGNORE_READONLY_ATTRIBUTE))
@@ -483,29 +484,55 @@ open:
 	}
 
 loaded:
-	/*if (Status == STATUS_REPARSE)
+	if (Status == STATUS_REPARSE)
 	{
-		REPARSE_DATA_BUFFER* data;
-		Status = get_reparse_block((uint8_t**)&data);
-
-		if (!NT_SUCCESS(Status))
+		unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
+		REPARSE_DATA_BUFFER* data = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
+		if (!data)
 		{
-			ERR("get_reparse_block returned %08lx\n", Status);
-
-			Status = STATUS_SUCCESS;
-		}
-		else
-		{
-			Status = STATUS_REPARSE;
-			RtlCopyMemory(&Irp->IoStatus.Information, data, sizeof(ULONG));
-
-			data->Reserved = FileObject->FileName.Length;
-
-			Irp->Tail.Overlay.AuxiliaryBuffer = (void*)data;
-
+			ERR("out of memory\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
 			goto exit;
 		}
-	}*/
+		unsigned long long bytes_read = 0;
+		fcb* fcb = create_fcb(Vcb, NonPagedPoolNx);
+		if (!fcb)
+		{
+			ERR("out of memory\n");
+			ExFreePool(data);
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+		PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+		if (!Irp2)
+		{
+			ERR("out of memory\n");
+			free_fcb(fcb);
+			reap_fcb(fcb);
+			ExFreePool(data);
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+		Irp2->Flags |= IRP_NOCACHE;
+		read_file(fcb, (uint8_t*)data, 0, filesize, index, &bytes_read, Irp2);
+		if (bytes_read != filesize)
+		{
+			ERR("read_file returned %I64u\n", bytes_read);
+			IoFreeIrp(Irp2);
+			free_fcb(fcb);
+			reap_fcb(fcb);
+			ExFreePool(data);
+			Status = STATUS_INTERNAL_ERROR;
+			goto exit;
+		}
+		IoFreeIrp(Irp2);
+		free_fcb(fcb);
+		reap_fcb(fcb);
+
+		RtlCopyMemory(&Irp->IoStatus.Information, data, sizeof(ULONG));
+		Irp->Tail.Overlay.AuxiliaryBuffer = (void*)data;
+		goto exit;
+	}
 
 	if (NT_SUCCESS(Status))
 	{
