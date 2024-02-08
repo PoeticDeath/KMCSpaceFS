@@ -70,9 +70,12 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 	if (NT_SUCCESS(Status))
 	{
 		Irp->IoStatus.Information = length;
-		FileObject->CurrentByteOffset.QuadPart = start + length;
+		if (FileObject->Flags & FO_SYNCHRONOUS_IO && !(Irp->Flags & IRP_PAGING_IO))
+		{
+			FileObject->CurrentByteOffset.QuadPart = start + length;
+		}
 	}
-	else
+	else if (FileObject->Flags & FO_SYNCHRONOUS_IO && !(Irp->Flags & IRP_PAGING_IO))
 	{
 		FileObject->CurrentByteOffset.QuadPart = start;
 	}

@@ -297,7 +297,7 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 			FsRtlNotifyCleanup(fcb->Vcb->NotifySync, &fcb->Vcb->DirNotifyList, ccb);
 		}
 
-		if (ccb && ccb->options & FILE_DELETE_ON_CLOSE)
+		if (ccb && (ccb->options & FILE_DELETE_ON_CLOSE || ccb->delete_on_close))
 		{
 			unsigned long long index = get_filename_index(ccb->filename, fcb->Vcb->vde->pdode->KMCSFS);
 			unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);

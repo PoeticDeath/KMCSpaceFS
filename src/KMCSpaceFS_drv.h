@@ -127,6 +127,7 @@ typedef struct _ccb
 	ACCESS_MASK access;
 	UNICODE_STRING filename;
 	bool manage_volume_privilege;
+	bool delete_on_close;
 } ccb;
 
 typedef struct

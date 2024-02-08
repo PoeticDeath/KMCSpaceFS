@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.15)
 
 project(KMCSpaceFS VERSION 0.0.1)
 
+add_compile_options("-O2")
+
 # KMCSpaceFS.sys
 
 set(SRC_FILES

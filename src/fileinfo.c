@@ -307,6 +307,7 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 	}
 
 	FileObject->DeletePending = flags & FILE_DISPOSITION_DELETE;
+	ccb->delete_on_close = true;
 
 	Status = STATUS_SUCCESS;
 
