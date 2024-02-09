@@ -473,7 +473,7 @@ open:
 				{
 					IrpSp->Parameters.Create.FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
 				}
-				chwinattrs(index, IrpSp->Parameters.Create.FileAttributes, Vcb->vde->pdode->KMCSFS);
+				chwinattrs(index, IrpSp->Parameters.Create.FileAttributes | FILE_ATTRIBUTE_ARCHIVE, Vcb->vde->pdode->KMCSFS);
 				dealloc(&Vcb->vde->pdode->KMCSFS, index, get_file_size(index, Vcb->vde->pdode->KMCSFS), 0);
 			}
 		}

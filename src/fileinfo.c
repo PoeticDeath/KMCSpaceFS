@@ -256,7 +256,7 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 
 	TRACE("atts = %lx\n", winattrs);
 
-	if (winattrs & FILE_ATTRIBUTE_READONLY)
+	if (winattrs & FILE_ATTRIBUTE_READONLY && !(flags & FILE_DISPOSITION_IGNORE_READONLY_ATTRIBUTE))
 	{
 		TRACE("not allowing readonly file to be deleted\n");
 		Status = STATUS_CANNOT_DELETE;
@@ -646,7 +646,7 @@ static NTSTATUS fill_in_file_name_information(FILE_NAME_INFORMATION* fni, fcb* f
 	}
 
 	fni->FileNameLength = ccb->filename.Length;
-	RtlCopyMemory(fni->FileName, ccb->filename.Buffer, ccb->filename.Length);
+	RtlCopyMemory(fni->FileName, ccb->filename.Buffer, fni->FileNameLength);
 
 	return STATUS_SUCCESS;
 }

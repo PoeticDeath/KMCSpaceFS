@@ -3221,7 +3221,7 @@ lerr:
 	return FALSE;
 }
 
-static BOOL ParseStringSecurityDescriptorToSecurityDescriptor(LPCWSTR StringSecurityDescriptor, SECURITY_DESCRIPTOR_RELATIVE* SecurityDescriptor, LPDWORD cBytes)
+static BOOL ParseStringSecurityDescriptorToSecurityDescriptor(LPCWSTR StringSecurityDescriptor, SECURITY_DESCRIPTOR_RELATIVE* SecurityDescriptor, LPDWORD cBytes, SECURITY_INFORMATION SecurityInformation)
 {
 	BOOL bret = FALSE;
 	WCHAR toktype;
@@ -3286,8 +3286,11 @@ static BOOL ParseStringSecurityDescriptorToSecurityDescriptor(LPCWSTR StringSecu
 
 			if (SecurityDescriptor)
 			{
-				SecurityDescriptor->Owner = lpNext - (LPBYTE)SecurityDescriptor;
-				lpNext += bytes; /* Advance to next token */
+				if (SecurityInformation & OWNER_SECURITY_INFORMATION)
+				{
+					SecurityDescriptor->Owner = lpNext - (LPBYTE)SecurityDescriptor;
+					lpNext += bytes; /* Advance to next token */
+				}
 			}
 
 			*cBytes += bytes;
@@ -3306,8 +3309,11 @@ static BOOL ParseStringSecurityDescriptorToSecurityDescriptor(LPCWSTR StringSecu
 
 			if (SecurityDescriptor)
 			{
-				SecurityDescriptor->Group = lpNext - (LPBYTE)SecurityDescriptor;
-				lpNext += bytes; /* Advance to next token */
+				if (SecurityInformation & GROUP_SECURITY_INFORMATION)
+				{
+					SecurityDescriptor->Group = lpNext - (LPBYTE)SecurityDescriptor;
+					lpNext += bytes; /* Advance to next token */
+				}
 			}
 
 			*cBytes += bytes;
@@ -3327,9 +3333,12 @@ static BOOL ParseStringSecurityDescriptorToSecurityDescriptor(LPCWSTR StringSecu
 
 			if (SecurityDescriptor)
 			{
-				SecurityDescriptor->Control |= SE_DACL_PRESENT | flags;
-				SecurityDescriptor->Dacl = lpNext - (LPBYTE)SecurityDescriptor;
-				lpNext += bytes; /* Advance to next token */
+				if (SecurityInformation & DACL_SECURITY_INFORMATION)
+				{
+					SecurityDescriptor->Control |= SE_DACL_PRESENT | flags;
+					SecurityDescriptor->Dacl = lpNext - (LPBYTE)SecurityDescriptor;
+					lpNext += bytes; /* Advance to next token */
+				}
 			}
 
 			*cBytes += bytes;
@@ -3349,9 +3358,12 @@ static BOOL ParseStringSecurityDescriptorToSecurityDescriptor(LPCWSTR StringSecu
 
 			if (SecurityDescriptor)
 			{
-				SecurityDescriptor->Control |= SE_SACL_PRESENT | flags;
-				SecurityDescriptor->Sacl = lpNext - (LPBYTE)SecurityDescriptor;
-				lpNext += bytes; /* Advance to next token */
+				if (SecurityInformation & SACL_SECURITY_INFORMATION)
+				{
+					SecurityDescriptor->Control |= SE_SACL_PRESENT | flags;
+					SecurityDescriptor->Sacl = lpNext - (LPBYTE)SecurityDescriptor;
+					lpNext += bytes; /* Advance to next token */
+				}
 			}
 
 			*cBytes += bytes;
@@ -3376,7 +3388,7 @@ lend:
 	return bret;
 }
 
-static BOOL WINAPI ConvertStringSecurityDescriptorToSecurityDescriptorW(LPCWSTR StringSecurityDescriptor, DWORD StringSDRevision, PSECURITY_DESCRIPTOR* SecurityDescriptor, PULONG SecurityDescriptorSize)
+static BOOL WINAPI ConvertStringSecurityDescriptorToSecurityDescriptorW(LPCWSTR StringSecurityDescriptor, DWORD StringSDRevision, PSECURITY_DESCRIPTOR* SecurityDescriptor, PULONG SecurityDescriptorSize, SECURITY_INFORMATION SecurityInformation)
 {
 	DWORD cBytes;
 	SECURITY_DESCRIPTOR* psd;
@@ -3388,7 +3400,7 @@ static BOOL WINAPI ConvertStringSecurityDescriptorToSecurityDescriptorW(LPCWSTR 
 	}
 
 	/* Compute security descriptor length */
-	if (!ParseStringSecurityDescriptorToSecurityDescriptor(StringSecurityDescriptor, NULL, &cBytes))
+	if (!ParseStringSecurityDescriptorToSecurityDescriptor(StringSecurityDescriptor, NULL, &cBytes, SecurityInformation))
 	{
 		goto lend;
 	}
@@ -3400,7 +3412,7 @@ static BOOL WINAPI ConvertStringSecurityDescriptorToSecurityDescriptorW(LPCWSTR 
 	psd->Revision = SID_REVISION;
 	psd->Control |= SE_SELF_RELATIVE;
 
-	if (!ParseStringSecurityDescriptorToSecurityDescriptor(StringSecurityDescriptor, (SECURITY_DESCRIPTOR_RELATIVE*)psd, &cBytes))
+	if (!ParseStringSecurityDescriptorToSecurityDescriptor(StringSecurityDescriptor, (SECURITY_DESCRIPTOR_RELATIVE*)psd, &cBytes, SecurityInformation))
 	{
 		ExFreePool(psd);
 		goto lend;
@@ -3559,7 +3571,7 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	ULONG BUFLEN = 0;
 	SECURITY_DESCRIPTOR* SD;
-	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(securityW, SDDL_REVISION, &SD, &BUFLEN))
+	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(securityW, SDDL_REVISION, &SD, &BUFLEN, IrpSp->Parameters.QuerySecurity.SecurityInformation))
 	{
 		Status = STATUS_INSUFFICIENT_RESOURCES;
 	}
@@ -4290,7 +4302,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 	securityW[filesize] = 0;
 
 	ULONG BUFLEN = 0;
-	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(securityW, SDDL_REVISION, &SD, &BUFLEN))
+	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(securityW, SDDL_REVISION, &SD, &BUFLEN, OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | SACL_SECURITY_INFORMATION))
 	{
 		goto end;
 	}

@@ -144,6 +144,10 @@ unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS KMCSFS
 			}
 			if ((incmp((KMCSFS.table[KMCSFS.tableend + loc] & 0xff), (FileName.Buffer[j] & 0xff)) || (((KMCSFS.table[KMCSFS.tableend + loc] & 0xff) == *"/") && ((FileName.Buffer[j] & 0xff) == *"\\"))) && start) // case insensitive, / and \ are the same, make sure it is not just an end or middle of filename
 			{
+				if ((KMCSFS.table[KMCSFS.tableend + loc] & 0xff) != *"/")
+				{
+					FileName.Buffer[j] = KMCSFS.table[KMCSFS.tableend + loc] & 0xff;
+				}
 				j++;
 			}
 			else
