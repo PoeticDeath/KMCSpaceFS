@@ -2143,7 +2143,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		}
 
 		// should also be FILE_FILE_COMPRESSION when supported
-		data->MaximumComponentNameLength = 255; // FIXME - check
+		data->MaximumComponentNameLength = 255;
 		data->FileSystemNameLength = orig_fs_name_len;
 		RtlCopyMemory(data->FileSystemName, fs_name, fs_name_len);
 

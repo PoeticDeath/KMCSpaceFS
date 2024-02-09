@@ -124,7 +124,6 @@ NTSTATUS query_directory(PIRP Irp)
 		{
 			if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + ccb->query_dir_offset] & 0xff) == 255 || (Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + ccb->query_dir_offset] & 0xff) == 42) // 255 = file, 42 = fuse symlink
 			{
-				filename[filenamelen] = 0;
 				if (ccb->filename.Length / sizeof(WCHAR) < filenamelen)
 				{
 					bool isin = true;
