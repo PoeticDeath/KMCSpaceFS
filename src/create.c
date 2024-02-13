@@ -409,11 +409,19 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	TRACE("(%.*S)\n", (int)(fn.Length / sizeof(WCHAR)), fn.Buffer);
 	TRACE("FileObject = %p\n", FileObject);
 
-	if (fn.Length / sizeof(WCHAR) > MAX_PATH - 4)
+	unsigned long lastslash = 0;
+	for (unsigned long i = 0; i < fn.Length / sizeof(WCHAR); i++)
 	{
-		ERR("file name too long\n");
-		Status = STATUS_OBJECT_NAME_INVALID;
-		goto exit;
+		if (fn.Buffer[i] == *L"/" || fn.Buffer[i] == *L"\\")
+		{
+			lastslash = i;
+		}
+		if (i - lastslash > MAX_PATH - 5)
+		{
+			ERR("file name too long\n");
+			Status = STATUS_OBJECT_NAME_INVALID;
+			goto exit;
+		}
 	}
 
 	if (Vcb->readonly && (RequestedDisposition == FILE_SUPERSEDE || RequestedDisposition == FILE_CREATE || RequestedDisposition == FILE_OVERWRITE))

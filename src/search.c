@@ -225,6 +225,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 			KMCSFS.tableend = 0;
 			KMCSFS.filecount = 0;
 			unsigned long long loc = 0;
+			unsigned long long lastslash = 0;
 
 			for (KMCSFS.filenamesend = 5; KMCSFS.filenamesend < KMCSFS.extratablesize; KMCSFS.filenamesend++)
 			{
@@ -249,8 +250,13 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 						loc = KMCSFS.filenamesend;
 					}
 					KMCSFS.filecount++;
+					lastslash = 0;
 				}
-				if (KMCSFS.filenamesend - loc > 256 && loc > 0)
+				if ((table[KMCSFS.filenamesend] & 0xff) == 47 || (table[KMCSFS.filenamesend] & 0xff) == 92)
+				{
+					lastslash = KMCSFS.filenamesend - loc;
+				}
+				if (KMCSFS.filenamesend - loc - lastslash > 256 && loc > 0)
 				{
 					break;
 				}
