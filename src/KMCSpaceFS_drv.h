@@ -318,6 +318,7 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
 
 void free_fcb(_Inout_ fcb* fcb);
 void reap_fcb(fcb* fcb);
+void do_shutdown(PIRP Irp);
 
 // in volume.c
 NTSTATUS vol_create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);

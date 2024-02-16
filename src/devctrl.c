@@ -248,7 +248,7 @@ static NTSTATUS ioctl_unload(PIRP Irp)
 		return STATUS_PRIVILEGE_NOT_HELD;
 	}
 
-	//do_shutdown(Irp);
+	do_shutdown(Irp);
 
 	return STATUS_SUCCESS;
 }

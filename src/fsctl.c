@@ -1,6 +1,7 @@
 // Copyright (c) Anthony Kerr 2024-
 
 #include "KMCSpaceFS_drv.h"
+#include <ntdddisk.h>
 
 #ifndef FSCTL_CSV_CONTROL
 #define FSCTL_CSV_CONTROL CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 181, METHOD_BUFFERED, FILE_ANY_ACCESS)
@@ -21,6 +22,83 @@
 #ifndef FSCTL_DUPLICATE_EXTENTS_TO_FILE
 #define FSCTL_DUPLICATE_EXTENTS_TO_FILE CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 209, METHOD_BUFFERED, FILE_WRITE_ACCESS)
 #endif
+
+static NTSTATUS is_volume_mounted(device_extension* Vcb, PIRP Irp)
+{
+    NTSTATUS Status;
+    ULONG cc;
+    IO_STATUS_BLOCK iosb;
+    bool verify = false;
+    LIST_ENTRY* le;
+
+    ExAcquireResourceSharedLite(&Vcb->tree_lock, true);
+
+    le = Vcb->devices.Flink;
+    while (le != &Vcb->devices)
+    {
+        device* dev = CONTAINING_RECORD(le, device, list_entry);
+
+        if (dev->devobj && dev->removable)
+        {
+            Status = dev_ioctl(dev->devobj, IOCTL_STORAGE_CHECK_VERIFY, NULL, 0, &cc, sizeof(ULONG), false, &iosb);
+
+            if (iosb.Information != sizeof(ULONG))
+            {
+                cc = 0;
+            }
+
+            if (Status == STATUS_VERIFY_REQUIRED || (NT_SUCCESS(Status) && cc != dev->change_count))
+            {
+                dev->devobj->Flags |= DO_VERIFY_VOLUME;
+                verify = true;
+            }
+
+            if (NT_SUCCESS(Status) && iosb.Information == sizeof(ULONG))
+            {
+                dev->change_count = cc;
+            }
+
+            if (!NT_SUCCESS(Status) || verify)
+            {
+                IoSetHardErrorOrVerifyDevice(Irp, dev->devobj);
+                ExReleaseResourceLite(&Vcb->tree_lock);
+
+                return verify ? STATUS_VERIFY_REQUIRED : Status;
+            }
+        }
+
+        le = le->Flink;
+    }
+
+    ExReleaseResourceLite(&Vcb->tree_lock);
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS fs_get_statistics(void* buffer, DWORD buflen, ULONG_PTR* retlen)
+{
+    FILESYSTEM_STATISTICS* fss;
+
+    WARN("STUB: FSCTL_FILESYSTEM_GET_STATISTICS\n");
+
+    // This is hideously wrong, but at least it stops SMB from breaking
+
+    if (buflen < sizeof(FILESYSTEM_STATISTICS))
+    {
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+
+    fss = buffer;
+    RtlZeroMemory(fss, sizeof(FILESYSTEM_STATISTICS));
+
+    fss->Version = 1;
+    fss->FileSystemType = FILESYSTEM_STATISTICS_TYPE_NTFS;
+    fss->SizeOfCompleteStructure = sizeof(FILESYSTEM_STATISTICS);
+
+    *retlen = sizeof(FILESYSTEM_STATISTICS);
+
+    return STATUS_SUCCESS;
+}
 
 static void update_volumes(device_extension* Vcb)
 {
@@ -130,8 +208,7 @@ NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type)
         break;
 
     case FSCTL_IS_VOLUME_MOUNTED:
-        WARN("STUB: FSCTL_IS_VOLUME_MOUNTED\n");
-        Status = STATUS_INVALID_DEVICE_REQUEST;
+        Status = is_volume_mounted(DeviceObject->DeviceExtension, Irp);
         break;
 
     case FSCTL_IS_PATHNAME_VALID:
@@ -175,8 +252,7 @@ NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type)
         break;
 
     case FSCTL_FILESYSTEM_GET_STATISTICS:
-        WARN("STUB: FSCTL_FILESYSTEM_GET_STATISTICS\n");
-        Status = STATUS_INVALID_DEVICE_REQUEST;
+        Status = fs_get_statistics(Irp->AssociatedIrp.SystemBuffer, IrpSp->Parameters.FileSystemControl.OutputBufferLength, &Irp->IoStatus.Information);
         break;
 
     case FSCTL_GET_NTFS_VOLUME_DATA:

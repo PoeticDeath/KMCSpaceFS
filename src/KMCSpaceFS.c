@@ -423,7 +423,7 @@ exit:
 	return Status;
 }
 
-static void do_shutdown(PIRP Irp)
+void do_shutdown(PIRP Irp)
 {
 	LIST_ENTRY* le;
 	bus_device_extension* bde;
