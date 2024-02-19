@@ -11,6 +11,10 @@
 #define FSCTL_QUERY_VOLUME_CONTAINER_STATE CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 228, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #endif
 
+#ifndef FSCTL_QUERY_VOLUME_CONTAINER_STATE2
+#define FSCTL_QUERY_VOLUME_CONTAINER_STATE2 0x9023c //CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 572, METHOD_BUFFERED, FILE_ANY_ACCESS) This should work but doesn't...
+#endif
+
 #ifndef FSCTL_GET_INTEGRITY_INFORMATION
 #define FSCTL_GET_INTEGRITY_INFORMATION CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 159, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #endif
@@ -98,6 +102,34 @@ static NTSTATUS fs_get_statistics(void* buffer, DWORD buflen, ULONG_PTR* retlen)
     *retlen = sizeof(FILESYSTEM_STATISTICS);
 
     return STATUS_SUCCESS;
+}
+
+static NTSTATUS fs_control_query_persistent_volume_state(void* buffer, DWORD inbuflen, DWORD outbuflen, ULONG_PTR* retlen)
+{
+	FILE_FS_PERSISTENT_VOLUME_INFORMATION* info;
+
+    if (!buffer)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (sizeof(FILE_FS_PERSISTENT_VOLUME_INFORMATION) > inbuflen || sizeof(FILE_FS_PERSISTENT_VOLUME_INFORMATION) > outbuflen)
+	{
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+    info = buffer;
+    if (info->Version != 1 || !(info->FlagMask & PERSISTENT_VOLUME_STATE_SHORT_NAME_CREATION_DISABLED))
+    {
+		return STATUS_INVALID_PARAMETER;
+	}
+
+    RtlZeroMemory(info, sizeof(FILE_FS_PERSISTENT_VOLUME_INFORMATION));
+    info->VolumeFlags = PERSISTENT_VOLUME_STATE_SHORT_NAME_CREATION_DISABLED;
+
+    *retlen = sizeof(FILE_FS_PERSISTENT_VOLUME_INFORMATION);
+
+	return STATUS_SUCCESS;
 }
 
 static void update_volumes(device_extension* Vcb)
@@ -624,8 +656,8 @@ NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type)
 
     // TRACE rather than WARN because Windows 10 spams this undocumented fsctl
     case FSCTL_QUERY_VOLUME_CONTAINER_STATE:
-        TRACE("STUB: FSCTL_QUERY_VOLUME_CONTAINER_STATE\n");
-        Status = STATUS_INVALID_DEVICE_REQUEST;
+    case FSCTL_QUERY_VOLUME_CONTAINER_STATE2:
+        Status = fs_control_query_persistent_volume_state(Irp->AssociatedIrp.SystemBuffer, IrpSp->Parameters.FileSystemControl.InputBufferLength, IrpSp->Parameters.FileSystemControl.OutputBufferLength, &Irp->IoStatus.Information);
         break;
 
     case FSCTL_GET_INTEGRITY_INFORMATION:
