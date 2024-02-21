@@ -132,6 +132,44 @@ static NTSTATUS fs_control_query_persistent_volume_state(void* buffer, DWORD inb
 	return STATUS_SUCCESS;
 }
 
+static NTSTATUS get_reparse_point(PFILE_OBJECT FileObject, void* buffer, DWORD buflen, ULONG_PTR* retlen)
+{
+    if (!FileObject)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+    ccb* ccb = FileObject->FsContext2;
+    fcb* fcb = FileObject->FsContext;
+    unsigned long long index = get_filename_index(ccb->filename, fcb->Vcb->vde->pdode->KMCSFS);
+    unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
+    if (winattrs & FILE_ATTRIBUTE_REPARSE_POINT)
+	{
+		unsigned long long filesize = get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS);
+		if (buflen < filesize)
+		{
+			return STATUS_BUFFER_OVERFLOW;
+		}
+		*retlen = filesize;
+        PIRP Irp2 = IoAllocateIrp(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+        if (!Irp2)
+		{
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+        Irp2->Flags = IRP_NOCACHE;
+        unsigned long long bytes_read = 0;
+        read_file(fcb, buffer, 0, filesize, index, &bytes_read, Irp2);
+        if (bytes_read != filesize)
+        {
+            return STATUS_INTERNAL_ERROR;
+        }
+		return STATUS_SUCCESS;
+	}
+    else
+	{
+        return STATUS_NOT_A_REPARSE_POINT;
+	}
+}
+
 static void update_volumes(device_extension* Vcb)
 {
 	LIST_ENTRY* le;
@@ -349,7 +387,7 @@ NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type)
 
     case FSCTL_GET_REPARSE_POINT:
         WARN("STUB: FSCTL_GET_REPARSE_POINT\n");
-        Status = STATUS_INVALID_DEVICE_REQUEST;
+        Status = get_reparse_point(IrpSp->FileObject, Irp->AssociatedIrp.SystemBuffer, IrpSp->Parameters.FileSystemControl.OutputBufferLength, &Irp->IoStatus.Information);
         break;
 
     case FSCTL_DELETE_REPARSE_POINT:

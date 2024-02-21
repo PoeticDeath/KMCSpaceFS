@@ -456,7 +456,7 @@ open:
 				granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
 			}
 			Status = STATUS_SUCCESS;
-			if (winattrs & FILE_ATTRIBUTE_REPARSE_POINT)
+			if (winattrs & FILE_ATTRIBUTE_REPARSE_POINT && !(options & FILE_OPEN_REPARSE_POINT))
 			{
 				Status = STATUS_REPARSE;
 			}
@@ -604,6 +604,7 @@ loaded:
 		ccb->options = options;
 		ccb->query_dir_offset = 0;
 		ccb->query_dir_index = 0;
+		ccb->query_dir_file_count = 0;
 		ccb->access = granted_access;
 		ccb->filename.Buffer = fn.Buffer;
 		ccb->filename.Length = fn.Length;
@@ -989,6 +990,7 @@ NTSTATUS __stdcall Create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		ccb->options = RequestedOptions;
 		ccb->query_dir_offset = 0;
 		ccb->query_dir_index = 0;
+		ccb->query_dir_file_count = 0;
 		ccb->access = IrpSp->Parameters.Create.SecurityContext->AccessState->PreviouslyGrantedAccess;
 		ccb->manage_volume_privilege = has_manage_volume_privilege(IrpSp->Parameters.Create.SecurityContext->AccessState, IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode);
 

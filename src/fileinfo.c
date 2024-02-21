@@ -280,19 +280,23 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 		IrpSp2->Parameters.QueryDirectory.FileName = NULL;
 		unsigned long long backupdirindex = ccb->query_dir_index;
 		unsigned long long backupdiroffset = ccb->query_dir_offset;
+		unsigned long long backupfilecount = ccb->query_dir_file_count;
 		ccb->query_dir_index = 0;
 		ccb->query_dir_offset = 0;
+		ccb->query_dir_file_count = 0;
 		if (query_directory(Irp2) == STATUS_BUFFER_OVERFLOW)
 		{
 			TRACE("directory not empty\n");
 			Status = STATUS_DIRECTORY_NOT_EMPTY;
 			ccb->query_dir_index = backupdirindex;
 			ccb->query_dir_offset = backupdiroffset;
+			ccb->query_dir_file_count = backupfilecount;
 			IoFreeIrp(Irp2);
 			goto end;
 		}
 		ccb->query_dir_index = backupdirindex;
 		ccb->query_dir_offset = backupdiroffset;
+		ccb->query_dir_file_count = backupfilecount;
 		IoFreeIrp(Irp2);
 	}
 

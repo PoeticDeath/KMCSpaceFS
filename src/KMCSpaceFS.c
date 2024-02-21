@@ -319,8 +319,10 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 				IrpSp2->Parameters.QueryDirectory.FileName = NULL;
 				unsigned long long backupdirindex = ccb->query_dir_index;
 				unsigned long long backupdiroffset = ccb->query_dir_offset;
+				unsigned long long backupdirfilecount = ccb->query_dir_file_count;
 				ccb->query_dir_index = 0;
 				ccb->query_dir_offset = 0;
+				ccb->query_dir_file_count = 0;
 				if (query_directory(Irp2) == STATUS_BUFFER_OVERFLOW)
 				{
 					TRACE("directory not empty\n");
@@ -328,6 +330,7 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 				}
 				ccb->query_dir_index = backupdirindex;
 				ccb->query_dir_offset = backupdiroffset;
+				ccb->query_dir_file_count = backupdirfilecount;
 				IoFreeIrp(Irp2);
 			}
 			if (can_delete)
@@ -938,6 +941,10 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 
 	if (ccb)
 	{
+		if (ccb->filter.Buffer)
+		{
+			ExFreePool(ccb->filter.Buffer);
+		}
 		ExFreePool(ccb);
 	}
 

@@ -124,8 +124,10 @@ typedef struct _ccb
 	ULONG options;
 	uint64_t query_dir_offset;
 	uint64_t query_dir_index;
+	uint64_t query_dir_file_count;
 	ACCESS_MASK access;
 	UNICODE_STRING filename;
+	UNICODE_STRING filter;
 	bool manage_volume_privilege;
 	bool delete_on_close;
 } ccb;
