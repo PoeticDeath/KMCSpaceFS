@@ -430,6 +430,11 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 		goto exit;
 	}
 
+	if (IrpSp->Flags & SL_OPEN_TARGET_DIRECTORY)
+	{
+		fn.Length = max(lastslash, 1) * sizeof(WCHAR);
+	}
+
 open:
 	if (RequestedDisposition == FILE_OPEN || RequestedDisposition == FILE_OPEN_IF || RequestedDisposition == FILE_CREATE)
 	{

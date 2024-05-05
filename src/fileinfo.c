@@ -363,6 +363,47 @@ static NTSTATUS set_position_information(PFILE_OBJECT FileObject, PIRP Irp)
 	return STATUS_SUCCESS;
 }
 
+static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OBJECT FileObject, PFILE_OBJECT tfo, bool ex)
+{
+	FILE_RENAME_INFORMATION_EX* fri = Irp->AssociatedIrp.SystemBuffer;
+	fcb* fcb = FileObject->FsContext;
+	ccb* ccb = FileObject->FsContext2;
+	NTSTATUS Status;
+	ULONG flags;
+	
+	if (ex)
+	{
+		flags = fri->Flags;
+	}
+	else
+	{
+		flags = fri->ReplaceIfExists ? FILE_RENAME_REPLACE_IF_EXISTS : 0;
+	}
+
+	TRACE("tfo = %p\n", tfo);
+	TRACE("Flags = %lx\n", flags);
+	TRACE("RootDirectory = %p\n", fri->RootDirectory);
+	TRACE("New FileName = %.*S\n", (int)(tfo->FileName.Length / sizeof(WCHAR)), tfo->FileName.Buffer);
+	TRACE("Old FileName = %.*S\n", (int)(FileObject->FileName.Length / sizeof(WCHAR)), FileObject->FileName.Buffer);
+
+	Status = rename_file(&Vcb->vde->pdode->KMCSFS, FileObject->FileName, tfo->FileName);
+
+	UNICODE_STRING sfn;
+	sfn.Buffer = FileObject->FileName.Buffer + 1;
+	sfn.Length = FileObject->FileName.Length - sizeof(WCHAR);
+
+	UNICODE_STRING nsfn;
+	nsfn.Buffer = tfo->FileName.Buffer + 1;
+	nsfn.Length = tfo->FileName.Length - sizeof(WCHAR);
+
+	if (NT_SUCCESS(Status))
+	{
+		Status = rename_file(&Vcb->vde->pdode->KMCSFS, sfn, nsfn);
+	}
+
+	return Status;
+}
+
 _Dispatch_type_(IRP_MJ_SET_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall SetInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
@@ -498,7 +539,7 @@ NTSTATUS __stdcall SetInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	case FileRenameInformation:
 		TRACE("FileRenameInformation\n");
-		//Status = set_rename_information(Vcb, Irp, IrpSp->FileObject, IrpSp->Parameters.SetFile.FileObject, false);
+		Status = set_rename_information(Vcb, Irp, IrpSp->FileObject, IrpSp->Parameters.SetFile.FileObject, false);
 		break;
 
 	case FileValidDataLengthInformation:
@@ -539,7 +580,7 @@ NTSTATUS __stdcall SetInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	case FileRenameInformationEx:
 		TRACE("FileRenameInformationEx\n");
-		//Status = set_rename_information(Vcb, Irp, IrpSp->FileObject, IrpSp->Parameters.SetFile.FileObject, true);
+		Status = set_rename_information(Vcb, Irp, IrpSp->FileObject, IrpSp->Parameters.SetFile.FileObject, true);
 		break;
 
 	case FileLinkInformationEx:

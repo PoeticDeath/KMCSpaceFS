@@ -1652,19 +1652,24 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 		if (!size)
 		{
 			unsigned long long extratblesize = 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend + 2 + 35 * KMCSFS->filecount;
+			if (!is_table_expandable(*KMCSFS, extratblesize))
+			{
+				ERR("out of memory - could not write to disk 1\n");
+				return false;
+			}
 			unsigned long long tablesize = (extratblesize + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize - 1;
 			char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, extratblesize, ALLOC_TAG);
 			if (!newtable)
 			{
-				ERR("out of memory - could not write to disk\n");
-				return !size;
+				ERR("out of memory - could not write to disk 2\n");
+				return false;
 			}
 			char* newtablestren = encode(KMCSFS->tablestr, KMCSFS->tablestrlen);
 			if (!newtablestren)
 			{
-				ERR("out of memory - could not write to disk\n");
+				ERR("out of memory - could not write to disk 3\n");
 				ExFreePool(newtable);
-				return !size;
+				return false;
 			}
 			newtable[0] = KMCSFS->table[0];
 			newtable[1] = (tablesize >> 24) & 0xff;
@@ -1682,7 +1687,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 			KMCSFS->table = newtable;
 			sync_write_phys(KMCSFS->DeviceObject, 0, 0, extratblesize, newtable, true);
 		}
-		return !size;
+		return true;
 	}
 	else
 	{
@@ -1895,4 +1900,70 @@ bool delete_file(KMCSpaceFS* KMCSFS, unsigned long long index)
 	KMCSFS->tablestrlen = tablestrlen;
 	KMCSFS->filecount--;
 	return true;
+}
+
+NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn)
+{
+	unsigned long long extratablesize = KMCSFS->filenamesend + 2 + 35 * KMCSFS->filecount - fn.Length / sizeof(WCHAR) + nfn.Length / sizeof(WCHAR);
+	unsigned long long tablesize = (extratablesize + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize - 1;
+
+	char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, extratablesize, ALLOC_TAG);
+	if (!newtable)
+	{
+		ERR("out of memory\n");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	RtlZeroMemory(newtable, extratablesize);
+
+	if (!is_table_expandable(*KMCSFS, extratablesize))
+	{
+		ERR("table is not expandable\n");
+		return STATUS_DISK_FULL;
+	}
+
+	unsigned long long index = get_filename_index(fn, *KMCSFS);
+	if (!index)
+	{
+		ExFreePool(newtable);
+		return STATUS_OBJECT_NAME_NOT_FOUND;
+	}
+
+	unsigned long long loc = KMCSFS->tableend;
+	if (index)
+	{
+		loc = 0;
+		for (unsigned long long i = KMCSFS->tableend; i < KMCSFS->filenamesend + 1; i++)
+		{
+			if (KMCSFS->table[i] == *"\xff")
+			{
+				loc++;
+				if (loc == index + 1)
+				{
+					loc = i;
+					break;
+				}
+			}
+		}
+	}
+
+	newtable[0] = KMCSFS->table[0];
+	newtable[1] = (tablesize >> 24) & 0xff;
+	newtable[2] = (tablesize >> 16) & 0xff;
+	newtable[3] = (tablesize >> 8) & 0xff;
+	newtable[4] = tablesize & 0xff;
+	RtlCopyMemory(newtable + 5, KMCSFS->table + 5, loc - 5);
+	newtable[loc] = *"\xff";
+	for (unsigned long long i = 0; i < nfn.Length / sizeof(WCHAR); i++)
+	{
+		newtable[loc + i + 1] = nfn.Buffer[i] & 0xff;
+	}
+	RtlCopyMemory(newtable + loc + 1 + nfn.Length / sizeof(WCHAR), KMCSFS->table + loc + 1 + fn.Length / sizeof(WCHAR), KMCSFS->filenamesend - loc - 1 - fn.Length / sizeof(WCHAR) + 2 + 35 * KMCSFS->filecount);
+
+	KMCSFS->filenamesend = KMCSFS->filenamesend - fn.Length / sizeof(WCHAR) + nfn.Length / sizeof(WCHAR);
+	ExFreePool(KMCSFS->table);
+	KMCSFS->table = newtable;
+
+	sync_write_phys(KMCSFS->DeviceObject, 0, 0, extratablesize, newtable, true);
+
+	return STATUS_SUCCESS;
 }
