@@ -1960,6 +1960,8 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn)
 	RtlCopyMemory(newtable + loc + 1 + nfn.Length / sizeof(WCHAR), KMCSFS->table + loc + 1 + fn.Length / sizeof(WCHAR), KMCSFS->filenamesend - loc - 1 - fn.Length / sizeof(WCHAR) + 2 + 35 * KMCSFS->filecount);
 
 	KMCSFS->filenamesend = KMCSFS->filenamesend - fn.Length / sizeof(WCHAR) + nfn.Length / sizeof(WCHAR);
+	KMCSFS->extratablesize = extratablesize;
+	KMCSFS->tablesize = 1 + tablesize;
 	ExFreePool(KMCSFS->table);
 	KMCSFS->table = newtable;
 
