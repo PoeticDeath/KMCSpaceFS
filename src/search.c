@@ -177,21 +177,21 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 		if (!NT_SUCCESS(Status))
 		{
 			ERR("IoGetDeviceObjectPointer returned %08lx\n", Status);
-			return false;
+			goto deref;
 		}
 		uint8_t* GUIDPT = NULL;
 		GUIDPT = ExAllocatePoolWithTag(NonPagedPoolNx, 16384, ALLOC_TAG);
 		if (!GUIDPT)
 		{
 			ERR("out of memory\n");
-			return false;
+			goto deref;
 		}
 		Status = sync_read_phys(DriveDeviceObject, DriveFileObject, 1024, 16384, GUIDPT, true);
 		if (!NT_SUCCESS(Status))
 		{
 			ERR("sync_read_phys returned %08lx\n", Status);
 			ExFreePool(GUIDPT);
-			return false;
+			goto deref;
 		}
 		for (int i = 0; i < 16; i++)
 		{
