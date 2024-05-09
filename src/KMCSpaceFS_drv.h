@@ -45,7 +45,7 @@ extern uint32_t no_pnp;
 #endif
 
 #define TRACE(s, ...) DbgPrint("KMCSpaceFS TRACE : %s : " s, funcname, ##__VA_ARGS__)
-#define WARN(s, ...) DbgPrint("KMCSpaceFS WARN : %s : ", s, funcname, ##__VA_ARGS__)
+#define WARN(s, ...) DbgPrint("KMCSpaceFS WARN : %s : " s, funcname, ##__VA_ARGS__)
 #define ERR(s, ...) DbgPrint("KMCSpaceFS ERR : %s : " s, funcname, ##__VA_ARGS__)
 
 #define ALLOC_TAG 0x7442484D //'MHBt'
