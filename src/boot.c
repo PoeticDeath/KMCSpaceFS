@@ -122,49 +122,17 @@ static bool get_system_root()
 
 		for (unsigned int i = 0; i < 16; i++)
 		{
-			int o;
-			switch (i) // uuid is mixed endian
-			{
-			case 0:
-				o = 3;
-				break;
-			case 1:
-				o = 2;
-				break;
-			case 2:
-				o = 1;
-				break;
-			case 3:
-				o = 0;
-				break;
-			case 4:
-				o = 5;
-				break;
-			case 5:
-				o = 4;
-				break;
-			case 6:
-				o = 7;
-				break;
-			case 7:
-				o = 6;
-				break;
-			default:
-				o = i;
-				break;
-			}
-
 			if (*s >= '0' && *s <= '9')
 			{
-				boot_uuid.uuid[o] = (*s - '0') << 4;
+				boot_uuid.uuid[i] = (*s - '0') << 4;
 			}
 			else if (*s >= 'a' && *s <= 'f')
 			{
-				boot_uuid.uuid[o] = (*s - 'a' + 0xa) << 4;
+				boot_uuid.uuid[i] = (*s - 'a' + 0xa) << 4;
 			}
 			else if (*s >= 'A' && *s <= 'F')
 			{
-				boot_uuid.uuid[o] = (*s - 'A' + 0xa) << 4;
+				boot_uuid.uuid[i] = (*s - 'A' + 0xa) << 4;
 			}
 			else
 			{
@@ -176,15 +144,15 @@ static bool get_system_root()
 
 			if (*s >= '0' && *s <= '9')
 			{
-				boot_uuid.uuid[o] |= *s - '0';
+				boot_uuid.uuid[i] |= *s - '0';
 			}
 			else if (*s >= 'a' && *s <= 'f')
 			{
-				boot_uuid.uuid[o] |= *s - 'a' + 0xa;
+				boot_uuid.uuid[i] |= *s - 'a' + 0xa;
 			}
 			else if (*s >= 'A' && *s <= 'F')
 			{
-				boot_uuid.uuid[o] |= *s - 'A' + 0xa;
+				boot_uuid.uuid[i] |= *s - 'A' + 0xa;
 			}
 			else
 			{

@@ -195,7 +195,39 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 		}
 		for (int i = 0; i < 16; i++)
 		{
-			KMCSFS.uuid.uuid[i] = GUIDPT[128 * (part_num - 1) + 16 + i];
+			int o;
+			switch (i) // uuid is mixed endian
+			{
+			case 0:
+				o = 3;
+				break;
+			case 1:
+				o = 2;
+				break;
+			case 2:
+				o = 1;
+				break;
+			case 3:
+				o = 0;
+				break;
+			case 4:
+				o = 5;
+				break;
+			case 5:
+				o = 4;
+				break;
+			case 6:
+				o = 7;
+				break;
+			case 7:
+				o = 6;
+				break;
+			default:
+				o = i;
+				break;
+			}
+
+			KMCSFS.uuid.uuid[o] = GUIDPT[128 * (part_num - 1) + 16 + i];
 		}
 
 		unsigned long long FirstLBA = (unsigned long long)(GUIDPT[128 * (part_num - 1) + 32] & 0xff) + ((unsigned long long)(GUIDPT[128 * (part_num - 1) + 33] & 0xff) << 8) + ((unsigned long long)(GUIDPT[128 * (part_num - 1) + 34] & 0xff) << 16) + ((unsigned long long)(GUIDPT[128 * (part_num - 1) + 35] & 0xff) << 24) + ((unsigned long long)(GUIDPT[128 * (part_num - 1) + 36] & 0xff) << 32) + ((unsigned long long)(GUIDPT[128 * (part_num - 1) + 37] & 0xff) << 40) + ((unsigned long long)(GUIDPT[128 * (part_num - 1) + 38] & 0xff) << 48) + ((unsigned long long)(GUIDPT[128 * (part_num - 1) + 39] & 0xff) << 56);
