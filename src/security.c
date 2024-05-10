@@ -3434,6 +3434,8 @@ _Dispatch_type_(IRP_MJ_QUERY_SECURITY)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	ExAcquireResourceExclusiveLite(&op_lock, true);
+
 	NTSTATUS Status;
 	SECURITY_DESCRIPTOR* sd;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -3521,7 +3523,8 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	if (!security)
 	{
 		ERR("out of memory\n");
-		return STATUS_INSUFFICIENT_RESOURCES;
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
 	}
 	unsigned long long bytes_read = 0;
 	fcb* fcb = create_fcb(Vcb, NonPagedPoolNx);
@@ -3529,7 +3532,8 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	{
 		ERR("out of memory\n");
 		ExFreePool(security);
-		return STATUS_INSUFFICIENT_RESOURCES;
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
 	}
 	PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
 	if (!Irp2)
@@ -3538,7 +3542,8 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		free_fcb(fcb);
 		reap_fcb(fcb);
 		ExFreePool(security);
-		return STATUS_INSUFFICIENT_RESOURCES;
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
 	}
 	Irp2->Flags |= IRP_NOCACHE;
 	read_file(fcb, security, 0, filesize, index, &bytes_read, Irp2);
@@ -3549,7 +3554,8 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		free_fcb(fcb);
 		reap_fcb(fcb);
 		ExFreePool(security);
-		return STATUS_INTERNAL_ERROR;
+		Status = STATUS_INTERNAL_ERROR;
+		goto end;
 	}
 
 	WCHAR* securityW = ExAllocatePoolWithTag(NonPagedPoolNx, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
@@ -3560,7 +3566,8 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		free_fcb(fcb);
 		reap_fcb(fcb);
 		ExFreePool(security);
-		return STATUS_INSUFFICIENT_RESOURCES;
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
 	}
 
 	for (unsigned long long i = 0; i < filesize; i++)
@@ -3623,6 +3630,8 @@ end:
 	TRACE("returning %08lx\n", Status);
 
 	FsRtlExitFileSystem();
+
+	ExReleaseResourceLite(&op_lock);
 
 	return Status;
 }
@@ -4397,6 +4406,8 @@ _Dispatch_type_(IRP_MJ_SET_SECURITY)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall SetSecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	ExAcquireResourceExclusiveLite(&op_lock, true);
+
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
@@ -4479,6 +4490,8 @@ end:
 	}
 
 	FsRtlExitFileSystem();
+
+	ExReleaseResourceLite(&op_lock);
 
 	return Status;
 }

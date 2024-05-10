@@ -847,6 +847,8 @@ _Dispatch_type_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall Create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	ExAcquireResourceExclusiveLite(&op_lock, true);
+
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp;
 	device_extension* Vcb = DeviceObject->DeviceExtension;
@@ -1094,6 +1096,8 @@ exit:
 	}
 
 	FsRtlExitFileSystem();
+
+	ExReleaseResourceLite(&op_lock);
 
 	return Status;
 }

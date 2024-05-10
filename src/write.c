@@ -89,6 +89,8 @@ _Function_class_(DRIVER_DISPATCH)
 __attribute__((nonnull(1,2)))
 NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	ExAcquireResourceExclusiveLite(&op_lock, true);
+
 	NTSTATUS Status = STATUS_INVALID_PARAMETER;
 	bool top_level;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -182,6 +184,8 @@ exit:
 	TRACE("returning %08lx\n", Status);
 
 	FsRtlExitFileSystem();
+
+	ExReleaseResourceLite(&op_lock);
 
 	return Status;
 }

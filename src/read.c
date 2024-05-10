@@ -74,6 +74,8 @@ _Dispatch_type_(IRP_MJ_READ)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
+	ExAcquireResourceExclusiveLite(&op_lock, true);
+
 	device_extension* Vcb = DeviceObject->DeviceExtension;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
@@ -200,6 +202,8 @@ exit2:
 	}
 
 	FsRtlExitFileSystem();
+
+	ExReleaseResourceLite(&op_lock);
 
 	return Status;
 }

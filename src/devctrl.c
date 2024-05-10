@@ -285,6 +285,8 @@ _Dispatch_type_(IRP_MJ_DEVICE_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall DeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	ExAcquireResourceExclusiveLite(&op_lock, true);
+
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	device_extension* Vcb = DeviceObject->DeviceExtension;
@@ -358,6 +360,8 @@ end2:
 	}
 
 	FsRtlExitFileSystem();
+
+	ExReleaseResourceLite(&op_lock);
 
 	return Status;
 }

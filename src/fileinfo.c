@@ -408,6 +408,8 @@ _Dispatch_type_(IRP_MJ_SET_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall SetInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	ExAcquireResourceExclusiveLite(&op_lock, true);
+
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	device_extension* Vcb = DeviceObject->DeviceExtension;
@@ -626,6 +628,8 @@ end:
 	}
 
 	FsRtlExitFileSystem();
+
+	ExReleaseResourceLite(&op_lock);
 
 	return Status;
 }
@@ -1104,6 +1108,8 @@ _Dispatch_type_(IRP_MJ_QUERY_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall QueryInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	ExAcquireResourceExclusiveLite(&op_lock, true);
+
 	PIO_STACK_LOCATION IrpSp;
 	NTSTATUS Status;
 	fcb* fcb;
@@ -1149,6 +1155,8 @@ end:
 	}
 
 	FsRtlExitFileSystem();
+
+	ExReleaseResourceLite(&op_lock);
 
 	return Status;
 }
