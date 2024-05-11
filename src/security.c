@@ -3434,8 +3434,6 @@ _Dispatch_type_(IRP_MJ_QUERY_SECURITY)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status;
 	SECURITY_DESCRIPTOR* sd;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -3446,6 +3444,7 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	ccb* ccb = FileObject ? FileObject->FsContext2 : NULL;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	TRACE("query security\n");
 
@@ -3517,7 +3516,7 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	UNICODE_STRING securityfile;
 	securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
 	securityfile.Buffer = ccb->filename.Buffer + 1;
-	unsigned long long index = get_filename_index(securityfile, Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 	char* security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
 	if (!security)
@@ -3629,9 +3628,8 @@ end:
 
 	TRACE("returning %08lx\n", Status);
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }
@@ -4273,7 +4271,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 	UNICODE_STRING securityfile;
 	securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
 	securityfile.Buffer = ccb->filename.Buffer + 1;
-	unsigned long long index = get_filename_index(securityfile, Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 	security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
 	if (!security)
@@ -4406,8 +4404,6 @@ _Dispatch_type_(IRP_MJ_SET_SECURITY)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall SetSecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
@@ -4417,6 +4413,7 @@ NTSTATUS __stdcall SetSecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	TRACE("set security\n");
 
@@ -4489,9 +4486,8 @@ end:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }

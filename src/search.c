@@ -14,6 +14,8 @@
 #include <wdmguid.h>
 #include <ioevent.h>
 
+#include "Dict.h"
+
 extern ERESOURCE pdo_list_lock;
 extern LIST_ENTRY pdo_list;
 extern UNICODE_STRING registry_path;
@@ -306,6 +308,16 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 					goto deref;
 				}
 				KMCSFS.tablestrlen = KMCSFS.tableend + KMCSFS.tableend - 10;
+
+				KMCSFS.dict = CreateDict(KMCSFS.filecount + 1024);
+				if (!KMCSFS.dict)
+				{
+					ERR("out of memory\n");
+					found = false;
+					goto deref;
+				}
+				KMCSFS.CurDictSize = KMCSFS.filecount;
+				KMCSFS.DictSize = KMCSFS.filecount + 1024;
 
 				add_volume_device(KMCSFS, devpath, length, disk_num, part_num);
 			}

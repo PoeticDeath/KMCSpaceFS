@@ -166,7 +166,7 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 		goto end;
 	}
 
-	unsigned long long index = get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
 
 	// times of -2 are some sort of undocumented behaviour to do with LXSS
 
@@ -252,7 +252,7 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 
 	TRACE("changing delete_on_close to %s for fcb %p\n", flags & FILE_DISPOSITION_DELETE ? "true" : "false", fcb);
 
-	unsigned long winattrs = chwinattrs(get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS), 0, Vcb->vde->pdode->KMCSFS);
+	unsigned long winattrs = chwinattrs(get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS), 0, Vcb->vde->pdode->KMCSFS);
 
 	TRACE("atts = %lx\n", winattrs);
 
@@ -330,7 +330,7 @@ end:
 static NTSTATUS set_end_of_file_information(device_extension* Vcb, PIRP Irp, PFILE_OBJECT FileObject, bool advance_only, bool prealloc)
 {
 	FILE_END_OF_FILE_INFORMATION* feofi = Irp->AssociatedIrp.SystemBuffer;
-	unsigned long long index = get_filename_index(((ccb*)FileObject->FsContext2)->filename, Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(((ccb*)FileObject->FsContext2)->filename, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 	if (advance_only)
 	{
@@ -408,8 +408,6 @@ _Dispatch_type_(IRP_MJ_SET_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall SetInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	device_extension* Vcb = DeviceObject->DeviceExtension;
@@ -418,6 +416,7 @@ NTSTATUS __stdcall SetInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	top_level = is_top_level(Irp);
 
@@ -627,9 +626,8 @@ end:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }
@@ -803,7 +801,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 		return STATUS_INVALID_PARAMETER;
 	}
 
-	unsigned long long index = get_filename_index(ccb->filename, fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 	if (!index)
 	{
 		ERR("index is 0\n");
@@ -1108,8 +1106,6 @@ _Dispatch_type_(IRP_MJ_QUERY_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall QueryInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	PIO_STACK_LOCATION IrpSp;
 	NTSTATUS Status;
 	fcb* fcb;
@@ -1117,6 +1113,7 @@ NTSTATUS __stdcall QueryInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	top_level = is_top_level(Irp);
 
@@ -1154,9 +1151,8 @@ end:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }

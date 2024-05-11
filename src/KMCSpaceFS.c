@@ -236,8 +236,6 @@ _Dispatch_type_(IRP_MJ_CLEANUP)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
@@ -246,6 +244,7 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	TRACE("cleanup\n");
 
@@ -303,7 +302,7 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 
 		if (ccb && (ccb->options & FILE_DELETE_ON_CLOSE || ccb->delete_on_close))
 		{
-			unsigned long long index = get_filename_index(ccb->filename, fcb->Vcb->vde->pdode->KMCSFS);
+			unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 			unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 			bool can_delete = true;
 			if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
@@ -340,12 +339,12 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 			if (can_delete)
 			{
 				TRACE("deleting file\n");
-				if (delete_file(&Vcb->vde->pdode->KMCSFS, index))
+				if (delete_file(&Vcb->vde->pdode->KMCSFS, ccb->filename, index))
 				{
 					UNICODE_STRING securityfile;
 					securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
 					securityfile.Buffer = ccb->filename.Buffer + 1;
-					if (!delete_file(&Vcb->vde->pdode->KMCSFS, get_filename_index(securityfile, Vcb->vde->pdode->KMCSFS)))
+					if (!delete_file(&Vcb->vde->pdode->KMCSFS, securityfile, get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS)))
 					{
 						WARN("failed to delete security file\n");
 					}
@@ -377,9 +376,8 @@ exit:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }
@@ -388,8 +386,6 @@ _Dispatch_type_(IRP_MJ_LOCK_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall LockControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	fcb* fcb = IrpSp->FileObject ? IrpSp->FileObject->FsContext : NULL;
@@ -397,6 +393,7 @@ static NTSTATUS __stdcall LockControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIR
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	top_level = is_top_level(Irp);
 
@@ -429,9 +426,8 @@ exit:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }
@@ -582,13 +578,12 @@ _Dispatch_type_(IRP_MJ_SHUTDOWN)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall Shutdown(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status;
 	bool top_level;
 	device_extension* Vcb = DeviceObject->DeviceExtension;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	TRACE("shutdown\n");
 
@@ -615,9 +610,8 @@ end:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }
@@ -879,13 +873,12 @@ _Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall SystemControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status;
 	device_extension* Vcb = DeviceObject->DeviceExtension;
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	top_level = is_top_level(Irp);
 
@@ -929,9 +922,8 @@ exit:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }
@@ -990,14 +982,13 @@ _Dispatch_type_(IRP_MJ_CLOSE)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall Close(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp;
 	device_extension* Vcb = DeviceObject->DeviceExtension;
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	TRACE("close\n");
 
@@ -1039,9 +1030,8 @@ end:
 
 	TRACE("returning %08lx\n", Status);
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }
@@ -1050,8 +1040,6 @@ _Dispatch_type_(IRP_MJ_FLUSH_BUFFERS)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall FlushBuffers(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status = STATUS_SUCCESS;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
@@ -1061,6 +1049,7 @@ static NTSTATUS __stdcall FlushBuffers(_In_ PDEVICE_OBJECT DeviceObject, _In_ PI
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	TRACE("flush buffers\n");
 
@@ -1095,7 +1084,7 @@ static NTSTATUS __stdcall FlushBuffers(_In_ PDEVICE_OBJECT DeviceObject, _In_ PI
 	Irp->IoStatus.Information = 0;
 	Irp->IoStatus.Status = Status;
 
-	unsigned long long index = get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
 
 	if (!(chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_DIRECTORY))
 	{
@@ -1120,9 +1109,8 @@ end:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }
@@ -1665,14 +1653,13 @@ _Dispatch_type_(IRP_MJ_FILE_SYSTEM_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall FileSystemControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	PIO_STACK_LOCATION IrpSp;
 	NTSTATUS Status;
 	device_extension* Vcb = DeviceObject->DeviceExtension;
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	TRACE("file system control\n");
 
@@ -1748,9 +1735,8 @@ end:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }
@@ -2119,8 +2105,6 @@ _Dispatch_type_(IRP_MJ_QUERY_VOLUME_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	PIO_STACK_LOCATION IrpSp;
 	NTSTATUS Status;
 	ULONG BytesCopied = 0;
@@ -2128,6 +2112,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	TRACE("query volume information\n");
 	top_level = is_top_level(Irp);
@@ -2292,7 +2277,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		UNICODE_STRING labelname_us;
 		labelname_us.Length = sizeof(labelname) - sizeof(WCHAR);
 		labelname_us.Buffer = labelname;
-		unsigned long long index = get_filename_index(labelname_us, Vcb->vde->pdode->KMCSFS);
+		unsigned long long index = get_filename_index(labelname_us, &Vcb->vde->pdode->KMCSFS);
 		unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 		char* label = ExAllocatePoolWithTag(NonPagedPoolNx, filesize + 1, ALLOC_TAG);
 		if (!label)
@@ -2454,9 +2439,8 @@ end:
 
 	TRACE("query volume information returning %08lx\n", Status);
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }
@@ -2730,7 +2714,7 @@ static NTSTATUS set_label(_In_ device_extension* Vcb, _In_ FILE_FS_LABEL_INFORMA
 	UNICODE_STRING labelname_us;
 	labelname_us.Length = sizeof(labelname) - sizeof(WCHAR);
 	labelname_us.Buffer = labelname;
-	unsigned long long index = get_filename_index(labelname_us, Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(labelname_us, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 	char* label = ExAllocatePoolWithTag(NonPagedPoolNx, labellen, ALLOC_TAG);
 	if (!label)
@@ -2801,14 +2785,13 @@ _Dispatch_type_(IRP_MJ_SET_VOLUME_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall SetVolumeInformation(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	device_extension* Vcb = DeviceObject->DeviceExtension;
 	NTSTATUS Status;
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	TRACE("set volume information\n");
 
@@ -2873,9 +2856,8 @@ end:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }

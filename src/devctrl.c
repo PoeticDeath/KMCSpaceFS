@@ -285,14 +285,13 @@ _Dispatch_type_(IRP_MJ_DEVICE_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall DeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	device_extension* Vcb = DeviceObject->DeviceExtension;
 	bool top_level;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	top_level = is_top_level(Irp);
 
@@ -359,9 +358,8 @@ end2:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }

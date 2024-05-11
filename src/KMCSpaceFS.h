@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <assert.h>
+#include "Dict.h"
 
 #define MAX_LABEL_SIZE 0x100
 
@@ -27,4 +28,7 @@ typedef struct
 	char* tablestr;
 	PDEVICE_OBJECT DeviceObject;
 	unsigned long long used_blocks;
+	unsigned long long CurDictSize;
+	unsigned long long DictSize;
+	Dict* dict;
 } KMCSpaceFS;

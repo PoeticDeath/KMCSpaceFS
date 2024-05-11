@@ -24,7 +24,7 @@ static NTSTATUS do_read(PIRP Irp, bool wait, unsigned long long* bytes_read)
 	TRACE("offset = %I64x, length = %lx\n", start, length);
 	TRACE("paging_io = %s, no cache = %s\n", Irp->Flags & IRP_PAGING_IO ? "true" : "false", Irp->Flags & IRP_NOCACHE ? "true" : "false");
 
-	unsigned long long index = get_filename_index(ccb->filename, fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 
 	if (chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_DIRECTORY)
 	{
@@ -74,8 +74,6 @@ _Dispatch_type_(IRP_MJ_READ)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	device_extension* Vcb = DeviceObject->DeviceExtension;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
@@ -87,6 +85,7 @@ NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	bool acquired_fcb_lock = false, wait;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	top_level = is_top_level(Irp);
 
@@ -201,9 +200,8 @@ exit2:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }

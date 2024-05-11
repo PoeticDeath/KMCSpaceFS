@@ -458,7 +458,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 open:
 	if (RequestedDisposition == FILE_OPEN || RequestedDisposition == FILE_OPEN_IF || RequestedDisposition == FILE_CREATE)
 	{
-		index = get_filename_index(fn, Vcb->vde->pdode->KMCSFS);
+		index = get_filename_index(fn, &Vcb->vde->pdode->KMCSFS);
 		if (index)
 		{
 			unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
@@ -493,7 +493,7 @@ open:
 	}
 	else if (RequestedDisposition == FILE_OVERWRITE || RequestedDisposition == FILE_OVERWRITE_IF)
 	{
-		index = get_filename_index(fn, Vcb->vde->pdode->KMCSFS);
+		index = get_filename_index(fn, &Vcb->vde->pdode->KMCSFS);
 		if (index)
 		{
 			if (chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_READONLY && !(IrpSp->Flags & SL_IGNORE_READONLY_ATTRIBUTE))
@@ -701,7 +701,7 @@ loaded:
 					else
 					{
 						Irp2->Flags |= IRP_NOCACHE;
-						unsigned long long securityindex = get_filename_index(securityfn, Vcb->vde->pdode->KMCSFS);
+						unsigned long long securityindex = get_filename_index(securityfn, &Vcb->vde->pdode->KMCSFS);
 						if (find_block(&Vcb->vde->pdode->KMCSFS, securityindex, 23))
 						{
 							Status = write_file(fcb, security, 0, 23, securityindex, 23, Irp2);
@@ -847,8 +847,6 @@ _Dispatch_type_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall Create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp;
 	device_extension* Vcb = DeviceObject->DeviceExtension;
@@ -856,6 +854,7 @@ NTSTATUS __stdcall Create(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	oplock_context* opctx = NULL;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	TRACE("create (flags = %lx)\n", Irp->Flags);
 
@@ -1095,9 +1094,8 @@ exit:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }

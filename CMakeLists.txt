@@ -22,6 +22,8 @@ set(SRC_FILES
     src/security.c
     src/write.c
     src/fsctl.c
+    src/Sha3.c
+    src/Dict.c
     ${CMAKE_CURRENT_BINARY_DIR}/KMCSpaceFS.rc)
 
 if(MSVC) # cmake bug 15170

@@ -1,6 +1,7 @@
 // Copyright (c) Anthony Kerr 2024-
 
 #include "KMCSpaceFS_drv.h"
+#include "Dict.h"
 
 unsigned* emap = NULL;
 unsigned* dmap = NULL;
@@ -111,7 +112,7 @@ char* decode(char* bytes, unsigned long long len)
 	return str;
 }
 
-unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS KMCSFS)
+unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS* KMCSFS)
 {
 	unsigned long long loc = 0;
 	unsigned long long FileNameLen = FileName.Length / sizeof(WCHAR);
@@ -120,39 +121,47 @@ unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS KMCSFS
 		return 0;
 	}
 
+	unsigned long long dindex = FindDictEntry(KMCSFS->dict, KMCSFS->table, KMCSFS->tableend, KMCSFS->DictSize, FileName.Buffer, FileNameLen);
+	if (dindex)
+	{
+		return KMCSFS->dict[dindex].index;
+	}
+
 	unsigned j = 0;
 	bool found = false;
 	bool start = true;
-	for (unsigned long long i = 0; i < KMCSFS.filecount + 1; i++)
+	for (unsigned long long i = 0; i < KMCSFS->filecount + 1; i++)
 	{
-		for (; loc < KMCSFS.filenamesend - KMCSFS.tableend + 1; loc++)
+		for (; loc < KMCSFS->filenamesend - KMCSFS->tableend + 1; loc++)
 		{
-			if (((KMCSFS.table[KMCSFS.tableend + loc] & 0xff) == 255) || ((KMCSFS.table[KMCSFS.tableend + loc] & 0xff) == 42)) // 255 = file, 42 = fuse symlink
+			if (((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) == 255) || ((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) == 42)) // 255 = file, 42 = fuse symlink
 			{
 				found = (j == FileNameLen);
 				j = 0;
 				if (found)
 				{
+					AddDictEntry(KMCSFS->dict, FileName.Buffer, loc - FileNameLen, FileNameLen, &KMCSFS->CurDictSize, &KMCSFS->DictSize, i - 1);
+
 					return i - 1;
 				}
 				start = true;
-				if ((KMCSFS.table[KMCSFS.tableend + loc] & 0xff) == 255)
+				if ((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) == 255)
 				{
 					loc++;
 					break;
 				}
 			}
-			if ((incmp((KMCSFS.table[KMCSFS.tableend + loc] & 0xff), (FileName.Buffer[j] & 0xff)) || (((KMCSFS.table[KMCSFS.tableend + loc] & 0xff) == *"/") && ((FileName.Buffer[j] & 0xff) == *"\\"))) && start) // case insensitive, / and \ are the same, make sure it is not just an end or middle of filename
+			if ((incmp((KMCSFS->table[KMCSFS->tableend + loc] & 0xff), (FileName.Buffer[j] & 0xff)) || (((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) == *"/") && ((FileName.Buffer[j] & 0xff) == *"\\"))) && start) // case insensitive, / and \ are the same, make sure it is not just an end or middle of filename
 			{
-				if ((KMCSFS.table[KMCSFS.tableend + loc] & 0xff) != *"/")
+				if ((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) != *"/")
 				{
-					FileName.Buffer[j] = KMCSFS.table[KMCSFS.tableend + loc] & 0xff;
+					FileName.Buffer[j] = KMCSFS->table[KMCSFS->tableend + loc] & 0xff;
 				}
 				j++;
 			}
 			else
 			{
-				if ((KMCSFS.table[KMCSFS.tableend + loc] & 0xff) != 42)
+				if ((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) != 42)
 				{
 					start = false;
 				}
@@ -911,6 +920,8 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 
 	ExFreePool(Vcb->vde->pdode->KMCSFS.table);
 	Vcb->vde->pdode->KMCSFS.table = newtable;
+
+	AddDictEntry(Vcb->vde->pdode->KMCSFS.dict, fn.Buffer, Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1, fn.Length / sizeof(WCHAR), &Vcb->vde->pdode->KMCSFS.CurDictSize, &Vcb->vde->pdode->KMCSFS.DictSize, Vcb->vde->pdode->KMCSFS.filecount);
 
 	Vcb->vde->pdode->KMCSFS.filenamesend = 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR);
 	Vcb->vde->pdode->KMCSFS.tableend = 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2;
@@ -1794,7 +1805,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 	}
 }
 
-bool delete_file(KMCSpaceFS* KMCSFS, unsigned long long index)
+bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long index)
 {
 	char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->filenamesend + 2 + 35 * (KMCSFS->filecount - 1), ALLOC_TAG);
 	if (!newtable)
@@ -1888,6 +1899,13 @@ bool delete_file(KMCSpaceFS* KMCSFS, unsigned long long index)
 	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 24 * (KMCSFS->filecount - 1), KMCSFS->table + KMCSFS->filenamesend + 2 + 24 * KMCSFS->filecount, 11 * index);
 	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 24 * (KMCSFS->filecount - 1) + 11 * index, KMCSFS->table + KMCSFS->filenamesend + 2 + 24 * KMCSFS->filecount + 11 * (index + 1), 11 * (KMCSFS->filecount - index - 1));
 	sync_write_phys(KMCSFS->DeviceObject, 0, 0, 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 35 * (KMCSFS->filecount - 1), newtable, true);
+
+	unsigned long long dindex = FindDictEntry(KMCSFS->dict, KMCSFS->table, KMCSFS->tableend, KMCSFS->DictSize, filename.Buffer, filename.Length / sizeof(WCHAR));
+	if (dindex)
+	{
+		RemoveDictEntry(KMCSFS->dict, KMCSFS->DictSize, dindex, filename.Length / sizeof(WCHAR));
+	}
+
 	KMCSFS->used_blocks -= get_file_size(index, *KMCSFS) / KMCSFS->sectorsize;
 	ExFreePool(KMCSFS->table);
 	KMCSFS->table = newtable;
@@ -1921,7 +1939,7 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn)
 		return STATUS_DISK_FULL;
 	}
 
-	unsigned long long index = get_filename_index(fn, *KMCSFS);
+	unsigned long long index = get_filename_index(fn, KMCSFS);
 	if (!index)
 	{
 		ExFreePool(newtable);
@@ -1958,6 +1976,14 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn)
 		newtable[loc + i + 1] = nfn.Buffer[i] & 0xff;
 	}
 	RtlCopyMemory(newtable + loc + 1 + nfn.Length / sizeof(WCHAR), KMCSFS->table + loc + 1 + fn.Length / sizeof(WCHAR), KMCSFS->filenamesend - loc - 1 - fn.Length / sizeof(WCHAR) + 2 + 35 * KMCSFS->filecount);
+
+	unsigned long long dindex = FindDictEntry(KMCSFS->dict, KMCSFS->table, KMCSFS->tableend, KMCSFS->DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
+	if (dindex)
+	{
+		unsigned long long filenameloc = KMCSFS->dict[dindex].filenameloc;
+		RemoveDictEntry(KMCSFS->dict, KMCSFS->DictSize, dindex, fn.Length / sizeof(WCHAR));
+		AddDictEntry(KMCSFS->dict, nfn.Buffer, filenameloc, nfn.Length / sizeof(WCHAR), &KMCSFS->CurDictSize, &KMCSFS->DictSize, index);
+	}
 
 	KMCSFS->filenamesend = KMCSFS->filenamesend - fn.Length / sizeof(WCHAR) + nfn.Length / sizeof(WCHAR);
 	KMCSFS->extratablesize = extratablesize;

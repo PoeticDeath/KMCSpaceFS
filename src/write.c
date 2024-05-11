@@ -43,7 +43,7 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 		goto exit;
 	}
 
-	unsigned long long index = get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long size = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 
 	if (offset.LowPart == FILE_WRITE_TO_END_OF_FILE && offset.HighPart == -1)
@@ -89,8 +89,6 @@ _Function_class_(DRIVER_DISPATCH)
 __attribute__((nonnull(1,2)))
 NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	NTSTATUS Status = STATUS_INVALID_PARAMETER;
 	bool top_level;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -101,6 +99,7 @@ NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	bool wait = FileObject ? IoIsOperationSynchronous(Irp) : true;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	top_level = is_top_level(Irp);
 
@@ -183,9 +182,8 @@ exit:
 
 	TRACE("returning %08lx\n", Status);
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }

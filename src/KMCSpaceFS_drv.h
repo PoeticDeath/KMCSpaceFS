@@ -360,7 +360,7 @@ extern unsigned* dmap;
 void init_maps();
 char* encode(char* str, unsigned long long len);
 char* decode(char* bytes, unsigned long long len);
-unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS KMCSFS);
+unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS* KMCSFS);
 bool incmp(unsigned char a, unsigned char b);
 unsigned long long chtime(unsigned long long filenameindex, unsigned long long time, unsigned ch, KMCSpaceFS KMCSFS);
 unsigned long chwinattrs(unsigned long long filenameindex, unsigned long winattrs, KMCSpaceFS KMCSFS);
@@ -370,7 +370,7 @@ NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned 
 NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, UNICODE_STRING fn);
 bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size);
 dealloc(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size, unsigned long long newsize);
-bool delete_file(KMCSpaceFS* KMCSFS, unsigned long long index);
+bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long index);
 NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn);
 
 // in dirctrl.c

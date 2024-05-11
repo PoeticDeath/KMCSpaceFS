@@ -183,7 +183,7 @@ NTSTATUS query_directory(PIRP Irp)
 			}
 			if (!filterb)
 			{
-				ccb->query_dir_index = get_filename_index(ccb->filter, Vcb->vde->pdode->KMCSFS);
+				ccb->query_dir_index = get_filename_index(ccb->filter, &Vcb->vde->pdode->KMCSFS);
 				ExFreePool(ccb->filter.Buffer);
 				ccb->filter.Buffer = NULL;
 				ccb->filter.Length = 0;
@@ -312,7 +312,7 @@ NTSTATUS query_directory(PIRP Irp)
 		{
 			if (!ccb->query_dir_file_count)
 			{
-				index = get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS);
+				index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
 				Filename.Buffer[ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2)] = 46;
 				Filename.Buffer[ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2) + 1] = 0;
 				filenamelen = 1;
@@ -322,7 +322,7 @@ NTSTATUS query_directory(PIRP Irp)
 			{
 				unsigned long long namelen = ccb->filename.Length;
 				ccb->filename.Length = max(lastslash * sizeof(WCHAR), 2);
-				index = get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS);
+				index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
 				ccb->filename.Length = namelen;
 				Filename.Buffer[ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2)] = 46;
 				Filename.Buffer[ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2) + 1] = 46;
@@ -706,7 +706,7 @@ static NTSTATUS notify_change_directory(device_extension* Vcb, PIRP Irp)
 	ExAcquireResourceSharedLite(&fcb->Vcb->tree_lock, true);
 	ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
 
-	unsigned long long index = get_filename_index(ccb->filename, Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
 	if (!(chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_DIRECTORY))
 	{
 		Status = STATUS_INVALID_PARAMETER;
@@ -732,8 +732,6 @@ _Dispatch_type_(IRP_MJ_DIRECTORY_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall DirectoryControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	ExAcquireResourceExclusiveLite(&op_lock, true);
-
 	PIO_STACK_LOCATION IrpSp;
 	NTSTATUS Status;
 	ULONG func;
@@ -741,6 +739,7 @@ NTSTATUS __stdcall DirectoryControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	device_extension* Vcb = DeviceObject->DeviceExtension;
 
 	FsRtlEnterFileSystem();
+	ExAcquireResourceExclusiveLite(&op_lock, true);
 
 	TRACE("directory control\n");
 
@@ -798,9 +797,8 @@ exit:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	FsRtlExitFileSystem();
-
 	ExReleaseResourceLite(&op_lock);
+	FsRtlExitFileSystem();
 
 	return Status;
 }
