@@ -68,7 +68,9 @@ bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, uns
 	{
 		if (dict[i].hash == hash)
 		{
-			ERR("This is bad!");
+			dict[i].filenameloc = filenameloc;
+			dict[i].index = index;
+			return true;
 		}
 		i++;
 	}
