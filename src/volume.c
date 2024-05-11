@@ -1382,6 +1382,44 @@ void add_volume_device(KMCSpaceFS KMCSFS, PUNICODE_STRING devpath, uint64_t leng
 		}
 	}
 
+	ExAcquireResourceExclusiveLite(&op_lock, true);
+
+	unsigned long long len = 0;
+	unsigned long long count = 0;
+	PWCH filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536, ALLOC_TAG);
+	if (filename)
+	{
+		for (unsigned long long i = KMCSFS.tableend; i < KMCSFS.filenamesend; i++)
+		{
+			if ((KMCSFS.table[i] & 0xff) == 255)
+			{
+				AddDictEntry(KMCSFS.dict, filename, i - len - KMCSFS.tableend + 1, len, &KMCSFS.CurDictSize, &KMCSFS.DictSize, count);
+				if (!(count % 1000))
+				{
+					TRACE("%llu / %llu indices computed.\n", count, KMCSFS.filecount);
+				}
+				count++;
+				len = 0;
+				continue;
+			}
+			else
+			{
+				if ((KMCSFS.table[i] & 0xff) == 47)
+				{
+					filename[len] = 92;
+				}
+				else
+				{
+					filename[len] = KMCSFS.table[i] & 0xff;
+				}
+			}
+			len++;
+		}
+		ExFreePool(filename);
+	}
+
+	ExReleaseResourceLite(&op_lock);
+
 	return;
 
 fail:

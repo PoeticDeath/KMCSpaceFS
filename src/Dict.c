@@ -31,7 +31,7 @@ startover:
 		{
 			unsigned long long hash = dict[i].hash;
 			unsigned long long j = hash % newsize;
-			while (ndict[j].filenameloc != NULL)
+			while (ndict[j].filenameloc != NULL && j < newsize - 1)
 			{
 				j++;
 			}
@@ -64,7 +64,7 @@ bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, uns
 	sha3_HashBuffer(256, 0, Filename, filenamelen, &hash, 8);
 	ExFreePool(Filename);
 	unsigned long long i = hash % *size;
-	while (dict[i].filenameloc != NULL)
+	while (dict[i].filenameloc != NULL && i < *size - 1)
 	{
 		if (dict[i].hash == hash)
 		{
@@ -82,14 +82,14 @@ bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, uns
 			return false;
 		}
 		i = hash % *size;
-		while (tdict[i].filenameloc != NULL)
+		(*cursize)++;
+		*size += 1024;
+		while (tdict[i].filenameloc != NULL && i < *size - 1)
 		{
 			i++;
 		}
 		ExFreePool(dict);
 		dict = tdict;
-		(*cursize)++;
-		*size += 1024;
 	}
 	for (unsigned long long j = 0; j < *size; j++)
 	{
