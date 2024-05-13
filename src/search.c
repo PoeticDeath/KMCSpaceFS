@@ -309,7 +309,13 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 				}
 				KMCSFS.tablestrlen = KMCSFS.tableend + KMCSFS.tableend - 10;
 
-				KMCSFS.dict = CreateDict(KMCSFS.filecount + 1024);
+				unsigned long long i = 0;
+				while (KMCSFS.filecount > (unsigned long long)(1) << i)
+				{
+					i++;
+				}
+				KMCSFS.DictSize = (unsigned long long)(1) << (i + 1);
+				KMCSFS.dict = CreateDict(KMCSFS.DictSize);
 				if (!KMCSFS.dict)
 				{
 					ERR("out of memory\n");
@@ -317,7 +323,6 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 					goto deref;
 				}
 				KMCSFS.CurDictSize = KMCSFS.filecount;
-				KMCSFS.DictSize = KMCSFS.filecount + 1024;
 
 				add_volume_device(KMCSFS, devpath, length, disk_num, part_num);
 			}

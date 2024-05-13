@@ -38,7 +38,7 @@ startover:
 			if (j > newsize - 1)
 			{
 				ExFreePool(ndict);
-				newsize += 1024;
+				newsize *= 2;
 				goto startover;
 			}
 			ndict[j].filenameloc = dict[i].filenameloc;
@@ -84,14 +84,13 @@ bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, uns
 	}
 	while (i > *size - 1)
 	{
-		Dict* tdict = ResizeDict(dict, *size, *size + 1024);
+		Dict* tdict = ResizeDict(dict, *size, *size * 2);
 		if (tdict == NULL)
 		{
 			return false;
 		}
 		i = hash % *size;
-		(*cursize)++;
-		*size += 1024;
+		*size *= 2;
 		while (tdict[i].filenameloc != NULL && i < *size - 1)
 		{
 			i++;
@@ -99,6 +98,7 @@ bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, uns
 		ExFreePool(dict);
 		dict = tdict;
 	}
+	(*cursize)++;
 	if (scan)
 	{
 		for (unsigned long long j = 0; j < *size; j++)
@@ -120,6 +120,17 @@ bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, uns
 	dict[i].filenameloc = filenameloc;
 	dict[i].hash = hash;
 	dict[i].index = index;
+	if (*cursize * 3 / 4 > *size)
+	{
+		Dict* tdict = ResizeDict(dict, *size, *size * 2);
+		if (tdict == NULL)
+		{
+			return true;
+		}
+		*size *= 2;
+		ExFreePool(dict);
+		dict = tdict;
+	}
 	return true;
 }
 
@@ -168,11 +179,12 @@ unsigned long long FindDictEntry(Dict* dict, char* table, unsigned long long tab
 	}
 }
 
-void RemoveDictEntry(Dict* dict, unsigned long long size, unsigned long long dindex, unsigned long long filenamelen)
+void RemoveDictEntry(Dict* dict, unsigned long long size, unsigned long long dindex, unsigned long long filenamelen, unsigned long long* cursize)
 {
 	unsigned long long index = dict[dindex].index;
 	unsigned long long* filenameloc = dict[dindex].filenameloc;
 	RtlZeroMemory(dict + dindex, sizeof(Dict));
+	(*cursize)--;
 	for (unsigned long long i = 0; i < size; i++)
 	{
 		if (dict[i].filenameloc == NULL)

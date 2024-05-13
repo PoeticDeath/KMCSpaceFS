@@ -1404,14 +1404,7 @@ void add_volume_device(KMCSpaceFS KMCSFS, PUNICODE_STRING devpath, uint64_t leng
 			}
 			else
 			{
-				if ((KMCSFS.table[i] & 0xff) == 47)
-				{
-					filename[len] = 92;
-				}
-				else
-				{
-					filename[len] = KMCSFS.table[i] & 0xff;
-				}
+				filename[len] = KMCSFS.table[i] & 0xff;
 			}
 			len++;
 		}

@@ -1903,7 +1903,7 @@ bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long
 	unsigned long long dindex = FindDictEntry(KMCSFS->dict, KMCSFS->table, KMCSFS->tableend, KMCSFS->DictSize, filename.Buffer, filename.Length / sizeof(WCHAR));
 	if (dindex)
 	{
-		RemoveDictEntry(KMCSFS->dict, KMCSFS->DictSize, dindex, filename.Length / sizeof(WCHAR));
+		RemoveDictEntry(KMCSFS->dict, KMCSFS->DictSize, dindex, filename.Length / sizeof(WCHAR), &KMCSFS->CurDictSize);
 	}
 
 	KMCSFS->used_blocks -= get_file_size(index, *KMCSFS) / KMCSFS->sectorsize;
@@ -1981,7 +1981,7 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn)
 	if (dindex)
 	{
 		unsigned long long filenameloc = KMCSFS->dict[dindex].filenameloc;
-		RemoveDictEntry(KMCSFS->dict, KMCSFS->DictSize, dindex, fn.Length / sizeof(WCHAR));
+		RemoveDictEntry(KMCSFS->dict, KMCSFS->DictSize, dindex, fn.Length / sizeof(WCHAR), &KMCSFS->CurDictSize);
 		AddDictEntry(KMCSFS->dict, nfn.Buffer, filenameloc, nfn.Length / sizeof(WCHAR), &KMCSFS->CurDictSize, &KMCSFS->DictSize, index, true);
 	}
 
