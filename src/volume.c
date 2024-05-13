@@ -1393,7 +1393,7 @@ void add_volume_device(KMCSpaceFS KMCSFS, PUNICODE_STRING devpath, uint64_t leng
 		{
 			if ((KMCSFS.table[i] & 0xff) == 255)
 			{
-				AddDictEntry(KMCSFS.dict, filename, i - len - KMCSFS.tableend + 1, len, &KMCSFS.CurDictSize, &KMCSFS.DictSize, count);
+				AddDictEntry(KMCSFS.dict, filename, i - len - KMCSFS.tableend + 1, len, &KMCSFS.CurDictSize, &KMCSFS.DictSize, count, false);
 				if (!(count % 1000))
 				{
 					TRACE("%llu / %llu indices computed.\n", count, KMCSFS.filecount);

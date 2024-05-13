@@ -49,7 +49,7 @@ startover:
 	return ndict;
 }
 
-bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, unsigned long long filenamelen, unsigned long long* cursize, unsigned long long* size, unsigned long long index)
+bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, unsigned long long filenamelen, unsigned long long* cursize, unsigned long long* size, unsigned long long index, bool scan)
 {
 	unsigned long long hash = 0;
 	char* Filename = ExAllocatePoolWithTag(NonPagedPoolNx, filenamelen + 1, ALLOC_TAG);
@@ -60,6 +60,14 @@ bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, uns
 	for (unsigned long long i = 0; i < filenamelen; i++)
 	{
 		Filename[i] = filename[i] & 0xff;
+		if (Filename[i] == 92)
+		{
+			Filename[i] = 47;
+		}
+		if (Filename[i] >= 'A' && Filename[i] <= 'Z')
+		{
+			Filename[i] += 32;
+		}
 	}
 	sha3_HashBuffer(256, 0, Filename, filenamelen, &hash, 8);
 	ExFreePool(Filename);
@@ -91,19 +99,22 @@ bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, uns
 		ExFreePool(dict);
 		dict = tdict;
 	}
-	for (unsigned long long j = 0; j < *size; j++)
+	if (scan)
 	{
-		if (dict[j].filenameloc == NULL)
+		for (unsigned long long j = 0; j < *size; j++)
 		{
-			continue;
-		}
-		if (dict[j].index >= index)
-		{
-			dict[j].index++;
-		}
-		if (dict[j].filenameloc >= filenameloc)
-		{
-			dict[j].filenameloc += filenamelen + 1;
+			if (dict[j].filenameloc == NULL)
+			{
+				continue;
+			}
+			if (dict[j].index >= index)
+			{
+				dict[j].index++;
+			}
+			if (dict[j].filenameloc >= filenameloc)
+			{
+				dict[j].filenameloc += filenamelen + 1;
+			}
 		}
 	}
 	dict[i].filenameloc = filenameloc;
@@ -122,6 +133,14 @@ unsigned long long FindDictEntry(Dict* dict, char* table, unsigned long long tab
 	for (unsigned long long i = 0; i < filenamelen; i++)
 	{
 		Filename[i] = filename[i] & 0xff;
+		if (Filename[i] == 92)
+		{
+			Filename[i] = 47;
+		}
+		if (Filename[i] >= 'A' && Filename[i] <= 'Z')
+		{
+			Filename[i] += 32;
+		}
 	}
 	unsigned long long hash = 0;
 	sha3_HashBuffer(256, 0, Filename, filenamelen, &hash, 8);
