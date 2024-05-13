@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.15)
 
 project(KMCSpaceFS VERSION 0.0.1)
 
-add_compile_options("-O2")
-
 # KMCSpaceFS.sys
 
 set(SRC_FILES
@@ -73,6 +71,8 @@ add_library(KMCSpaceFS SHARED ${SRC_FILES})
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_definitions(-D_DEBUG)
+else()
+    add_compile_options("-O2")
 endif()
 
 if(NOT MSVC)

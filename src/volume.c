@@ -1389,11 +1389,11 @@ void add_volume_device(KMCSpaceFS KMCSFS, PUNICODE_STRING devpath, uint64_t leng
 	PWCH filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536, ALLOC_TAG);
 	if (filename)
 	{
-		for (unsigned long long i = KMCSFS.tableend; i < KMCSFS.filenamesend; i++)
+		for (unsigned long long i = KMCSFS.tableend + 1; i < KMCSFS.filenamesend; i++)
 		{
 			if ((KMCSFS.table[i] & 0xff) == 255)
 			{
-				AddDictEntry(KMCSFS.dict, filename, i - len - KMCSFS.tableend + 1, len, &KMCSFS.CurDictSize, &KMCSFS.DictSize, count, false);
+				AddDictEntry(KMCSFS.dict, filename, i - len - KMCSFS.tableend, len, &KMCSFS.CurDictSize, &KMCSFS.DictSize, count, false);
 				if (!(count % 1000))
 				{
 					TRACE("%llu / %llu indices computed.\n", count, KMCSFS.filecount);
