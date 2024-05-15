@@ -15,30 +15,31 @@ Dict* CreateDict(unsigned long long size)
 	return dict;
 }
 
-Dict* ResizeDict(Dict* dict, unsigned long long oldsize, unsigned long long newsize)
+Dict* ResizeDict(Dict* dict, unsigned long long oldsize, unsigned long long* newsize)
 {
 	Dict* ndict = NULL;
 startover:
-	ndict = (Dict*)ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(Dict) * newsize, ALLOC_TAG);
+	*newsize *= 2;
+	ndict = (Dict*)ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(Dict) * *newsize, ALLOC_TAG);
 	if (ndict == NULL)
 	{
+		*newsize = oldsize;
 		return NULL;
 	}
-	RtlZeroMemory(ndict, sizeof(Dict) * newsize);
+	RtlZeroMemory(ndict, sizeof(Dict) * *newsize);
 	for (unsigned long long i = 0; i < oldsize; i++)
 	{
 		if (dict[i].filenameloc != NULL)
 		{
 			unsigned long long hash = dict[i].hash;
-			unsigned long long j = hash % newsize;
-			while (ndict[j].filenameloc != NULL && j < newsize - 1)
+			unsigned long long j = hash % *newsize;
+			while (ndict[j].filenameloc != NULL && j < *newsize - 1)
 			{
 				j++;
 			}
-			if (j > newsize - 1)
+			if (j > *newsize - 1)
 			{
 				ExFreePool(ndict);
-				newsize *= 2;
 				goto startover;
 			}
 			ndict[j].filenameloc = dict[i].filenameloc;
@@ -49,7 +50,7 @@ startover:
 	return ndict;
 }
 
-bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, unsigned long long filenamelen, unsigned long long* cursize, unsigned long long* size, unsigned long long index, bool scan)
+bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, unsigned long long filenamelen, unsigned long long* cursize, unsigned long long* size, unsigned long long index, bool scan)
 {
 	unsigned long long hash = 0;
 	char* Filename = ExAllocatePoolWithTag(NonPagedPoolNx, filenamelen + 1, ALLOC_TAG);
@@ -72,64 +73,62 @@ bool AddDictEntry(Dict* dict, PWCH filename, unsigned long long filenameloc, uns
 	sha3_HashBuffer(256, 0, Filename, filenamelen, &hash, 8);
 	ExFreePool(Filename);
 	unsigned long long i = hash % *size;
-	while (dict[i].filenameloc != NULL && i < *size - 1)
+	while ((*dict)[i].filenameloc != NULL && i < *size - 1)
 	{
-		if (dict[i].hash == hash)
+		if ((*dict)[i].hash == hash)
 		{
-			dict[i].filenameloc = filenameloc;
-			dict[i].index = index;
+			(*dict)[i].filenameloc = filenameloc;
+			(*dict)[i].index = index;
 			return true;
 		}
 		i++;
 	}
 	while (i > *size - 1)
 	{
-		Dict* tdict = ResizeDict(dict, *size, *size * 2);
+		Dict* tdict = ResizeDict(*dict, *size, size);
 		if (tdict == NULL)
 		{
 			return false;
 		}
 		i = hash % *size;
-		*size *= 2;
 		while (tdict[i].filenameloc != NULL && i < *size - 1)
 		{
 			i++;
 		}
-		ExFreePool(dict);
-		dict = tdict;
+		ExFreePool(*dict);
+		*dict = tdict;
 	}
 	(*cursize)++;
 	if (scan)
 	{
 		for (unsigned long long j = 0; j < *size; j++)
 		{
-			if (dict[j].filenameloc == NULL)
+			if ((*dict)[j].filenameloc == NULL)
 			{
 				continue;
 			}
-			if (dict[j].index >= index)
+			if ((*dict)[j].index >= index)
 			{
-				dict[j].index++;
+				(*dict)[j].index++;
 			}
-			if (dict[j].filenameloc >= filenameloc)
+			if ((*dict)[j].filenameloc >= filenameloc)
 			{
-				dict[j].filenameloc += filenamelen + 1;
+				(*dict)[j].filenameloc += filenamelen + 1;
 			}
 		}
 	}
-	dict[i].filenameloc = filenameloc;
-	dict[i].hash = hash;
-	dict[i].index = index;
+	(*dict)[i].filenameloc = filenameloc;
+	(*dict)[i].hash = hash;
+	(*dict)[i].index = index;
 	if (*cursize * 3 / 4 > *size)
 	{
-		Dict* tdict = ResizeDict(dict, *size, *size * 2);
+		Dict* tdict = ResizeDict(*dict, *size, size);
 		if (tdict == NULL)
 		{
 			return true;
 		}
-		*size *= 2;
-		ExFreePool(dict);
-		dict = tdict;
+		ExFreePool(*dict);
+		*dict = tdict;
 	}
 	return true;
 }

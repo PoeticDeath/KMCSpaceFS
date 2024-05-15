@@ -140,7 +140,7 @@ unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS* KMCSF
 				j = 0;
 				if (found)
 				{
-					AddDictEntry(KMCSFS->dict, FileName.Buffer, loc - FileNameLen, FileNameLen, &KMCSFS->CurDictSize, &KMCSFS->DictSize, i - 1, false);
+					AddDictEntry(&KMCSFS->dict, FileName.Buffer, loc - FileNameLen, FileNameLen, &KMCSFS->CurDictSize, &KMCSFS->DictSize, i - 1, false);
 
 					return i - 1;
 				}
@@ -921,7 +921,7 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 	ExFreePool(Vcb->vde->pdode->KMCSFS.table);
 	Vcb->vde->pdode->KMCSFS.table = newtable;
 
-	AddDictEntry(Vcb->vde->pdode->KMCSFS.dict, fn.Buffer, Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1, fn.Length / sizeof(WCHAR), &Vcb->vde->pdode->KMCSFS.CurDictSize, &Vcb->vde->pdode->KMCSFS.DictSize, Vcb->vde->pdode->KMCSFS.filecount, false);
+	AddDictEntry(&Vcb->vde->pdode->KMCSFS.dict, fn.Buffer, Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1, fn.Length / sizeof(WCHAR), &Vcb->vde->pdode->KMCSFS.CurDictSize, &Vcb->vde->pdode->KMCSFS.DictSize, Vcb->vde->pdode->KMCSFS.filecount, false);
 
 	Vcb->vde->pdode->KMCSFS.filenamesend = 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2 + Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1 + fn.Length / sizeof(WCHAR);
 	Vcb->vde->pdode->KMCSFS.tableend = 5 + (Vcb->vde->pdode->KMCSFS.tablestrlen + Vcb->vde->pdode->KMCSFS.tablestrlen % 2) / 2;
@@ -1982,7 +1982,7 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn)
 	{
 		unsigned long long filenameloc = KMCSFS->dict[dindex].filenameloc;
 		RemoveDictEntry(KMCSFS->dict, KMCSFS->DictSize, dindex, fn.Length / sizeof(WCHAR), &KMCSFS->CurDictSize);
-		AddDictEntry(KMCSFS->dict, nfn.Buffer, filenameloc, nfn.Length / sizeof(WCHAR), &KMCSFS->CurDictSize, &KMCSFS->DictSize, index, true);
+		AddDictEntry(&KMCSFS->dict, nfn.Buffer, filenameloc, nfn.Length / sizeof(WCHAR), &KMCSFS->CurDictSize, &KMCSFS->DictSize, index, true);
 	}
 
 	KMCSFS->filenamesend = KMCSFS->filenamesend - fn.Length / sizeof(WCHAR) + nfn.Length / sizeof(WCHAR);
