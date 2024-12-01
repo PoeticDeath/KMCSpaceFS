@@ -112,7 +112,7 @@ NTSTATUS vol_close(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		return STATUS_SUCCESS;
 	}
 
-	ExAcquireResourceExclusiveLite(&pdo_list_lock, true);
+	ExAcquireResourceSharedLite(&pdo_list_lock, true);
 
 	if (vde->dead)
 	{

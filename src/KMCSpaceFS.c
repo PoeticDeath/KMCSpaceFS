@@ -224,11 +224,17 @@ void uninit(_In_ device_extension* Vcb)
 	ExDeletePagedLookasideList(&Vcb->fcb_lookaside);
 	ExDeleteNPagedLookasideList(&Vcb->fcb_np_lookaside);
 
+	if (Vcb->vde->device->AttachedDevice)
+	{
+		IoDetachDevice(Vcb->vde->device);
+	}
+
 	if (Vcb->devobj->AttachedDevice)
 	{
 		IoDetachDevice(Vcb->devobj);
 	}
 
+	IoDeleteDevice(Vcb->vde->device);
 	IoDeleteDevice(Vcb->devobj);
 }
 
@@ -985,10 +991,15 @@ static NTSTATUS __stdcall Close(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp;
 	device_extension* Vcb = DeviceObject->DeviceExtension;
+	bool locked = false;
 	bool top_level;
 
 	FsRtlEnterFileSystem();
-	ExAcquireResourceExclusiveLite(&op_lock, true);
+	if (!(Vcb && Vcb->type == VCB_TYPE_VOLUME))
+	{
+		ExAcquireResourceExclusiveLite(&op_lock, true);
+		locked = true;
+	}
 
 	TRACE("close\n");
 
@@ -1030,7 +1041,10 @@ end:
 
 	TRACE("returning %08lx\n", Status);
 
-	ExReleaseResourceLite(&op_lock);
+	if (locked)
+	{
+		ExReleaseResourceLite(&op_lock);
+	}
 	FsRtlExitFileSystem();
 
 	return Status;
@@ -1653,13 +1667,18 @@ _Dispatch_type_(IRP_MJ_FILE_SYSTEM_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS __stdcall FileSystemControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 {
-	PIO_STACK_LOCATION IrpSp;
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	NTSTATUS Status;
 	device_extension* Vcb = DeviceObject->DeviceExtension;
+	bool locked = false;
 	bool top_level;
 
 	FsRtlEnterFileSystem();
-	ExAcquireResourceExclusiveLite(&op_lock, true);
+	if (!(IrpSp->MinorFunction == IRP_MN_USER_FS_REQUEST && IrpSp->Parameters.FileSystemControl.FsControlCode == FSCTL_DISMOUNT_VOLUME))
+	{
+		ExAcquireResourceExclusiveLite(&op_lock, true);
+		locked = true;
+	}
 
 	TRACE("file system control\n");
 
@@ -1678,17 +1697,15 @@ static NTSTATUS __stdcall FileSystemControl(_In_ PDEVICE_OBJECT DeviceObject, _I
 
 	Status = STATUS_NOT_IMPLEMENTED;
 
-	IrpSp = IoGetCurrentIrpStackLocation(Irp);
-
 	Irp->IoStatus.Information = 0;
 
 	switch (IrpSp->MinorFunction)
 	{
-	case IRP_MN_MOUNT_VOLUME:
-		TRACE("IRP_MN_MOUNT_VOLUME\n");
+		case IRP_MN_MOUNT_VOLUME:
+			TRACE("IRP_MN_MOUNT_VOLUME\n");
 
-		Status = mount_vol(DeviceObject, Irp);
-		break;
+			Status = mount_vol(DeviceObject, Irp);
+			break;
 
 		case IRP_MN_KERNEL_CALL:
 			TRACE("IRP_MN_KERNEL_CALL\n");
@@ -1735,7 +1752,10 @@ end:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	ExReleaseResourceLite(&op_lock);
+	if (locked)
+	{
+		ExReleaseResourceLite(&op_lock);
+	}
 	FsRtlExitFileSystem();
 
 	return Status;

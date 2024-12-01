@@ -719,5 +719,6 @@ NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type)
         break;
     }
 
+	TRACE("returning %08lx\n", Status);
     return Status;
 }

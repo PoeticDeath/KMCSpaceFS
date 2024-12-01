@@ -661,7 +661,7 @@ void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lo
 			remove = true;
 		}
 
-		ExReleaseResourceLite(&pdode->child_lock);
+		//ExReleaseResourceLite(&pdode->child_lock);
 
 		if (!no_pnp)
 		{
@@ -689,7 +689,7 @@ void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lo
 	}
 	else
 	{
-		ExReleaseResourceLite(&pdode->child_lock);
+		//ExReleaseResourceLite(&pdode->child_lock);
 	}
 }
 
@@ -841,7 +841,7 @@ void volume_removal(PUNICODE_STRING devpath)
 
 		if (pdode->vde)
 		{
-			ExAcquireResourceExclusiveLite(&pdode->child_lock, true);
+			//ExAcquireResourceExclusiveLite(&pdode->child_lock, true);
 
 			le2 = pdode->children.Flink;
 			while (le2 != &pdode->children)
@@ -867,7 +867,7 @@ void volume_removal(PUNICODE_STRING devpath)
 
 			if (!changed)
 			{
-				ExReleaseResourceLite(&pdode->child_lock);
+				//ExReleaseResourceLite(&pdode->child_lock);
 			}
 			else
 			{
