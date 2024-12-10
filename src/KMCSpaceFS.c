@@ -2618,7 +2618,7 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 		IrpSp->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
 	}
 
-	ULONG RLength = Length + (512 - (LONGLONG)StartingOffset % 512) % 512;
+	ULONG RLength = Length + (LONGLONG)StartingOffset % 512;
 	IrpSp->Parameters.Write.Length = RLength + (512 - RLength % 512) % 512;
 	IrpSp->Parameters.Write.ByteOffset = Offset;
 

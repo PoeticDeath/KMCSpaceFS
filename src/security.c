@@ -4491,3 +4491,118 @@ end:
 
 	return Status;
 }
+
+NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, ACCESS_MASK* granted_access)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+	UNICODE_STRING securityfile;
+	securityfile.Length = FileName->Length - sizeof(WCHAR);
+	securityfile.Buffer = FileName->Buffer + 1;
+	unsigned long long index = get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS);
+	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
+	char* security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
+	if (!security)
+	{
+		ERR("out of memory\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
+	}
+	unsigned long long bytes_read = 0;
+	fcb* fcb = create_fcb(Vcb, NonPagedPoolNx);
+	if (!fcb)
+	{
+		ERR("out of memory\n");
+		ExFreePool(security);
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
+	}
+	PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+	if (!Irp2)
+	{
+		ERR("out of memory\n");
+		free_fcb(fcb);
+		reap_fcb(fcb);
+		ExFreePool(security);
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
+	}
+	Irp2->Flags |= IRP_NOCACHE;
+	read_file(fcb, security, 0, filesize, index, &bytes_read, Irp2);
+	if (bytes_read != filesize)
+	{
+		ERR("read_file returned %I64u\n", bytes_read);
+		IoFreeIrp(Irp2);
+		free_fcb(fcb);
+		reap_fcb(fcb);
+		ExFreePool(security);
+		Status = STATUS_INTERNAL_ERROR;
+		goto end;
+	}
+
+	WCHAR* securityW = ExAllocatePoolWithTag(NonPagedPoolNx, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
+	if (!securityW)
+	{
+		ERR("out of memory\n");
+		IoFreeIrp(Irp2);
+		free_fcb(fcb);
+		reap_fcb(fcb);
+		ExFreePool(security);
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
+	}
+
+	for (unsigned long long i = 0; i < filesize; i++)
+	{
+		securityW[i] = security[i] & 0xff;
+	}
+	securityW[filesize] = 0;
+
+	ULONG BUFLEN = 0;
+	SECURITY_DESCRIPTOR* SD;
+	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(securityW, SDDL_REVISION, &SD, &BUFLEN, IrpSp->Parameters.QuerySecurity.SecurityInformation))
+	{
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+	}
+	else
+	{
+		if (IrpSp->Parameters.Create.SecurityContext->DesiredAccess != 0)
+		{
+			SeLockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
+
+			if (!SeAccessCheck(SD, &IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext, true, IrpSp->Parameters.Create.SecurityContext->DesiredAccess, 0, NULL, IoGetFileObjectGenericMapping(), IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, granted_access, &Status))
+			{
+				SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
+				TRACE("SeAccessCheck failed, returning %08lx\n", Status);
+
+				IoFreeIrp(Irp2);
+				free_fcb(fcb);
+				reap_fcb(fcb);
+				ExFreePool(security);
+				ExFreePool(securityW);
+				ExFreePool(SD);
+
+				goto end;
+			}
+
+			SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
+		}
+		else
+		{
+			*granted_access = 0;
+		}
+		ExFreePool(SD);
+	}
+
+	IoFreeIrp(Irp2);
+	free_fcb(fcb);
+	reap_fcb(fcb);
+	ExFreePool(security);
+	ExFreePool(securityW);
+
+end:
+	TRACE("returning %08lx, %I64u\n", Status, *granted_access);
+
+	return Status;
+}

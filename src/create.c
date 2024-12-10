@@ -473,12 +473,13 @@ open:
 						allowed |= FILE_ADD_SUBDIRECTORY | FILE_ADD_FILE | FILE_DELETE_CHILD;
 					}
 				}
-				granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess & allowed;
+				AccessCheck(Irp, Vcb, &fn, &granted_access);
+				granted_access &= allowed;
 				IrpSp->Parameters.Create.SecurityContext->AccessState->PreviouslyGrantedAccess &= allowed;
 			}
 			else
 			{
-				granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
+				AccessCheck(Irp, Vcb, &fn, &granted_access);
 			}
 			Status = STATUS_SUCCESS;
 			if (winattrs & FILE_ATTRIBUTE_REPARSE_POINT && !(options & FILE_OPEN_REPARSE_POINT))
@@ -504,7 +505,7 @@ open:
 			else
 			{
 				Status = STATUS_SUCCESS;
-				granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
+				AccessCheck(Irp, Vcb, &fn, &granted_access);
 				if (options & FILE_DIRECTORY_FILE)
 				{
 					IrpSp->Parameters.Create.FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
