@@ -224,17 +224,10 @@ void uninit(_In_ device_extension* Vcb)
 	ExDeletePagedLookasideList(&Vcb->fcb_lookaside);
 	ExDeleteNPagedLookasideList(&Vcb->fcb_np_lookaside);
 
-	if (Vcb->vde->device->AttachedDevice)
-	{
-		IoDetachDevice(Vcb->vde->device);
-	}
-
 	if (Vcb->devobj->AttachedDevice)
 	{
 		IoDetachDevice(Vcb->devobj);
 	}
-
-	IoDeleteDevice(Vcb->vde->device);
 	IoDeleteDevice(Vcb->devobj);
 }
 
@@ -1348,18 +1341,24 @@ static NTSTATUS mount_vol(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 
 			if (!is_KMCSpaceFS(vc->devobj, vc->fileobj))
 			{
-				remove_volume_child(vde, vc, false);
+				bool locked = remove_volume_child(vde, vc, false);
 
 				if (pdode->num_children == 0)
 				{
 					ERR("error - number of devices is zero\n");
 					Status = STATUS_INTERNAL_ERROR;
-					ExReleaseResourceLite(&pdode->child_lock);
+					if (locked)
+					{
+						ExReleaseResourceLite(&pdode->child_lock);
+					}
 					goto exit;
 				}
 
 				Status = STATUS_DEVICE_NOT_READY;
-				ExReleaseResourceLite(&pdode->child_lock);
+				if (locked)
+				{
+					ExReleaseResourceLite(&pdode->child_lock);
+				}
 				goto exit;
 			}
 
@@ -3209,7 +3208,7 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
 	vde->pdode = pdode;
 	vde->removing = false;
 	vde->dead = false;
-	vde->open_count = 0;
+	vde->open_count = 1;
 
 	Status = IoRegisterDeviceInterface(PhysicalDeviceObject, &GUID_DEVINTERFACE_VOLUME, NULL, &vde->bus_name);
 	if (!NT_SUCCESS(Status))

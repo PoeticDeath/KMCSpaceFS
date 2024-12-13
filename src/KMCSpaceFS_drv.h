@@ -304,7 +304,7 @@ NTSTATUS __stdcall volume_notification(PVOID NotificationStructure, PVOID Contex
 
 typedef NTSTATUS(__stdcall* tIoUnregisterPlugPlayNotificationEx)(PVOID NotificationEntry);
 
-void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lock) _Releases_exclusive_lock_(_Curr_->child_lock) _In_ volume_device_extension* vde, _In_ volume_child* vc, _In_ bool skip_dev);
+bool remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lock) _Releases_exclusive_lock_(_Curr_->child_lock) _In_ volume_device_extension* vde, _In_ volume_child* vc, _In_ bool skip_dev);
 
 // in KMCSpaceFS.c
 bool is_top_level(_In_ PIRP Irp);

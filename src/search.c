@@ -128,6 +128,12 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 
 	TRACE("%.*S\n", (int)(devpath->Length / sizeof(WCHAR)), devpath->Buffer);
 
+	if (part_num == 0)
+	{
+		ERR("part_num == 0\n");
+		goto deref;
+	}
+
 	sector_size = DeviceObject->SectorSize;
 
 	if (sector_size == 0)
@@ -479,8 +485,9 @@ end:
 	ExReleaseResourceLite(&boot_lock);
 }
 
-void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lock) _Releases_exclusive_lock_(_Curr_->child_lock) _In_ volume_device_extension* vde, _In_ volume_child* vc, _In_ bool skip_dev)
+bool remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lock) _Releases_exclusive_lock_(_Curr_->child_lock) _In_ volume_device_extension* vde, _In_ volume_child* vc, _In_ bool skip_dev)
 {
+	bool locked = true;
 	NTSTATUS Status;
 	pdo_device_extension* pdode = vde->pdode;
 	device_extension* Vcb = vde->mounted_device ? vde->mounted_device->DeviceExtension : NULL;
@@ -661,7 +668,8 @@ void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lo
 			remove = true;
 		}
 
-		//ExReleaseResourceLite(&pdode->child_lock);
+		ExReleaseResourceLite(&pdode->child_lock);
+		locked = false;
 
 		if (!no_pnp)
 		{
@@ -684,13 +692,20 @@ void remove_volume_child(_Inout_ _Requires_exclusive_lock_held_(_Curr_->child_lo
 
 			ExDeleteResourceLite(&pdode->child_lock);
 
+			if (vde->device->AttachedDevice)
+			{
+				IoDetachDevice(vde->device);
+			}
 			IoDeleteDevice(vde->device);
 		}
 	}
 	else
 	{
-		//ExReleaseResourceLite(&pdode->child_lock);
+		ExReleaseResourceLite(&pdode->child_lock);
+		locked = false;
 	}
+
+	return locked;
 }
 
 bool volume_arrival(PUNICODE_STRING devpath, bool fve_callback)
@@ -841,7 +856,7 @@ void volume_removal(PUNICODE_STRING devpath)
 
 		if (pdode->vde)
 		{
-			//ExAcquireResourceExclusiveLite(&pdode->child_lock, true);
+			ExAcquireResourceExclusiveLite(&pdode->child_lock, true);
 
 			le2 = pdode->children.Flink;
 			while (le2 != &pdode->children)
@@ -867,7 +882,7 @@ void volume_removal(PUNICODE_STRING devpath)
 
 			if (!changed)
 			{
-				//ExReleaseResourceLite(&pdode->child_lock);
+				ExReleaseResourceLite(&pdode->child_lock);
 			}
 			else
 			{

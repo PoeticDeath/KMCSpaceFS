@@ -157,7 +157,12 @@ unsigned long long FindDictEntry(Dict* dict, char* table, unsigned long long tab
 	unsigned long long o = hash % size;
 	while (true)
 	{
-		if (dict[o].filenameloc == NULL || o > size - 1)
+		if (o > size - 1)
+		{
+			ExFreePool(Filename);
+			return 0;
+		}
+		if (dict[o].filenameloc == NULL)
 		{
 			ExFreePool(Filename);
 			return 0;

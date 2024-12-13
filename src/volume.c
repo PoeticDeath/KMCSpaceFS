@@ -90,6 +90,11 @@ void free_vol(volume_device_extension* vde)
 	}
 
 	pdo = vde->pdo;
+
+	if (vde->device->AttachedDevice)
+	{
+		IoDetachDevice(vde->device);
+	}
 	IoDeleteDevice(vde->device);
 
 	if (!no_pnp)
