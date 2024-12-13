@@ -3636,7 +3636,7 @@ end:
 
 static int __cdecl sprintfW(WCHAR* _Buffer, const WCHAR* _Format, ...)
 {
-	unsigned long long _BufferLen = wcslen(_Buffer);
+	unsigned long long _BufferLen = 26;//wcslen(_Buffer); //(Set to max size of buf)
 	char* _buffer = ExAllocatePoolWithTag(NonPagedPoolNx, _BufferLen + 1, ALLOC_TAG);
 	if (!_buffer)
 	{
