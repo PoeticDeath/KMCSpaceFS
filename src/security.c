@@ -4417,7 +4417,7 @@ NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, 
 
 	ULONG BUFLEN = 0;
 	SECURITY_DESCRIPTOR* SD;
-	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(securityW, SDDL_REVISION, &SD, &BUFLEN, IrpSp->Parameters.QuerySecurity.SecurityInformation))
+	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(securityW, SDDL_REVISION, &SD, &BUFLEN, OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | SACL_SECURITY_INFORMATION))
 	{
 		Status = STATUS_INSUFFICIENT_RESOURCES;
 	}

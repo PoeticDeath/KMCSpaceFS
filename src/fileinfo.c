@@ -142,6 +142,8 @@ typedef struct _FILE_LINKS_FULL_ID_INFORMATION
 
 #endif
 
+#define FILE_DISPOSITION_IGNORE_READONLY_ATTRIBUTE 0x00000010
+
 static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJECT FileObject)
 {
 	FILE_BASIC_INFORMATION* fbi = Irp->AssociatedIrp.SystemBuffer;
