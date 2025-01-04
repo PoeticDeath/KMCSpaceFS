@@ -385,6 +385,12 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	TRACE("tfo = %p\n", tfo);
 	TRACE("Flags = %lx\n", flags);
 	TRACE("RootDirectory = %p\n", fri->RootDirectory);
+
+	if (!tfo)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+
 	TRACE("New FileName = %.*S\n", (int)(tfo->FileName.Length / sizeof(WCHAR)), tfo->FileName.Buffer);
 	TRACE("Old FileName = %.*S\n", (int)(FileObject->FileName.Length / sizeof(WCHAR)), FileObject->FileName.Buffer);
 
