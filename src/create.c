@@ -684,8 +684,53 @@ loaded:
 			Status = create_file(Irp, Vcb, FileObject, securityfn);
 			if (NT_SUCCESS(Status))
 			{
-				uint8_t* security = {"O:WDG:WDD:P(A;;FA;;;WD)"};
+				UNICODE_STRING parentsecurityfn;
+				parentsecurityfn.Length = (max(lastslash, 1) - 1) * sizeof(WCHAR);
+				parentsecurityfn.Buffer = fn.Buffer + 1;
+				unsigned long long parentsecurityindex = get_filename_index(parentsecurityfn, &Vcb->vde->pdode->KMCSFS);
+				unsigned long long filesize = get_file_size(parentsecurityindex, Vcb->vde->pdode->KMCSFS);
+				uint8_t* security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
+				if (!security)
+				{
+					ERR("out of memory\n");
+					Status = STATUS_INSUFFICIENT_RESOURCES;
+					goto exit;
+				}
+				unsigned long long bytes_read = 0;
 				fcb* fcb = create_fcb(Vcb, NonPagedPoolNx);
+				if (!fcb)
+				{
+					ERR("out of memory\n");
+					ExFreePool(security);
+					Status = STATUS_INSUFFICIENT_RESOURCES;
+					goto exit;
+				}
+				PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+				if (!Irp2)
+				{
+					ERR("out of memory\n");
+					free_fcb(fcb);
+					reap_fcb(fcb);
+					ExFreePool(security);
+					Status = STATUS_INSUFFICIENT_RESOURCES;
+					goto exit;
+				}
+				Irp2->Flags |= IRP_NOCACHE;
+				read_file(fcb, security, 0, filesize, parentsecurityindex, &bytes_read, Irp2);
+				if (bytes_read != filesize)
+				{
+					ERR("read_file returned %I64u\n", bytes_read);
+					IoFreeIrp(Irp2);
+					free_fcb(fcb);
+					reap_fcb(fcb);
+					ExFreePool(security);
+					Status = STATUS_INTERNAL_ERROR;
+					goto exit;
+				}
+				IoFreeIrp(Irp2);
+				free_fcb(fcb);
+				reap_fcb(fcb);
+				fcb = create_fcb(Vcb, NonPagedPoolNx);
 				if (!fcb)
 				{
 					ERR("out of memory\n");
@@ -705,9 +750,9 @@ loaded:
 					{
 						Irp2->Flags |= IRP_NOCACHE;
 						unsigned long long securityindex = get_filename_index(securityfn, &Vcb->vde->pdode->KMCSFS);
-						if (find_block(&Vcb->vde->pdode->KMCSFS, securityindex, 23))
+						if (find_block(&Vcb->vde->pdode->KMCSFS, securityindex, filesize))
 						{
-							Status = write_file(fcb, security, 0, 23, securityindex, 23, Irp2);
+							Status = write_file(fcb, security, 0, filesize, securityindex, filesize, Irp2);
 						}
 						else
 						{
@@ -716,6 +761,7 @@ loaded:
 						IoFreeIrp(Irp2);
 						free_fcb(fcb);
 						reap_fcb(fcb);
+						ExFreePool(security);
 					}
 				}
 				if (NT_SUCCESS(Status))
