@@ -15,6 +15,13 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 		goto exit;
 	}
 
+	if (FileObject->Flags & FO_CLEANUP_COMPLETE)
+	{
+		TRACE("FileObject %p already cleaned up\n", FileObject);
+		Status = STATUS_SUCCESS;
+		goto exit;
+	}
+
 	fcb* fcb = FileObject->FsContext;
 	ccb* ccb = FileObject->FsContext2;
 	unsigned long long length = IrpSp->Parameters.Write.Length;
