@@ -646,9 +646,9 @@ static NTSTATUS fill_in_file_basic_information(FILE_BASIC_INFORMATION* fbi, LONG
 
 	*length -= sizeof(FILE_BASIC_INFORMATION);
 
-	fbi->CreationTime.QuadPart = chtime(index, 0, 4, fcb->Vcb->vde->pdode->KMCSFS);
-	fbi->LastAccessTime.QuadPart = chtime(index, 0, 0, fcb->Vcb->vde->pdode->KMCSFS);
-	fbi->LastWriteTime.QuadPart = chtime(index, 0, 2, fcb->Vcb->vde->pdode->KMCSFS);
+	fbi->CreationTime.QuadPart = chtime(index, 0, 4, fcb->Vcb->vde->pdode->KMCSFS) + 2;
+	fbi->LastAccessTime.QuadPart = chtime(index, 0, 0, fcb->Vcb->vde->pdode->KMCSFS) + 2;
+	fbi->LastWriteTime.QuadPart = chtime(index, 0, 2, fcb->Vcb->vde->pdode->KMCSFS) + 2;
 	fbi->ChangeTime.QuadPart = fbi->LastWriteTime.QuadPart;
 	fbi->FileAttributes = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 
@@ -694,14 +694,14 @@ static NTSTATUS fill_in_file_name_information(FILE_NAME_INFORMATION* fni, fcb* f
 {
 	*length -= offsetof(FILE_NAME_INFORMATION, FileName[0]);
 
+	fni->FileNameLength = ccb->filename.Length;
+	RtlCopyMemory(fni->FileName, ccb->filename.Buffer, min(fni->FileNameLength, *length));
+
 	if (*length < ccb->filename.Length)
 	{
 		WARN("overflow\n");
 		return STATUS_BUFFER_OVERFLOW;
 	}
-
-	fni->FileNameLength = ccb->filename.Length;
-	RtlCopyMemory(fni->FileName, ccb->filename.Buffer, fni->FileNameLength);
 
 	return STATUS_SUCCESS;
 }
