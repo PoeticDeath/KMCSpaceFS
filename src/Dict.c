@@ -45,6 +45,8 @@ startover:
 			ndict[j].filenameloc = dict[i].filenameloc;
 			ndict[j].hash = hash;
 			ndict[j].index = dict[i].index;
+			ndict[j].opencount = dict[i].opencount;
+			ndict[j].shareaccess = dict[i].shareaccess;
 		}
 	}
 	return ndict;
@@ -120,6 +122,7 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 	(*dict)[i].filenameloc = filenameloc;
 	(*dict)[i].hash = hash;
 	(*dict)[i].index = index;
+	(*dict)[i].opencount = 0;
 	if (*cursize * 3 / 4 > *size)
 	{
 		Dict* tdict = ResizeDict(*dict, *size, size);

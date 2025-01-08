@@ -958,6 +958,14 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 		{
 			ExFreePool(ccb->filter.Buffer);
 		}
+		if (ccb->filename.Buffer)
+		{
+			unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+			if (dindex)
+			{
+				fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount--;
+			}
+		}
 		ExFreePool(ccb);
 	}
 

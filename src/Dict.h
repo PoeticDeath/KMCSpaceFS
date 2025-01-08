@@ -7,6 +7,9 @@ typedef struct _Dict
 	unsigned long long filenameloc;
 	unsigned long long hash;
 	unsigned long long index;
+
+	unsigned long long opencount;
+	SHARE_ACCESS shareaccess;
 } Dict;
 
 Dict* CreateDict(unsigned long long size);

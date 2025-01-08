@@ -484,6 +484,25 @@ open:
 				AccessCheck(Irp, Vcb, &fn, &granted_access);
 			}
 			Status = STATUS_SUCCESS;
+			unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
+			if (dindex)
+			{
+				if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
+				{
+					Status = IoCheckShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess, false);
+					if (!NT_SUCCESS(Status))
+					{
+						TRACE("IoCheckShareAccess failed, returning %08lx\n", Status);
+						goto exit;
+					}
+					IoUpdateShareAccess(FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess);
+				}
+				else
+				{
+					IoSetShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess);
+				}
+				Vcb->vde->pdode->KMCSFS.dict[dindex].opencount++;
+			}
 			if (winattrs & FILE_ATTRIBUTE_REPARSE_POINT && !(options & FILE_OPEN_REPARSE_POINT))
 			{
 				Status = STATUS_REPARSE;
@@ -515,6 +534,27 @@ open:
 				else
 				{
 					IrpSp->Parameters.Create.FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
+				}
+				granted_access |= FILE_WRITE_DATA;
+				IrpSp->Parameters.Create.ShareAccess |= FILE_SHARE_WRITE;
+				unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
+				if (dindex)
+				{
+					if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
+					{
+						Status = IoCheckShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess, false);
+						if (!NT_SUCCESS(Status))
+						{
+							TRACE("IoCheckShareAccess failed, returning %08lx\n", Status);
+							goto exit;
+						}
+						IoUpdateShareAccess(FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess);
+					}
+					else
+					{
+						IoSetShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess);
+					}
+					Vcb->vde->pdode->KMCSFS.dict[dindex].opencount++;
 				}
 				chwinattrs(index, IrpSp->Parameters.Create.FileAttributes | FILE_ATTRIBUTE_ARCHIVE, Vcb->vde->pdode->KMCSFS);
 				dealloc(&Vcb->vde->pdode->KMCSFS, index, get_file_size(index, Vcb->vde->pdode->KMCSFS), 0);
