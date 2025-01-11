@@ -1407,6 +1407,16 @@ void add_volume_device(KMCSpaceFS KMCSFS, PUNICODE_STRING devpath, uint64_t leng
 				len = 0;
 				continue;
 			}
+			else if ((KMCSFS.table[i] & 0xff) == 42)
+			{
+				AddDictEntry(&KMCSFS.dict, filename, i - len - KMCSFS.tableend, len, &KMCSFS.CurDictSize, &KMCSFS.DictSize, count, false);
+				if (!(count % 1000))
+				{
+					TRACE("%llu / %llu indices computed.\n", count, KMCSFS.filecount);
+				}
+				len = 0;
+				continue;
+			}
 			else
 			{
 				filename[len] = KMCSFS.table[i] & 0xff;

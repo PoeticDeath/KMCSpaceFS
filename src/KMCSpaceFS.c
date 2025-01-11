@@ -963,7 +963,10 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 			unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
 			if (dindex)
 			{
-				fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount--;
+				if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
+				{
+					fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount--;
+				}
 			}
 		}
 		ExFreePool(ccb);
