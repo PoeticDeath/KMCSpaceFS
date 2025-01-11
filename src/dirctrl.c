@@ -55,6 +55,7 @@ NTSTATUS query_directory(PIRP Irp)
 	device_extension* Vcb = fcb ? fcb->Vcb : NULL;
 	NTSTATUS Status = STATUS_INVALID_PARAMETER;
 	LONG len = IrpSp->Parameters.QueryDirectory.Length;
+	bool first = true;
 	void* buf;
 
 	TRACE("query directory\n");
@@ -403,6 +404,7 @@ NTSTATUS query_directory(PIRP Irp)
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
 					ccb->query_dir_offset = query_dir_offset;
 					ccb->query_dir_index = query_dir_index;
+					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
@@ -429,12 +431,13 @@ NTSTATUS query_directory(PIRP Irp)
 				FILE_DIRECTORY_INFORMATION* fdi = (void*)((uint8_t*)buf + Irp->IoStatus.Information);
 
 				needed = offsetof(FILE_DIRECTORY_INFORMATION, FileName) + FNL;
-				if (len < needed)
+				if (len < sizeof(FILE_DIRECTORY_INFORMATION) * first + needed * !first)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
 					ccb->query_dir_offset = query_dir_offset;
 					ccb->query_dir_index = query_dir_index;
-					goto end;
+					Status = STATUS_BUFFER_OVERFLOW;
+					break;
 				}
 
 				fdi->NextEntryOffset = needed;
@@ -447,6 +450,16 @@ NTSTATUS query_directory(PIRP Irp)
 				fdi->AllocationSize.QuadPart = AS;
 				fdi->FileAttributes = winattrs;
 				fdi->FileNameLength = FNL;
+
+				if (len < needed)
+				{
+					TRACE("buffer overflow - %li > %lu\n", needed, len);
+					ccb->query_dir_offset = 0;
+					ccb->query_dir_index = 0;
+					Status = STATUS_BUFFER_OVERFLOW;
+					len -= sizeof(FILE_DIRECTORY_INFORMATION);
+					break;
+				}
 
 				RtlCopyMemory(fdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
 
@@ -463,6 +476,7 @@ NTSTATUS query_directory(PIRP Irp)
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
 					ccb->query_dir_offset = query_dir_offset;
 					ccb->query_dir_index = query_dir_index;
+					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
@@ -493,6 +507,7 @@ NTSTATUS query_directory(PIRP Irp)
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
 					ccb->query_dir_offset = query_dir_offset;
 					ccb->query_dir_index = query_dir_index;
+					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
@@ -529,6 +544,7 @@ NTSTATUS query_directory(PIRP Irp)
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
 					ccb->query_dir_offset = query_dir_offset;
 					ccb->query_dir_index = query_dir_index;
+					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
@@ -569,6 +585,7 @@ NTSTATUS query_directory(PIRP Irp)
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
 					ccb->query_dir_offset = query_dir_offset;
 					ccb->query_dir_index = query_dir_index;
+					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
@@ -613,6 +630,7 @@ NTSTATUS query_directory(PIRP Irp)
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
 					ccb->query_dir_offset = query_dir_offset;
 					ccb->query_dir_index = query_dir_index;
+					Status = STATUS_BUFFER_OVERFLOW;
 					goto end;
 				}
 
@@ -635,6 +653,14 @@ NTSTATUS query_directory(PIRP Irp)
 			old_offset = Irp->IoStatus.Information;
 			Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - len;
 			if (IrpSp->Flags & SL_RETURN_SINGLE_ENTRY)
+			{
+				break;
+			}
+			if (NT_SUCCESS(Status))
+			{
+				first = false;
+			}
+			else
 			{
 				break;
 			}
@@ -666,6 +692,11 @@ NTSTATUS query_directory(PIRP Irp)
 end:
 	ExReleaseResourceLite(&fcb->nonpaged->dir_children_lock);
 	ExReleaseResourceLite(&Vcb->tree_lock);
+
+	if (Status == STATUS_BUFFER_OVERFLOW && !first)
+	{
+		Status = STATUS_SUCCESS;
+	}
 
 	if (Irp->IoStatus.Information)
 	{
