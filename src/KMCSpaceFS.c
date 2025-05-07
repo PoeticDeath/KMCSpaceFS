@@ -297,60 +297,76 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 		if (ccb)
 		{
 			FsRtlNotifyCleanup(fcb->Vcb->NotifySync, &fcb->Vcb->DirNotifyList, ccb);
-		}
-
-		if (ccb && (ccb->options & FILE_DELETE_ON_CLOSE || ccb->delete_on_close))
-		{
-			unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
-			unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
-			bool can_delete = true;
-			if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
+			
+			if (ccb->filter.Buffer)
 			{
-				PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
-				if (!Irp2)
-				{
-					ERR("out of memory\n");
-					Status = STATUS_INSUFFICIENT_RESOURCES;
-					goto exit;
-				}
-				Irp2->MdlAddress = NULL;
-				PIO_STACK_LOCATION IrpSp2 = IoGetCurrentIrpStackLocation(Irp2);
-				IrpSp2->FileObject = FileObject;
-				IrpSp2->Parameters.QueryDirectory.FileInformationClass = FileNamesInformation;
-				IrpSp2->Parameters.QueryDirectory.Length = 0;
-				IrpSp2->Parameters.QueryDirectory.FileName = NULL;
-				unsigned long long backupdirindex = ccb->query_dir_index;
-				unsigned long long backupdiroffset = ccb->query_dir_offset;
-				unsigned long long backupdirfilecount = ccb->query_dir_file_count;
-				ccb->query_dir_index = 0;
-				ccb->query_dir_offset = 0;
-				ccb->query_dir_file_count = 0;
-				if (query_directory(Irp2) == STATUS_BUFFER_OVERFLOW)
-				{
-					TRACE("directory not empty\n");
-					can_delete = false;
-				}
-				ccb->query_dir_index = backupdirindex;
-				ccb->query_dir_offset = backupdiroffset;
-				ccb->query_dir_file_count = backupdirfilecount;
-				IoFreeIrp(Irp2);
+				ExFreePool(ccb->filter.Buffer);
 			}
-			if (can_delete)
+			if (ccb->filename.Buffer)
 			{
-				TRACE("deleting file\n");
-				if (delete_file(&Vcb->vde->pdode->KMCSFS, ccb->filename, index))
+				unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+				if (dindex)
 				{
-					UNICODE_STRING securityfile;
-					securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
-					securityfile.Buffer = ccb->filename.Buffer + 1;
-					if (!delete_file(&Vcb->vde->pdode->KMCSFS, securityfile, get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS)))
+					if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 					{
-						WARN("failed to delete security file\n");
+						fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount--;
 					}
 				}
-				else
+			}
+
+			if (ccb->options & FILE_DELETE_ON_CLOSE || ccb->delete_on_close)
+			{
+				unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
+				unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
+				bool can_delete = true;
+				if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
 				{
-					WARN("failed to delete file\n");
+					PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+					if (!Irp2)
+					{
+						ERR("out of memory\n");
+						Status = STATUS_INSUFFICIENT_RESOURCES;
+						goto exit;
+					}
+					Irp2->MdlAddress = NULL;
+					PIO_STACK_LOCATION IrpSp2 = IoGetCurrentIrpStackLocation(Irp2);
+					IrpSp2->FileObject = FileObject;
+					IrpSp2->Parameters.QueryDirectory.FileInformationClass = FileNamesInformation;
+					IrpSp2->Parameters.QueryDirectory.Length = 0;
+					IrpSp2->Parameters.QueryDirectory.FileName = NULL;
+					unsigned long long backupdirindex = ccb->query_dir_index;
+					unsigned long long backupdiroffset = ccb->query_dir_offset;
+					unsigned long long backupdirfilecount = ccb->query_dir_file_count;
+					ccb->query_dir_index = 0;
+					ccb->query_dir_offset = 0;
+					ccb->query_dir_file_count = 0;
+					if (query_directory(Irp2) == STATUS_BUFFER_OVERFLOW)
+					{
+						TRACE("directory not empty\n");
+						can_delete = false;
+					}
+					ccb->query_dir_index = backupdirindex;
+					ccb->query_dir_offset = backupdiroffset;
+					ccb->query_dir_file_count = backupdirfilecount;
+					IoFreeIrp(Irp2);
+				}
+				if (can_delete)
+				{
+					TRACE("deleting file\n");
+					if (delete_file(&Vcb->vde->pdode->KMCSFS, ccb->filename, index))
+					{
+						UNICODE_STRING securityfile;
+						securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
+						securityfile.Buffer = ccb->filename.Buffer + 1;
+						if (!delete_file(&Vcb->vde->pdode->KMCSFS, securityfile, get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS)))
+						{
+							WARN("failed to delete security file\n");
+						}
+					}
+					else
+					{
+						WARN("failed to delete file\n");
+					}
 				}
 			}
 		}
@@ -954,21 +970,6 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 
 	if (ccb)
 	{
-		if (ccb->filter.Buffer)
-		{
-			ExFreePool(ccb->filter.Buffer);
-		}
-		if (ccb->filename.Buffer)
-		{
-			unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
-			if (dindex)
-			{
-				if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
-				{
-					fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount--;
-				}
-			}
-		}
 		ExFreePool(ccb);
 	}
 

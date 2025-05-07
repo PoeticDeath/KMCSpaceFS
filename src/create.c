@@ -277,6 +277,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	UNICODE_STRING fn;
 	bool created = false;
 	unsigned long long index = 0;
+	unsigned long long dindex = 0;
 
 	Irp->IoStatus.Information = 0;
 
@@ -332,6 +333,13 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	}
 
 	TRACE("(%.*S)\n", (int)(FileObject->FileName.Length / sizeof(WCHAR)), FileObject->FileName.Buffer);
+
+	if (!(IrpSp->Parameters.Create.SecurityContext->AccessState->Flags & TOKEN_HAS_TRAVERSE_PRIVILEGE))
+	{
+		TRACE("no traverse privilege\n");
+		Status = STATUS_ACCESS_DENIED;
+		goto exit;
+	}
 
 	if (FileObject->FileName.Length)
 	{
@@ -484,7 +492,7 @@ open:
 				AccessCheck(Irp, Vcb, &fn, &granted_access);
 			}
 			Status = STATUS_SUCCESS;
-			unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
+			dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
 			if (dindex)
 			{
 				if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
@@ -537,7 +545,7 @@ open:
 				}
 				granted_access |= FILE_WRITE_DATA;
 				IrpSp->Parameters.Create.ShareAccess |= FILE_SHARE_WRITE;
-				unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
+				dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
 				if (dindex)
 				{
 					if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
@@ -623,7 +631,7 @@ loaded:
 		{
 			TRACE("file already exists, returning STATUS_OBJECT_NAME_COLLISION\n");
 			Status = STATUS_OBJECT_NAME_COLLISION;
-
+			Vcb->vde->pdode->KMCSFS.dict[dindex].opencount--;
 			goto exit;
 		}
 	}
