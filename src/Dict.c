@@ -29,11 +29,15 @@ startover:
 	RtlZeroMemory(ndict, sizeof(Dict) * *newsize);
 	for (unsigned long long i = 0; i < oldsize; i++)
 	{
-		if (dict[i].filenameloc != NULL)
+		if (dict[i].filenameloc)
 		{
 			unsigned long long hash = dict[i].hash;
 			unsigned long long j = hash % *newsize;
-			while (ndict[j].filenameloc != NULL && j < *newsize - 1)
+			if (!j)
+			{
+				j++;
+			}
+			while (ndict[j].filenameloc && j < *newsize - 1)
 			{
 				j++;
 			}
@@ -75,7 +79,11 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 	sha3_HashBuffer(256, 0, Filename, filenamelen, &hash, 8);
 	ExFreePool(Filename);
 	unsigned long long i = hash % *size;
-	while ((*dict)[i].filenameloc != NULL && i < *size - 1)
+	if (!i)
+	{
+		i++;
+	}
+	while ((*dict)[i].filenameloc && i < *size - 1)
 	{
 		if ((*dict)[i].hash == hash)
 		{
@@ -93,7 +101,11 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 			return false;
 		}
 		i = hash % *size;
-		while (tdict[i].filenameloc != NULL && i < *size - 1)
+		if (!i)
+		{
+			i++;
+		}
+		while (tdict[i].filenameloc && i < *size - 1)
 		{
 			i++;
 		}
@@ -105,7 +117,7 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 	{
 		for (unsigned long long j = 0; j < *size; j++)
 		{
-			if ((*dict)[j].filenameloc == NULL)
+			if (!(*dict)[j].filenameloc)
 			{
 				continue;
 			}
@@ -165,7 +177,7 @@ unsigned long long FindDictEntry(Dict* dict, char* table, unsigned long long tab
 			ExFreePool(Filename);
 			return 0;
 		}
-		if (dict[o].filenameloc == NULL)
+		if (!dict[o].filenameloc)
 		{
 			ExFreePool(Filename);
 			return 0;
@@ -176,7 +188,7 @@ unsigned long long FindDictEntry(Dict* dict, char* table, unsigned long long tab
 			{
 				break;
 			}
-			if (j == filenamelen - 1 && (table[tableend + dict[o].filenameloc + j + 1] & 0xff == 255 || table[tableend + dict[o].filenameloc + j + 1] & 0xff == 42))
+			if (j == filenamelen - 1 && (table[tableend + dict[o].filenameloc + j + 1] & 0xff == 255 || table[tableend + dict[o].filenameloc + j + 1] & 0xff == 42) && dict[o].hash == hash)
 			{
 				ExFreePool(Filename);
 				return o;
@@ -189,12 +201,12 @@ unsigned long long FindDictEntry(Dict* dict, char* table, unsigned long long tab
 void RemoveDictEntry(Dict* dict, unsigned long long size, unsigned long long dindex, unsigned long long filenamelen, unsigned long long* cursize)
 {
 	unsigned long long index = dict[dindex].index;
-	unsigned long long* filenameloc = dict[dindex].filenameloc;
+	unsigned long long filenameloc = dict[dindex].filenameloc;
 	RtlZeroMemory(dict + dindex, sizeof(Dict));
 	(*cursize)--;
 	for (unsigned long long i = 0; i < size; i++)
 	{
-		if (dict[i].filenameloc == NULL)
+		if (!dict[i].filenameloc)
 		{
 			continue;
 		}
