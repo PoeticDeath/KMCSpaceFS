@@ -696,8 +696,9 @@ static NTSTATUS fill_in_file_name_information(FILE_NAME_INFORMATION* fni, fcb* f
 
 	fni->FileNameLength = ccb->filename.Length;
 	RtlCopyMemory(fni->FileName, ccb->filename.Buffer, min(fni->FileNameLength, *length));
+	*length -= min(fni->FileNameLength, *length);
 
-	if (*length < ccb->filename.Length)
+	if (*length < fni->FileNameLength)
 	{
 		WARN("overflow\n");
 		return STATUS_BUFFER_OVERFLOW;
