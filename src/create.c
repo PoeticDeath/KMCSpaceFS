@@ -521,7 +521,7 @@ open:
 			Status = STATUS_OBJECT_NAME_NOT_FOUND;
 		}
 	}
-	else if (RequestedDisposition == FILE_OVERWRITE || RequestedDisposition == FILE_OVERWRITE_IF)
+	else if (RequestedDisposition == FILE_OVERWRITE || RequestedDisposition == FILE_OVERWRITE_IF || RequestedDisposition == FILE_SUPERSEDE)
 	{
 		index = get_filename_index(fn, &Vcb->vde->pdode->KMCSFS);
 		if (index)
