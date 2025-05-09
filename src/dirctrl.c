@@ -182,7 +182,7 @@ NTSTATUS query_directory(PIRP Irp)
 				}
 				RtlCopyMemory(ccb->filter.Buffer + ccb->filename.Length / sizeof(WCHAR) + addedslash, IrpSp->Parameters.QueryDirectory.FileName->Buffer, IrpSp->Parameters.QueryDirectory.FileName->Length);
 			}
-			if (!filterb)
+			if (!filterb && !ccb->query_dir_offset)
 			{
 				ccb->query_dir_index = get_filename_index(ccb->filter, &Vcb->vde->pdode->KMCSFS);
 				ExFreePool(ccb->filter.Buffer);
