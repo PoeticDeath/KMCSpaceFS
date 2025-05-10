@@ -105,8 +105,6 @@ fcb* create_fcb(device_extension* Vcb, POOL_TYPE pool_type)
 
 	ExInitializeResourceLite(&fcb->nonpaged->dir_children_lock);
 
-	FsRtlInitializeFileLock(&fcb->lock, NULL, NULL);
-
 	InitializeListHead(&fcb->extents);
 
 	return fcb;
@@ -508,6 +506,8 @@ open:
 				else
 				{
 					IoSetShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess);
+					FsRtlUninitializeFileLock(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock);
+					FsRtlInitializeFileLock(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock, NULL, NULL);
 				}
 				Vcb->vde->pdode->KMCSFS.dict[dindex].opencount++;
 			}
@@ -561,6 +561,8 @@ open:
 					else
 					{
 						IoSetShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess);
+						FsRtlUninitializeFileLock(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock);
+						FsRtlInitializeFileLock(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock, NULL, NULL);
 					}
 					Vcb->vde->pdode->KMCSFS.dict[dindex].opencount++;
 				}

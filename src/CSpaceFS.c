@@ -1115,6 +1115,9 @@ dealloc(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size, u
 				}
 			}
 		}
+
+		KMCSFS->used_blocks -= size / KMCSFS->sectorsize;
+		KMCSFS->used_blocks += newsize / KMCSFS->sectorsize;
 	}
 }
 

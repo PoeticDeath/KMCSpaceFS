@@ -102,15 +102,11 @@ typedef struct _fcb
 	POOL_TYPE pool_type;
 	struct _device_extension* Vcb;
 	uint8_t type;
-	SECURITY_DESCRIPTOR* sd;
-	FILE_LOCK lock;
 	bool deleted;
 	PKTHREAD lazy_writer_thread;
-	SHARE_ACCESS share_access;
 	LIST_ENTRY extents;
 	ANSI_STRING reparse_xattr;
 	bool inode_item_changed;
-	OPLOCK oplock;
 	LIST_ENTRY list_entry;
 	LIST_ENTRY list_entry_all;
 	LIST_ENTRY list_entry_dirty;

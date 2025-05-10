@@ -51,6 +51,7 @@ startover:
 			ndict[j].index = dict[i].index;
 			ndict[j].opencount = dict[i].opencount;
 			ndict[j].shareaccess = dict[i].shareaccess;
+			ndict[j].lock = dict[i].lock;
 		}
 	}
 	return ndict;
@@ -135,6 +136,7 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 	(*dict)[i].hash = hash;
 	(*dict)[i].index = index;
 	(*dict)[i].opencount = 0;
+	FsRtlInitializeFileLock(&(*dict)[i].lock, NULL, NULL);
 	if (*cursize * 3 / 4 > *size)
 	{
 		Dict* tdict = ResizeDict(*dict, *size, size);
@@ -170,6 +172,10 @@ unsigned long long FindDictEntry(Dict* dict, char* table, unsigned long long tab
 	unsigned long long hash = 0;
 	sha3_HashBuffer(256, 0, Filename, filenamelen, &hash, 8);
 	unsigned long long o = hash % size;
+	if (!o)
+	{
+		o++;
+	}
 	while (true)
 	{
 		if (o > size - 1)
@@ -209,6 +215,7 @@ void RemoveDictEntry(Dict* dict, unsigned long long size, unsigned long long din
 {
 	unsigned long long index = dict[dindex].index;
 	unsigned long long filenameloc = dict[dindex].filenameloc;
+	FsRtlUninitializeFileLock(&dict[dindex].lock);
 	RtlZeroMemory(dict + dindex, sizeof(Dict));
 	(*cursize)--;
 	for (unsigned long long i = 0; i < size; i++)

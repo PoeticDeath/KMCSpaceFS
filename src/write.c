@@ -158,6 +158,20 @@ NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		goto end;
 	}
 
+	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+	if (!dindex)
+	{
+		ERR("failed to find dict entry\n");
+		Status = STATUS_SUCCESS;
+		goto end;
+	}
+	if (!wait && !FsRtlCheckLockForWriteAccess(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock, Irp))
+	{
+		WARN("failed to acquire write lock\n");
+		Status = STATUS_FILE_LOCK_CONFLICT;
+		goto end;
+	}
+
 	try
 	{
 		// Don't offload jobs when doing paging IO - otherwise this can lead to

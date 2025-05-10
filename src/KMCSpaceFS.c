@@ -404,6 +404,7 @@ static NTSTATUS __stdcall LockControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIR
 	NTSTATUS Status;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	fcb* fcb = IrpSp->FileObject ? IrpSp->FileObject->FsContext : NULL;
+	ccb* ccb = IrpSp->FileObject ? IrpSp->FileObject->FsContext2 : NULL;
 	device_extension* Vcb = DeviceObject->DeviceExtension;
 	bool top_level;
 
@@ -431,7 +432,29 @@ static NTSTATUS __stdcall LockControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIR
 		goto exit;
 	}
 
-	Status = FsRtlProcessFileLock(&fcb->lock, Irp, NULL);
+	if (!ccb)
+	{
+		ERR("ccb was NULL\n");
+		Status = STATUS_INVALID_PARAMETER;
+		goto exit;
+	}
+
+	if (!Vcb)
+	{
+		ERR("Vcb was NULL\n");
+		Status = STATUS_INVALID_PARAMETER;
+		goto exit;
+	}
+
+	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+	if (!dindex)
+	{
+		ERR("failed to find dict entry\n");
+		Status = STATUS_SUCCESS;
+		goto exit;
+	}
+
+	Status = FsRtlProcessFileLock(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock, Irp, NULL);
 
 exit:
 	TRACE("returning %08lx\n", Status);
@@ -1230,17 +1253,10 @@ void reap_fcb(fcb* fcb)
 
 	ExFreeToNPagedLookasideList(&fcb->Vcb->fcb_np_lookaside, fcb->nonpaged);
 
-	if (fcb->sd)
-	{
-		ExFreePool(fcb->sd);
-	}
-
 	if (fcb->reparse_xattr.Buffer)
 	{
 		ExFreePool(fcb->reparse_xattr.Buffer);
 	}
-
-	FsRtlUninitializeFileLock(&fcb->lock);
 
 	if (fcb->pool_type == NonPagedPoolNx)
 	{
@@ -1538,7 +1554,6 @@ static NTSTATUS mount_vol(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 	}
 
 	Vcb->volume_fcb->Vcb = Vcb;
-	Vcb->volume_fcb->sd = NULL;
 
 	root_fcb = create_fcb(Vcb, NonPagedPoolNx);
 	if (!root_fcb)

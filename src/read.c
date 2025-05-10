@@ -148,6 +148,20 @@ NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		wait = true;
 	}
 
+	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+	if (!dindex)
+	{
+		ERR("failed to find dict entry\n");
+		Status = STATUS_SUCCESS;
+		goto exit;
+	}
+	if (!wait && !FsRtlCheckLockForReadAccess(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock, Irp))
+	{
+		WARN("failed to acquire read lock\n");
+		Status = STATUS_FILE_LOCK_CONFLICT;
+		goto exit;
+	}
+
 	if (!(Irp->Flags & IRP_PAGING_IO) && FileObject->SectionObjectPointer && FileObject->SectionObjectPointer->DataSectionObject)
 	{
 		IO_STATUS_BLOCK iosb;
