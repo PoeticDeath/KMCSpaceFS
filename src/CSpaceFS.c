@@ -1977,6 +1977,10 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn)
 	for (unsigned long long i = 0; i < nfn.Length / sizeof(WCHAR); i++)
 	{
 		newtable[loc + i + 1] = nfn.Buffer[i] & 0xff;
+		if (newtable[loc + i + 1] == 92)
+		{
+			newtable[loc + i + 1] = 47;
+		}
 	}
 	RtlCopyMemory(newtable + loc + 1 + nfn.Length / sizeof(WCHAR), KMCSFS->table + loc + 1 + fn.Length / sizeof(WCHAR), KMCSFS->filenamesend - loc - 1 - fn.Length / sizeof(WCHAR) + 2 + 35 * KMCSFS->filecount);
 
