@@ -152,10 +152,8 @@ NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	if (!dindex)
 	{
 		ERR("failed to find dict entry\n");
-		Status = STATUS_SUCCESS;
-		goto exit;
 	}
-	if (!wait && !FsRtlCheckLockForReadAccess(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock, Irp))
+	else if (!wait && !FsRtlCheckLockForReadAccess(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock, Irp))
 	{
 		WARN("failed to acquire read lock\n");
 		Status = STATUS_FILE_LOCK_CONFLICT;

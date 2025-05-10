@@ -162,10 +162,8 @@ NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	if (!dindex)
 	{
 		ERR("failed to find dict entry\n");
-		Status = STATUS_SUCCESS;
-		goto end;
 	}
-	if (!wait && !FsRtlCheckLockForWriteAccess(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock, Irp))
+	else if (!wait && !FsRtlCheckLockForWriteAccess(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock, Irp))
 	{
 		WARN("failed to acquire write lock\n");
 		Status = STATUS_FILE_LOCK_CONFLICT;
