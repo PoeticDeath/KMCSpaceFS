@@ -470,6 +470,21 @@ open:
 		if (index)
 		{
 			unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
+			Status = AccessCheck(Irp, Vcb, &fn, &granted_access);
+			if (created && !NT_SUCCESS(Status))
+			{
+				UNICODE_STRING securityfn;
+				securityfn.Length = fn.Length - sizeof(WCHAR);
+				securityfn.Buffer = fn.Buffer + 1;
+				unsigned long long securityindex = get_filename_index(securityfn, &Vcb->vde->pdode->KMCSFS);
+				delete_file(&Vcb->vde->pdode->KMCSFS, securityfn, securityindex);
+				delete_file(&Vcb->vde->pdode->KMCSFS, fn, index);
+			}
+			if (!NT_SUCCESS(Status))
+			{
+				TRACE("AccessCheck failed, returning %08lx\n", Status);
+				goto exit;
+			}
 			if (winattrs & FILE_ATTRIBUTE_READONLY && !(IrpSp->Flags & SL_IGNORE_READONLY_ATTRIBUTE))
 			{
 				ACCESS_MASK allowed = READ_CONTROL | SYNCHRONIZE | ACCESS_SYSTEM_SECURITY | FILE_READ_DATA | FILE_READ_ATTRIBUTES | FILE_EXECUTE | FILE_LIST_DIRECTORY | FILE_TRAVERSE;
@@ -481,15 +496,9 @@ open:
 						allowed |= FILE_ADD_SUBDIRECTORY | FILE_ADD_FILE | FILE_DELETE_CHILD;
 					}
 				}
-				AccessCheck(Irp, Vcb, &fn, &granted_access);
 				granted_access &= allowed;
 				IrpSp->Parameters.Create.SecurityContext->AccessState->PreviouslyGrantedAccess &= allowed;
 			}
-			else
-			{
-				AccessCheck(Irp, Vcb, &fn, &granted_access);
-			}
-			Status = STATUS_SUCCESS;
 			dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
 			if (dindex)
 			{
@@ -533,8 +542,12 @@ open:
 			}
 			else
 			{
-				Status = STATUS_SUCCESS;
-				AccessCheck(Irp, Vcb, &fn, &granted_access);
+				Status = AccessCheck(Irp, Vcb, &fn, &granted_access);
+				if (!NT_SUCCESS(Status))
+				{
+					TRACE("AccessCheck failed, returning %08lx\n", Status);
+					goto exit;
+				}
 				if (options & FILE_DIRECTORY_FILE)
 				{
 					IrpSp->Parameters.Create.FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
@@ -734,6 +747,7 @@ loaded:
 			Status = create_file(Irp, Vcb, FileObject, securityfn);
 			if (NT_SUCCESS(Status))
 			{
+				unsigned long long securityindex = get_filename_index(securityfn, &Vcb->vde->pdode->KMCSFS);
 				UNICODE_STRING parentsecurityfn;
 				parentsecurityfn.Length = (max(lastslash, 1) - 1) * sizeof(WCHAR);
 				parentsecurityfn.Buffer = fn.Buffer + 1;
@@ -744,7 +758,7 @@ loaded:
 				{
 					ERR("out of memory\n");
 					Status = STATUS_INSUFFICIENT_RESOURCES;
-					goto exit;
+					goto delsecfile;
 				}
 				unsigned long long bytes_read = 0;
 				fcb* fcb = create_fcb(Vcb, NonPagedPoolNx);
@@ -753,7 +767,7 @@ loaded:
 					ERR("out of memory\n");
 					ExFreePool(security);
 					Status = STATUS_INSUFFICIENT_RESOURCES;
-					goto exit;
+					goto delsecfile;
 				}
 				PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
 				if (!Irp2)
@@ -763,7 +777,7 @@ loaded:
 					reap_fcb(fcb);
 					ExFreePool(security);
 					Status = STATUS_INSUFFICIENT_RESOURCES;
-					goto exit;
+					goto delsecfile;
 				}
 				Irp2->Flags |= IRP_NOCACHE;
 				read_file(fcb, security, 0, filesize, parentsecurityindex, &bytes_read, Irp2);
@@ -775,7 +789,7 @@ loaded:
 					reap_fcb(fcb);
 					ExFreePool(security);
 					Status = STATUS_INTERNAL_ERROR;
-					goto exit;
+					goto delsecfile;
 				}
 				IoFreeIrp(Irp2);
 				free_fcb(fcb);
@@ -784,7 +798,9 @@ loaded:
 				if (!fcb)
 				{
 					ERR("out of memory\n");
+					ExFreePool(security);
 					Status = STATUS_INSUFFICIENT_RESOURCES;
+					goto delsecfile;
 				}
 				else
 				{
@@ -794,12 +810,13 @@ loaded:
 						ERR("out of memory\n");
 						free_fcb(fcb);
 						reap_fcb(fcb);
+						ExFreePool(security);
 						Status = STATUS_INSUFFICIENT_RESOURCES;
+						goto delsecfile;
 					}
 					else
 					{
 						Irp2->Flags |= IRP_NOCACHE;
-						unsigned long long securityindex = get_filename_index(securityfn, &Vcb->vde->pdode->KMCSFS);
 						if (find_block(&Vcb->vde->pdode->KMCSFS, securityindex, filesize))
 						{
 							Status = write_file(fcb, security, 0, filesize, securityindex, filesize, Irp2);
@@ -814,12 +831,23 @@ loaded:
 						ExFreePool(security);
 					}
 				}
+delsecfile:
 				if (NT_SUCCESS(Status))
 				{
 					Irp->IoStatus.Information = FILE_CREATED;
 					created = true;
 					goto open;
 				}
+				else
+				{
+					delete_file(&Vcb->vde->pdode->KMCSFS, securityfn, securityindex);
+				}
+			}
+			if (!NT_SUCCESS(Status))
+			{
+				index = get_filename_index(fn, &Vcb->vde->pdode->KMCSFS);
+				delete_file(&Vcb->vde->pdode->KMCSFS, fn, index);
+				goto exit;
 			}
 		}
 	}

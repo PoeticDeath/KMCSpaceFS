@@ -17,8 +17,6 @@ typedef struct _ACEFLAG
 #define C1_SPACE 8
 #define C1_ALPHA 256
 
-#define SDDL_REVISION 1
-
 const unsigned short wine_wctype_table[17152] =
 {
 	/* offsets */
@@ -3684,7 +3682,7 @@ static BOOL DumpAce(LPVOID pace, WCHAR** pwptr, ULONG* plen)
 	static const WCHAR closebr = ')';
 	static const WCHAR semicolon = ';';
 
-	if (((PACE_HEADER)pace)->AceType > SYSTEM_ALARM_ACE_TYPE || ((PACE_HEADER)pace)->AceSize < sizeof(ACCESS_ALLOWED_ACE))
+	if (((PACE_HEADER)pace)->AceSize < sizeof(ACCESS_ALLOWED_ACE))
 	{
 		return FALSE;
 	}
@@ -3705,6 +3703,24 @@ static BOOL DumpAce(LPVOID pace, WCHAR** pwptr, ULONG* plen)
 	case SYSTEM_ALARM_ACE_TYPE:
 		DumpString(SDDL_ALARM, -1, pwptr, plen);
 		break;
+	case ACCESS_ALLOWED_OBJECT_ACE_TYPE:
+		DumpString(SDDL_OBJECT_ACCESS_ALLOWED, -1, pwptr, plen);
+		break;
+	case ACCESS_DENIED_OBJECT_ACE_TYPE:
+		DumpString(SDDL_OBJECT_ACCESS_DENIED, -1, pwptr, plen);
+		break;
+	case SYSTEM_AUDIT_OBJECT_ACE_TYPE:
+		DumpString(SDDL_OBJECT_AUDIT, -1, pwptr, plen);
+		break;
+	case SYSTEM_ALARM_OBJECT_ACE_TYPE:
+		DumpString(SDDL_OBJECT_ALARM, -1, pwptr, plen);
+		break;
+	case SYSTEM_MANDATORY_LABEL_ACE_TYPE:
+		DumpString(SDDL_MANDATORY_LABEL, -1, pwptr, plen);
+		break;
+	default:
+		ERR("unknown ACE type %u\n", piace->Header.AceType);
+		return FALSE;
 	}
 	DumpString(&semicolon, 1, pwptr, plen);
 
@@ -4006,7 +4022,7 @@ static BOOL DumpSacl(PSECURITY_DESCRIPTOR SecurityDescriptor, WCHAR** pwptr, ULO
 	return TRUE;
 }
 
-static BOOL WINAPI ConvertSecurityDescriptorToStringSecurityDescriptorW(PSECURITY_DESCRIPTOR SecurityDescriptor, DWORD SDRevision, SECURITY_INFORMATION RequestedInformation, LPWSTR* OutputString, PULONG OutputLen)
+BOOL WINAPI ConvertSecurityDescriptorToStringSecurityDescriptorW(PSECURITY_DESCRIPTOR SecurityDescriptor, DWORD SDRevision, SECURITY_INFORMATION RequestedInformation, LPWSTR* OutputString, PULONG OutputLen)
 {
 	ULONG len;
 	WCHAR* wptr, *wstr;
@@ -4348,6 +4364,18 @@ end:
 	return Status;
 }
 
+static bool has_privilege(ACCESS_STATE* access_state, KPROCESSOR_MODE processor_mode, LONG priv)
+{
+	PRIVILEGE_SET privset;
+
+	privset.PrivilegeCount = 1;
+	privset.Control = PRIVILEGE_SET_ALL_NECESSARY;
+	privset.Privilege[0].Luid = RtlConvertLongToLuid(priv);
+	privset.Privilege[0].Attributes = 0;
+
+	return SePrivilegeCheck(&privset, &access_state->SubjectSecurityContext, processor_mode) ? true : false;
+}
+
 NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, ACCESS_MASK* granted_access)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
@@ -4430,7 +4458,21 @@ NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, 
 			if (!SeAccessCheck(SD, &IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext, true, IrpSp->Parameters.Create.SecurityContext->DesiredAccess, 0, NULL, IoGetFileObjectGenericMapping(), IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, granted_access, &Status))
 			{
 				SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
-				TRACE("SeAccessCheck failed, returning %08lx\n", Status);
+				
+				if (has_privilege(IrpSp->Parameters.Create.SecurityContext->AccessState, IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, SE_BACKUP_PRIVILEGE) && IrpSp->Parameters.Create.Options & FILE_OPEN_FOR_BACKUP_INTENT)
+				{
+					Status = STATUS_SUCCESS;
+					*granted_access = READ_CONTROL | ACCESS_SYSTEM_SECURITY | FILE_GENERIC_READ | FILE_TRAVERSE;
+				}
+				else if (has_privilege(IrpSp->Parameters.Create.SecurityContext->AccessState, IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, SE_RESTORE_PRIVILEGE) && IrpSp->Parameters.Create.Options & FILE_OPEN_FOR_BACKUP_INTENT)
+				{
+					Status = STATUS_SUCCESS;
+					*granted_access = WRITE_DAC | WRITE_OWNER | ACCESS_SYSTEM_SECURITY | FILE_GENERIC_WRITE | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY | DELETE;
+				}
+				else
+				{
+					TRACE("SeAccessCheck failed, returning %08lx\n", Status);
+				}
 
 				IoFreeIrp(Irp2);
 				free_fcb(fcb);
