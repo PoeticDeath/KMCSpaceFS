@@ -470,7 +470,7 @@ open:
 		if (index)
 		{
 			unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
-			Status = AccessCheck(Irp, Vcb, &fn, &granted_access);
+			Status = AccessCheck(Irp, Vcb, &fn, &granted_access, created);
 			if (created && !NT_SUCCESS(Status))
 			{
 				UNICODE_STRING securityfn;
@@ -542,7 +542,7 @@ open:
 			}
 			else
 			{
-				Status = AccessCheck(Irp, Vcb, &fn, &granted_access);
+				Status = AccessCheck(Irp, Vcb, &fn, &granted_access, created);
 				if (!NT_SUCCESS(Status))
 				{
 					TRACE("AccessCheck failed, returning %08lx\n", Status);
@@ -794,6 +794,58 @@ loaded:
 				IoFreeIrp(Irp2);
 				free_fcb(fcb);
 				reap_fcb(fcb);
+				if (IrpSp->Parameters.Create.SecurityContext->AccessState->SecurityDescriptor)
+				{
+					WCHAR* securityW = ExAllocatePoolWithTag(NonPagedPoolNx, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
+					if (!securityW)
+					{
+						ERR("out of memory\n");
+						ExFreePool(security);
+						Status = STATUS_INSUFFICIENT_RESOURCES;
+						goto delsecfile;
+					}
+					for (unsigned long long i = 0; i < filesize; i++)
+					{
+						securityW[i] = security[i];
+					}
+					securityW[filesize] = 0;
+					ExFreePool(security);
+					SECURITY_DESCRIPTOR* parent_sec;
+					ULONG BufLen;
+					if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(securityW, SDDL_REVISION, &parent_sec, &BufLen, OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | SACL_SECURITY_INFORMATION))
+					{
+						ERR("out of memory\n");
+						ExFreePool(securityW);
+						Status = STATUS_INSUFFICIENT_RESOURCES;
+						goto delsecfile;
+					}
+					ExFreePool(securityW);
+					SECURITY_DESCRIPTOR* new_sec;
+					SeAssignSecurity(parent_sec, IrpSp->Parameters.Create.SecurityContext->AccessState->SecurityDescriptor, &new_sec, options & FILE_DIRECTORY_FILE, &IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext, IoGetFileObjectGenericMapping(), NonPagedPoolNx);
+					ExFreePool(parent_sec);
+					if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(new_sec, SDDL_REVISION, OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | SACL_SECURITY_INFORMATION, &securityW, &(ULONG)filesize))
+					{
+						ERR("out of memory\n");
+						SeDeassignSecurity(&new_sec);
+						Status = STATUS_INSUFFICIENT_RESOURCES;
+						goto delsecfile;
+					}
+					SeDeassignSecurity(&new_sec);
+					security = NULL;
+					security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
+					if (!security)
+					{
+						ERR("out of memory\n");
+						ExFreePool(securityW);
+						Status = STATUS_INSUFFICIENT_RESOURCES;
+						goto delsecfile;
+					}
+					for (unsigned long long i = 0; i < filesize; i++)
+					{
+						security[i] = securityW[i] & 0xff;
+					}
+					ExFreePool(securityW);
+				}
 				fcb = create_fcb(Vcb, NonPagedPoolNx);
 				if (!fcb)
 				{

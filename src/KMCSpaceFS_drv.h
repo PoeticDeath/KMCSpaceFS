@@ -399,8 +399,9 @@ _Dispatch_type_(IRP_MJ_SET_SECURITY)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS __stdcall SetSecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
-NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, ACCESS_MASK* granted_access);
+NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, ACCESS_MASK* granted_access, bool created);
 BOOL WINAPI ConvertSecurityDescriptorToStringSecurityDescriptorW(PSECURITY_DESCRIPTOR SecurityDescriptor, DWORD SDRevision, SECURITY_INFORMATION RequestedInformation, LPWSTR* OutputString, PULONG OutputLen);
+BOOL WINAPI ConvertStringSecurityDescriptorToSecurityDescriptorW(LPCWSTR StringSecurityDescriptor, DWORD StringSDRevision, PSECURITY_DESCRIPTOR* SecurityDescriptor, PULONG SecurityDescriptorSize, SECURITY_INFORMATION SecurityInformation);
 #define SDDL_REVISION 1
 
 // in write.c
