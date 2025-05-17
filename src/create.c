@@ -269,11 +269,13 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	ULONG RequestedDisposition;
 	ULONG options;
 	NTSTATUS Status = STATUS_INVALID_PARAMETER;
+	NTSTATUS Parent_Status;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	POOL_TYPE pool_type = IrpSp->Flags & SL_OPEN_PAGING_FILE ? NonPagedPoolNx : PagedPool;
-	ACCESS_MASK granted_access;
+	ACCESS_MASK granted_access, parent_granted_access;
 	UNICODE_STRING fn;
 	bool created = false;
+	bool has_parent_perm = false;
 	unsigned long long index = 0;
 	unsigned long long dindex = 0;
 
@@ -471,14 +473,50 @@ open:
 		{
 			unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
 			Status = AccessCheck(Irp, Vcb, &fn, &granted_access, created);
+			if (IrpSp->Parameters.Create.SecurityContext->DesiredAccess & (MAXIMUM_ALLOWED | DELETE | FILE_READ_ATTRIBUTES) && !NT_SUCCESS(Status))
+			{
+				UNICODE_STRING parentfn;
+				parentfn.Length = max(lastslash, 1) * sizeof(WCHAR);
+				parentfn.Buffer = fn.Buffer;
+				ACCESS_MASK desiredaccess = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
+				ACCESS_MASK parent_granted;
+				IrpSp->Parameters.Create.SecurityContext->DesiredAccess = (MAXIMUM_ALLOWED & desiredaccess) ? (FILE_DELETE_CHILD | FILE_LIST_DIRECTORY) : (((DELETE & desiredaccess) ? FILE_DELETE_CHILD : 0) | ((FILE_READ_ATTRIBUTES & desiredaccess) ? FILE_LIST_DIRECTORY : 0));
+				Status = AccessCheck(Irp, Vcb, &parentfn, &parent_granted, created);
+				if (parent_granted & FILE_DELETE_CHILD)
+				{
+					desiredaccess &= ~DELETE;
+				}
+				if (parent_granted & FILE_LIST_DIRECTORY)
+				{
+					desiredaccess &= ~FILE_READ_ATTRIBUTES;
+				}
+				IrpSp->Parameters.Create.SecurityContext->DesiredAccess = desiredaccess;
+				Status = AccessCheck(Irp, Vcb, &fn, &granted_access, created);
+				if (parent_granted & FILE_DELETE_CHILD)
+				{
+					granted_access |= DELETE;
+				}
+				if (parent_granted & FILE_LIST_DIRECTORY)
+				{
+					granted_access |= FILE_READ_ATTRIBUTES;
+				}
+			}
 			if (created && !NT_SUCCESS(Status))
 			{
-				UNICODE_STRING securityfn;
-				securityfn.Length = fn.Length - sizeof(WCHAR);
-				securityfn.Buffer = fn.Buffer + 1;
-				unsigned long long securityindex = get_filename_index(securityfn, &Vcb->vde->pdode->KMCSFS);
-				delete_file(&Vcb->vde->pdode->KMCSFS, securityfn, securityindex);
-				delete_file(&Vcb->vde->pdode->KMCSFS, fn, index);
+				if (has_parent_perm)
+				{
+					Status = Parent_Status;
+					granted_access = parent_granted_access;
+				}
+				else
+				{
+					UNICODE_STRING securityfn;
+					securityfn.Length = fn.Length - sizeof(WCHAR);
+					securityfn.Buffer = fn.Buffer + 1;
+					unsigned long long securityindex = get_filename_index(securityfn, &Vcb->vde->pdode->KMCSFS);
+					delete_file(&Vcb->vde->pdode->KMCSFS, securityfn, securityindex);
+					delete_file(&Vcb->vde->pdode->KMCSFS, fn, index);
+				}
 			}
 			if (!NT_SUCCESS(Status))
 			{
@@ -822,6 +860,7 @@ loaded:
 					ExFreePool(securityW);
 					SECURITY_DESCRIPTOR* new_sec;
 					SeAssignSecurity(parent_sec, IrpSp->Parameters.Create.SecurityContext->AccessState->SecurityDescriptor, &new_sec, options & FILE_DIRECTORY_FILE, &IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext, IoGetFileObjectGenericMapping(), NonPagedPoolNx);
+					has_parent_perm = SeAccessCheck(parent_sec, &IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext, false, IrpSp->Parameters.Create.SecurityContext->DesiredAccess, 0, NULL, IoGetFileObjectGenericMapping(), IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, &parent_granted_access, &Parent_Status);
 					ExFreePool(parent_sec);
 					if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(new_sec, SDDL_REVISION, OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | SACL_SECURITY_INFORMATION, &securityW, &(ULONG)filesize))
 					{
