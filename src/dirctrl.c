@@ -375,7 +375,7 @@ NTSTATUS query_directory(PIRP Irp)
 					break;
 				}
 				Irp2->Flags |= IRP_NOCACHE;
-				read_file(rfcb, &reparsepoint, 0, 4, index, &bytes_read, Irp2);
+				read_file(rfcb, reparsepoint, 0, 4, index, &bytes_read, Irp2);
 				free_fcb(rfcb);
 				reap_fcb(rfcb);
 				rfcb = NULL;

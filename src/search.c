@@ -176,7 +176,7 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 		KMCSpaceFS KMCSFS;
 
 		wchar_t PhysicalDeviceName[64];
-		swprintf(PhysicalDeviceName, L"\\DosDevices\\PhysicalDrive%d", disk_num);
+		_swprintf(PhysicalDeviceName, L"\\DosDevices\\PhysicalDrive%d", disk_num);
 		UNICODE_STRING PDN;
 		RtlInitUnicodeString(&PDN, PhysicalDeviceName);
 		PFILE_OBJECT DriveFileObject;
