@@ -4376,7 +4376,7 @@ static bool has_privilege(ACCESS_STATE* access_state, KPROCESSOR_MODE processor_
 	return SePrivilegeCheck(&privset, &access_state->SubjectSecurityContext, processor_mode) ? true : false;
 }
 
-NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, ACCESS_MASK* granted_access, bool created)
+NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, ACCESS_MASK* granted_access)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -4459,7 +4459,7 @@ NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, 
 			{
 				SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
 				
-				if (has_privilege(IrpSp->Parameters.Create.SecurityContext->AccessState, IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, SE_BACKUP_PRIVILEGE) && (IrpSp->Parameters.Create.Options & FILE_OPEN_FOR_BACKUP_INTENT || created))
+				if (has_privilege(IrpSp->Parameters.Create.SecurityContext->AccessState, IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, SE_BACKUP_PRIVILEGE) && (IrpSp->Parameters.Create.Options & FILE_OPEN_FOR_BACKUP_INTENT))
 				{
 					Status = STATUS_SUCCESS;
 					*granted_access = READ_CONTROL | ACCESS_SYSTEM_SECURITY | FILE_GENERIC_READ | FILE_TRAVERSE;

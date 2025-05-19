@@ -472,7 +472,7 @@ open:
 		if (index)
 		{
 			unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
-			Status = AccessCheck(Irp, Vcb, &fn, &granted_access, created);
+			Status = AccessCheck(Irp, Vcb, &fn, &granted_access);
 			if (IrpSp->Parameters.Create.SecurityContext->DesiredAccess & (MAXIMUM_ALLOWED | DELETE | FILE_READ_ATTRIBUTES) && !NT_SUCCESS(Status))
 			{
 				UNICODE_STRING parentfn;
@@ -481,7 +481,7 @@ open:
 				ACCESS_MASK desiredaccess = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
 				ACCESS_MASK parent_granted;
 				IrpSp->Parameters.Create.SecurityContext->DesiredAccess = (MAXIMUM_ALLOWED & desiredaccess) ? (FILE_DELETE_CHILD | FILE_LIST_DIRECTORY) : (((DELETE & desiredaccess) ? FILE_DELETE_CHILD : 0) | ((FILE_READ_ATTRIBUTES & desiredaccess) ? FILE_LIST_DIRECTORY : 0));
-				Status = AccessCheck(Irp, Vcb, &parentfn, &parent_granted, created);
+				Status = AccessCheck(Irp, Vcb, &parentfn, &parent_granted);
 				if (parent_granted & FILE_DELETE_CHILD)
 				{
 					desiredaccess &= ~DELETE;
@@ -491,7 +491,7 @@ open:
 					desiredaccess &= ~FILE_READ_ATTRIBUTES;
 				}
 				IrpSp->Parameters.Create.SecurityContext->DesiredAccess = desiredaccess;
-				Status = AccessCheck(Irp, Vcb, &fn, &granted_access, created);
+				Status = AccessCheck(Irp, Vcb, &fn, &granted_access);
 				if (parent_granted & FILE_DELETE_CHILD)
 				{
 					granted_access |= DELETE;
@@ -506,7 +506,7 @@ open:
 				if (has_parent_perm)
 				{
 					Status = Parent_Status;
-					granted_access = parent_granted_access;
+					granted_access = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
 				}
 				else
 				{
@@ -580,7 +580,7 @@ open:
 			}
 			else
 			{
-				Status = AccessCheck(Irp, Vcb, &fn, &granted_access, created);
+				Status = AccessCheck(Irp, Vcb, &fn, &granted_access);
 				if (!NT_SUCCESS(Status))
 				{
 					TRACE("AccessCheck failed, returning %08lx\n", Status);
@@ -860,7 +860,7 @@ loaded:
 					ExFreePool(securityW);
 					SECURITY_DESCRIPTOR* new_sec;
 					SeAssignSecurity(parent_sec, IrpSp->Parameters.Create.SecurityContext->AccessState->SecurityDescriptor, &new_sec, options & FILE_DIRECTORY_FILE, &IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext, IoGetFileObjectGenericMapping(), NonPagedPoolNx);
-					has_parent_perm = SeAccessCheck(parent_sec, &IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext, false, IrpSp->Parameters.Create.SecurityContext->DesiredAccess, 0, NULL, IoGetFileObjectGenericMapping(), IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, &parent_granted_access, &Parent_Status);
+					has_parent_perm = SeAccessCheck(parent_sec, &IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext, false, FILE_ADD_FILE, 0, NULL, IoGetFileObjectGenericMapping(), IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, &parent_granted_access, &Parent_Status);
 					ExFreePool(parent_sec);
 					if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(new_sec, SDDL_REVISION, OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | SACL_SECURITY_INFORMATION, &securityW, &(ULONG)filesize))
 					{
