@@ -366,20 +366,10 @@ NTSTATUS query_directory(PIRP Irp)
 					ERR("out of memory\n");
 					break;
 				}
-				PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
-				if (!Irp2)
-				{
-					ERR("out of memory\n");
-					free_fcb(rfcb);
-					reap_fcb(rfcb);
-					break;
-				}
-				Irp2->Flags |= IRP_NOCACHE;
-				read_file(rfcb, reparsepoint, 0, 4, index, &bytes_read, Irp2);
+				read_file(rfcb, reparsepoint, 0, 4, index, &bytes_read, IrpSp->FileObject);
 				free_fcb(rfcb);
 				reap_fcb(rfcb);
 				rfcb = NULL;
-				IoFreeIrp(Irp2);
 				if (bytes_read != 4)
 				{
 					ERR("read_file failed\n");

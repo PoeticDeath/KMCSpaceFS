@@ -647,29 +647,16 @@ loaded:
 			Status = STATUS_INSUFFICIENT_RESOURCES;
 			goto exit;
 		}
-		PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
-		if (!Irp2)
-		{
-			ERR("out of memory\n");
-			free_fcb(fcb);
-			reap_fcb(fcb);
-			ExFreePool(data);
-			Status = STATUS_INSUFFICIENT_RESOURCES;
-			goto exit;
-		}
-		Irp2->Flags |= IRP_NOCACHE;
-		read_file(fcb, (uint8_t*)data, 0, filesize, index, &bytes_read, Irp2);
+		read_file(fcb, (uint8_t*)data, 0, filesize, index, &bytes_read, FileObject);
 		if (bytes_read != filesize)
 		{
 			ERR("read_file returned %I64u\n", bytes_read);
-			IoFreeIrp(Irp2);
 			free_fcb(fcb);
 			reap_fcb(fcb);
 			ExFreePool(data);
 			Status = STATUS_INTERNAL_ERROR;
 			goto exit;
 		}
-		IoFreeIrp(Irp2);
 		free_fcb(fcb);
 		reap_fcb(fcb);
 
@@ -807,29 +794,16 @@ loaded:
 					Status = STATUS_INSUFFICIENT_RESOURCES;
 					goto delsecfile;
 				}
-				PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
-				if (!Irp2)
-				{
-					ERR("out of memory\n");
-					free_fcb(fcb);
-					reap_fcb(fcb);
-					ExFreePool(security);
-					Status = STATUS_INSUFFICIENT_RESOURCES;
-					goto delsecfile;
-				}
-				Irp2->Flags |= IRP_NOCACHE;
-				read_file(fcb, security, 0, filesize, parentsecurityindex, &bytes_read, Irp2);
+				read_file(fcb, security, 0, filesize, parentsecurityindex, &bytes_read, FileObject);
 				if (bytes_read != filesize)
 				{
 					ERR("read_file returned %I64u\n", bytes_read);
-					IoFreeIrp(Irp2);
 					free_fcb(fcb);
 					reap_fcb(fcb);
 					ExFreePool(security);
 					Status = STATUS_INTERNAL_ERROR;
 					goto delsecfile;
 				}
-				IoFreeIrp(Irp2);
 				free_fcb(fcb);
 				reap_fcb(fcb);
 				if (IrpSp->Parameters.Create.SecurityContext->AccessState->SecurityDescriptor)
@@ -895,32 +869,17 @@ loaded:
 				}
 				else
 				{
-					PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
-					if (!Irp2)
+					if (find_block(&Vcb->vde->pdode->KMCSFS, securityindex, filesize))
 					{
-						ERR("out of memory\n");
-						free_fcb(fcb);
-						reap_fcb(fcb);
-						ExFreePool(security);
-						Status = STATUS_INSUFFICIENT_RESOURCES;
-						goto delsecfile;
+						Status = write_file(fcb, security, 0, filesize, securityindex, filesize, FileObject);
 					}
 					else
 					{
-						Irp2->Flags |= IRP_NOCACHE;
-						if (find_block(&Vcb->vde->pdode->KMCSFS, securityindex, filesize))
-						{
-							Status = write_file(fcb, security, 0, filesize, securityindex, filesize, Irp2);
-						}
-						else
-						{
-							Status = STATUS_DISK_FULL;
-						}
-						IoFreeIrp(Irp2);
-						free_fcb(fcb);
-						reap_fcb(fcb);
-						ExFreePool(security);
+						Status = STATUS_DISK_FULL;
 					}
+					free_fcb(fcb);
+					reap_fcb(fcb);
+					ExFreePool(security);
 				}
 delsecfile:
 				if (NT_SUCCESS(Status))

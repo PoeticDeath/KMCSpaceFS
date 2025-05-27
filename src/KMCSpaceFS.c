@@ -2341,22 +2341,10 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 			ExReleaseResourceLite(&Vcb->tree_lock);
 			break;
 		}
-		PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
-		if (!Irp2)
-		{
-			ERR("out of memory\n");
-			free_fcb(fcb);
-			reap_fcb(fcb);
-			ExFreePool(label);
-			ExReleaseResourceLite(&Vcb->tree_lock);
-			break;
-		}
-		Irp2->Flags |= IRP_NOCACHE;
-		read_file(fcb, label, 0, filesize, index, &bytes_read, Irp2);
+		read_file(fcb, label, 0, filesize, index, &bytes_read, NULL);
 		if (bytes_read != filesize)
 		{
 			ERR("read_file returned %I64u\n", bytes_read);
-			IoFreeIrp(Irp2);
 			free_fcb(fcb);
 			reap_fcb(fcb);
 			ExFreePool(label);
@@ -2369,7 +2357,6 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		if (!NT_SUCCESS(Status))
 		{
 			ERR("utf8_to_utf16 returned %08lx\n", Status);
-			IoFreeIrp(Irp2);
 			free_fcb(fcb);
 			reap_fcb(fcb);
 			ExFreePool(label);
@@ -2410,7 +2397,6 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 			if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW)
 			{
 				ERR("utf8_to_utf16 returned %08lx\n", Status);
-				IoFreeIrp(Irp2);
 				free_fcb(fcb);
 				reap_fcb(fcb);
 				ExFreePool(label);
@@ -2421,7 +2407,6 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 			TRACE("label = %.*S\n", (int)(label_len / sizeof(WCHAR)), data->VolumeLabel);
 		}
 
-		IoFreeIrp(Irp2);
 		free_fcb(fcb);
 		reap_fcb(fcb);
 		ExFreePool(label);
@@ -2777,17 +2762,6 @@ static NTSTATUS set_label(_In_ device_extension* Vcb, _In_ FILE_FS_LABEL_INFORMA
 		Status = STATUS_INSUFFICIENT_RESOURCES;
 		goto end;
 	}
-	PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
-	if (!Irp2)
-	{
-		ERR("out of memory\n");
-		free_fcb(fcb);
-		reap_fcb(fcb);
-		ExFreePool(label);
-		Status = STATUS_INSUFFICIENT_RESOURCES;
-		goto end;
-	}
-	Irp2->Flags |= IRP_NOCACHE;
 	for (unsigned i = 0; i < labellen; i++)
 	{
 		label[i] = ffli->VolumeLabel[i] & 0xff;
@@ -2813,10 +2787,9 @@ static NTSTATUS set_label(_In_ device_extension* Vcb, _In_ FILE_FS_LABEL_INFORMA
 			filesize = labellen;
 		}
 	}
-	Status = write_file(fcb, label, 0, labellen, index, filesize, Irp2);
+	Status = write_file(fcb, label, 0, labellen, index, filesize, NULL);
 
 free:
-	IoFreeIrp(Irp2);
 	free_fcb(fcb);
 	reap_fcb(fcb);
 	ExFreePool(label);

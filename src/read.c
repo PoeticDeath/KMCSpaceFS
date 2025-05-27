@@ -61,7 +61,7 @@ static NTSTATUS do_read(PIRP Irp, bool wait, unsigned long long* bytes_read)
 		length = size - start;
 	}
 
-	Status = read_file(fcb, data, start, length, index, bytes_read, Irp);
+	Status = read_file(fcb, data, start, length, index, bytes_read, IrpSp->FileObject);
 
 	TRACE("read %lu bytes\n", *bytes_read);
 

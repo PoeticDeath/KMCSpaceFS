@@ -3388,22 +3388,10 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		Status = STATUS_INSUFFICIENT_RESOURCES;
 		goto end;
 	}
-	PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
-	if (!Irp2)
-	{
-		ERR("out of memory\n");
-		free_fcb(fcb);
-		reap_fcb(fcb);
-		ExFreePool(security);
-		Status = STATUS_INSUFFICIENT_RESOURCES;
-		goto end;
-	}
-	Irp2->Flags |= IRP_NOCACHE;
-	read_file(fcb, security, 0, filesize, index, &bytes_read, Irp2);
+	read_file(fcb, security, 0, filesize, index, &bytes_read, FileObject);
 	if (bytes_read != filesize)
 	{
 		ERR("read_file returned %I64u\n", bytes_read);
-		IoFreeIrp(Irp2);
 		free_fcb(fcb);
 		reap_fcb(fcb);
 		ExFreePool(security);
@@ -3415,7 +3403,6 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	if (!securityW)
 	{
 		ERR("out of memory\n");
-		IoFreeIrp(Irp2);
 		free_fcb(fcb);
 		reap_fcb(fcb);
 		ExFreePool(security);
@@ -3448,7 +3435,6 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		ExFreePool(SD);
 	}
 
-	IoFreeIrp(Irp2);
 	free_fcb(fcb);
 	reap_fcb(fcb);
 	ExFreePool(security);
@@ -4123,7 +4109,6 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 	char* Newsecurity = NULL;
 	WCHAR* securityW = NULL;
 	WCHAR* NewsecurityW = NULL;
-	PIRP Irp2 = NULL;
 	SECURITY_DESCRIPTOR* SD = NULL;
 
 	TRACE("(%p, %p, %p, %lx)\n", Vcb, FileObject, sd, *flags);
@@ -4152,14 +4137,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 		goto end;
 	}
 	unsigned long long bytes_read = 0;
-	Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
-	if (!Irp2)
-	{
-		ERR("out of memory\n");
-		goto end;
-	}
-	Irp2->Flags |= IRP_NOCACHE;
-	read_file(fcb, security, 0, filesize, index, &bytes_read, Irp2);
+	read_file(fcb, security, 0, filesize, index, &bytes_read, FileObject);
 	if (bytes_read != filesize)
 	{
 		ERR("read_file returned %I64u\n", bytes_read);
@@ -4235,7 +4213,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 			filesize = NewBUFLEN;
 		}
 	}
-	Status = write_file(fcb, Newsecurity, 0, NewBUFLEN, index, filesize, Irp2);
+	Status = write_file(fcb, Newsecurity, 0, NewBUFLEN, index, filesize, FileObject);
 
 end:
 	ExReleaseResourceLite(fcb->Header.Resource);
@@ -4247,10 +4225,6 @@ end:
 	if (securityW)
 	{
 		ExFreePool(securityW);
-	}
-	if (Irp2)
-	{
-		IoFreeIrp(Irp2);
 	}
 	if (oldsd && oldsd != SD)
 	{
@@ -4402,22 +4376,10 @@ NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, 
 		Status = STATUS_INSUFFICIENT_RESOURCES;
 		goto end;
 	}
-	PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
-	if (!Irp2)
-	{
-		ERR("out of memory\n");
-		free_fcb(fcb);
-		reap_fcb(fcb);
-		ExFreePool(security);
-		Status = STATUS_INSUFFICIENT_RESOURCES;
-		goto end;
-	}
-	Irp2->Flags |= IRP_NOCACHE;
-	read_file(fcb, security, 0, filesize, index, &bytes_read, Irp2);
+	read_file(fcb, security, 0, filesize, index, &bytes_read, IrpSp->FileObject);
 	if (bytes_read != filesize)
 	{
 		ERR("read_file returned %I64u\n", bytes_read);
-		IoFreeIrp(Irp2);
 		free_fcb(fcb);
 		reap_fcb(fcb);
 		ExFreePool(security);
@@ -4429,7 +4391,6 @@ NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, 
 	if (!securityW)
 	{
 		ERR("out of memory\n");
-		IoFreeIrp(Irp2);
 		free_fcb(fcb);
 		reap_fcb(fcb);
 		ExFreePool(security);
@@ -4474,7 +4435,6 @@ NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, 
 					TRACE("SeAccessCheck failed, returning %08lx\n", Status);
 				}
 
-				IoFreeIrp(Irp2);
 				free_fcb(fcb);
 				reap_fcb(fcb);
 				ExFreePool(security);
@@ -4493,7 +4453,6 @@ NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, 
 		ExFreePool(SD);
 	}
 
-	IoFreeIrp(Irp2);
 	free_fcb(fcb);
 	reap_fcb(fcb);
 	ExFreePool(security);

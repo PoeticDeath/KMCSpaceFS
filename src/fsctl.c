@@ -150,14 +150,8 @@ static NTSTATUS get_reparse_point(PFILE_OBJECT FileObject, void* buffer, DWORD b
 			return STATUS_BUFFER_OVERFLOW;
 		}
 		*retlen = filesize;
-        PIRP Irp2 = IoAllocateIrp(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
-        if (!Irp2)
-		{
-			return STATUS_INSUFFICIENT_RESOURCES;
-		}
-        Irp2->Flags = IRP_NOCACHE;
         unsigned long long bytes_read = 0;
-        read_file(fcb, buffer, 0, filesize, index, &bytes_read, Irp2);
+        read_file(fcb, buffer, 0, filesize, index, &bytes_read, FileObject);
         if (bytes_read != filesize)
         {
             return STATUS_INTERNAL_ERROR;

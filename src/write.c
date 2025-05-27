@@ -72,7 +72,7 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 		}
 	}
 
-	Status = write_file(fcb, buf, start, length, index, size, Irp);
+	Status = write_file(fcb, buf, start, length, index, size, FileObject);
 
 	if (NT_SUCCESS(Status))
 	{
