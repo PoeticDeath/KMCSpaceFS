@@ -61,7 +61,7 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 
 	if (start + length > size)
 	{
-		if (find_block(&Vcb->vde->pdode->KMCSFS, index, start + length - size))
+		if (find_block(&Vcb->vde->pdode->KMCSFS, index, start + length - size, FileObject))
 		{
 			size = start + length;
 		}

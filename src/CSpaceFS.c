@@ -443,7 +443,7 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 						{
 							if (init)
 							{
-								sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), min(sector_align(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, 512), sector_align(length, 512)), buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), true);
+								sync_read_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), min(sector_align(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, 512), sector_align(length, 512)), buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), true);
 								RtlCopyMemory(data, buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length));
 								*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
 								start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
@@ -451,7 +451,7 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 							}
 							else
 							{
-								sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, buf, true);
+								sync_read_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, buf, true);
 								RtlCopyMemory(data + *bytes_read, buf, min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read));
 								start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
 								*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
@@ -467,7 +467,7 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 					{
 						if (init)
 						{
-							sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), min(sector_align(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, 512), sector_align(length, 512)), buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), true);
+							sync_read_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), min(sector_align(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, 512), sector_align(length, 512)), buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize) - (start % 512), true);
 							RtlCopyMemory(data, buf + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length));
 							*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
 							start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
@@ -475,7 +475,7 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 						}
 						else
 						{
-							sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, buf, true);
+							sync_read_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, buf, true);
 							RtlCopyMemory(data + *bytes_read, buf, min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read));
 							start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
 							*bytes_read += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - *bytes_read);
@@ -488,7 +488,7 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 					filesize += int2 - int1;
 					if (filesize > start)
 					{
-						sync_read_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + int1 - int1 % 512, sector_align(int2 - int1 + int1 % 512, 512), buf + int1 - int1 % 512, true);
+						sync_read_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + int1 - int1 % 512, sector_align(int2 - int1 + int1 % 512, 512), buf + int1 - int1 % 512, true);
 						if (init)
 						{
 							RtlCopyMemory(data, buf + ((int1 + start) % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(int2 - int1, length));
@@ -613,14 +613,14 @@ NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned 
 						{
 							if (init)
 							{
-								sync_write_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length), data, true);
+								sync_write_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length), data, true);
 								bytes_written += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
 								start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
 								init = false;
 							}
 							else
 							{
-								sync_write_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - bytes_written), data + bytes_written, true);
+								sync_write_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - (int3 + o) * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - bytes_written), data + bytes_written, true);
 								start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - bytes_written);
 								bytes_written += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - bytes_written);
 							}
@@ -635,14 +635,14 @@ NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned 
 					{
 						if (init)
 						{
-							sync_write_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length), data, true);
+							sync_write_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length), data, true);
 							bytes_written += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
 							start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
 							init = false;
 						}
 						else
 						{
-							sync_write_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - bytes_written), data + bytes_written, true);
+							sync_write_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize, min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - bytes_written), data + bytes_written, true);
 							start += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - bytes_written);
 							bytes_written += min(fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length - bytes_written);
 						}
@@ -656,14 +656,14 @@ NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned 
 					{
 						if (init)
 						{
-							sync_write_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + ((int1 + start) % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(int2 - int1, length), data, true);
+							sync_write_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + ((int1 + start) % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(int2 - int1, length), data, true);
 							start += min(int2 - int1, length);
 							bytes_written += min(int2 - int1, length);
 							init = false;
 						}
 						else
 						{
-							sync_write_phys(fcb->Vcb->vde->pdode->KMCSFS.DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + int1, min(int2 - int1, length - bytes_written), data + bytes_written, true);
+							sync_write_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + int1, min(int2 - int1, length - bytes_written), data + bytes_written, true);
 							start += min(int2 - int1, length - bytes_written);
 							bytes_written += min(int2 - int1, length - bytes_written);
 						}
@@ -931,7 +931,7 @@ NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, U
 	chtime(Vcb->vde->pdode->KMCSFS.filecount, time.QuadPart, 3, Vcb->vde->pdode->KMCSFS);
 
 	Vcb->vde->pdode->KMCSFS.filecount++;
-	sync_write_phys(Vcb->vde->pdode->KMCSFS.DeviceObject, FileObject, 0, Vcb->vde->pdode->KMCSFS.filenamesend + 2 + 35 * Vcb->vde->pdode->KMCSFS.filecount, newtable, true);
+	sync_write_phys(FileObject->DeviceObject, FileObject, 0, Vcb->vde->pdode->KMCSFS.filenamesend + 2 + 35 * Vcb->vde->pdode->KMCSFS.filecount, newtable, true);
 
 	return STATUS_SUCCESS;
 }
@@ -1119,7 +1119,7 @@ dealloc(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size, u
 	}
 }
 
-bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size)
+bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size, PFILE_OBJECT FileObject)
 {
 	if (size)
 	{
@@ -1269,7 +1269,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 					ExFreePool(used_bytes);
 					return false;
 				}
-				sync_read_phys(KMCSFS->DeviceObject, 0, KMCSFS->size - endsector * KMCSFS->sectorsize - KMCSFS->sectorsize, KMCSFS->sectorsize, tempdata, true);
+				sync_read_phys(FileObject->DeviceObject, FileObject, KMCSFS->size - endsector * KMCSFS->sectorsize - KMCSFS->sectorsize, KMCSFS->sectorsize, tempdata, true);
 				dealloc(KMCSFS, index, cursize, cursize - cursize % KMCSFS->sectorsize);
 				used_bytes[endsector] -= cursize % KMCSFS->sectorsize;
 				size += cursize % KMCSFS->sectorsize;
@@ -1654,7 +1654,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 			}
 			if (tempdata)
 			{
-				sync_write_phys(KMCSFS->DeviceObject, 0, KMCSFS->size - cursector * KMCSFS->sectorsize - KMCSFS->sectorsize + newoffset, endlength, tempdata + endoffset, true);
+				sync_write_phys(FileObject->DeviceObject, FileObject, KMCSFS->size - cursector * KMCSFS->sectorsize - KMCSFS->sectorsize + newoffset, endlength, tempdata + endoffset, true);
 				ExFreePool(tempdata);
 				tempdata = NULL;
 			}
@@ -1697,7 +1697,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 			KMCSFS->tableend = 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2;
 			ExFreePool(KMCSFS->table);
 			KMCSFS->table = newtable;
-			sync_write_phys(KMCSFS->DeviceObject, 0, 0, extratblesize, newtable, true);
+			sync_write_phys(FileObject->DeviceObject, FileObject, 0, extratblesize, newtable, true);
 		}
 		return true;
 	}
@@ -1806,7 +1806,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 	}
 }
 
-bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long index)
+bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long index, PFILE_OBJECT FileObject)
 {
 	char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->filenamesend + 2 + 35 * (KMCSFS->filecount - 1), ALLOC_TAG);
 	if (!newtable)
@@ -1899,7 +1899,7 @@ bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long
 	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 24 * index, KMCSFS->table + KMCSFS->filenamesend + 2 + 24 * (index + 1), 24 * (KMCSFS->filecount - index - 1));
 	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 24 * (KMCSFS->filecount - 1), KMCSFS->table + KMCSFS->filenamesend + 2 + 24 * KMCSFS->filecount, 11 * index);
 	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 24 * (KMCSFS->filecount - 1) + 11 * index, KMCSFS->table + KMCSFS->filenamesend + 2 + 24 * KMCSFS->filecount + 11 * (index + 1), 11 * (KMCSFS->filecount - index - 1));
-	sync_write_phys(KMCSFS->DeviceObject, 0, 0, 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 35 * (KMCSFS->filecount - 1), newtable, true);
+	sync_write_phys(FileObject->DeviceObject, FileObject, 0, 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 35 * (KMCSFS->filecount - 1), newtable, true);
 
 	unsigned long long dindex = FindDictEntry(KMCSFS->dict, KMCSFS->table, KMCSFS->tableend, KMCSFS->DictSize, filename.Buffer, filename.Length / sizeof(WCHAR));
 	if (dindex)
@@ -1921,7 +1921,7 @@ bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long
 	return true;
 }
 
-NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn)
+NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn, PFILE_OBJECT FileObject)
 {
 	unsigned long long extratablesize = KMCSFS->filenamesend + 2 + 35 * KMCSFS->filecount - fn.Length / sizeof(WCHAR) + nfn.Length / sizeof(WCHAR);
 	unsigned long long tablesize = (extratablesize + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize - 1;
@@ -1996,7 +1996,7 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn)
 	ExFreePool(KMCSFS->table);
 	KMCSFS->table = newtable;
 
-	sync_write_phys(KMCSFS->DeviceObject, 0, 0, extratablesize, newtable, true);
+	sync_write_phys(FileObject->DeviceObject, FileObject, 0, extratablesize, newtable, true);
 
 	return STATUS_SUCCESS;
 }

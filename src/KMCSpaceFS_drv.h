@@ -364,10 +364,10 @@ unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS);
 NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long* bytes_read, PFILE_OBJECT file_object);
 NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long size, PFILE_OBJECT file_object);
 NTSTATUS create_file(PIRP Irp, device_extension* Vcb, PFILE_OBJECT FileObject, UNICODE_STRING fn);
-bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size);
+bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size, PFILE_OBJECT FileObject);
 dealloc(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size, unsigned long long newsize);
-bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long index);
-NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn);
+bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long index, PFILE_OBJECT FileObject);
+NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn, PFILE_OBJECT FileObject);
 
 // in dirctrl.c
 _Dispatch_type_(IRP_MJ_DIRECTORY_CONTROL)

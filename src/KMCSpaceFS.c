@@ -321,7 +321,7 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 				bool can_delete = true;
 				if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
 				{
-					PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+					PIRP Irp2 = IoAllocateIrp(DeviceObject->StackSize, false);
 					if (!Irp2)
 					{
 						ERR("out of memory\n");
@@ -353,12 +353,12 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 				if (can_delete)
 				{
 					TRACE("deleting file\n");
-					if (delete_file(&Vcb->vde->pdode->KMCSFS, ccb->filename, index))
+					if (delete_file(&Vcb->vde->pdode->KMCSFS, ccb->filename, index, FileObject))
 					{
 						UNICODE_STRING securityfile;
 						securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
 						securityfile.Buffer = ccb->filename.Buffer + 1;
-						if (!delete_file(&Vcb->vde->pdode->KMCSFS, securityfile, get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS)))
+						if (!delete_file(&Vcb->vde->pdode->KMCSFS, securityfile, get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS), FileObject))
 						{
 							WARN("failed to delete security file\n");
 						}
@@ -2134,10 +2134,10 @@ NTSTATUS utf8_to_utf16(WCHAR* dest, ULONG dest_max, ULONG* dest_len, char* src, 
 	return Status;
 }
 
-static void calculate_total_space(_In_ device_extension* Vcb, _Out_ uint64_t* totalsize, _Out_ uint64_t* freespace)
+static void calculate_total_space(_In_ device_extension* Vcb, _Out_ uint64_t* totalsize, _Out_ uint64_t* freespace, PFILE_OBJECT FileObject)
 {
 	*totalsize = Vcb->vde->pdode->KMCSFS.size / Vcb->vde->pdode->KMCSFS.sectorsize - Vcb->vde->pdode->KMCSFS.tablesize;
-	if (find_block(&Vcb->vde->pdode->KMCSFS, 0, 0))
+	if (find_block(&Vcb->vde->pdode->KMCSFS, 0, 0, FileObject))
 	{
 		*freespace = *totalsize - Vcb->vde->pdode->KMCSFS.used_blocks;
 	}
@@ -2265,7 +2265,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 
 		TRACE("FileFsFullSizeInformation\n");
 
-		calculate_total_space(Vcb, (uint64_t*)&ffsi->TotalAllocationUnits.QuadPart, (uint64_t*)&ffsi->ActualAvailableAllocationUnits.QuadPart);
+		calculate_total_space(Vcb, (uint64_t*)&ffsi->TotalAllocationUnits.QuadPart, (uint64_t*)&ffsi->ActualAvailableAllocationUnits.QuadPart, IrpSp->FileObject);
 		ffsi->CallerAvailableAllocationUnits.QuadPart = ffsi->ActualAvailableAllocationUnits.QuadPart;
 		ffsi->SectorsPerAllocationUnit = Vcb->vde->pdode->KMCSFS.sectorsize / 512;
 		ffsi->BytesPerSector = 512;
@@ -2297,7 +2297,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 
 		TRACE("FileFsSizeInformation\n");
 
-		calculate_total_space(Vcb, (uint64_t*)&ffsi->TotalAllocationUnits.QuadPart, (uint64_t*)&ffsi->AvailableAllocationUnits.QuadPart);
+		calculate_total_space(Vcb, (uint64_t*)&ffsi->TotalAllocationUnits.QuadPart, (uint64_t*)&ffsi->AvailableAllocationUnits.QuadPart, IrpSp->FileObject);
 		ffsi->SectorsPerAllocationUnit = Vcb->vde->pdode->KMCSFS.sectorsize / 512;
 		ffsi->BytesPerSector = 512;
 
@@ -2341,7 +2341,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 			ExReleaseResourceLite(&Vcb->tree_lock);
 			break;
 		}
-		read_file(fcb, label, 0, filesize, index, &bytes_read, NULL);
+		read_file(fcb, label, 0, filesize, index, &bytes_read, IrpSp->FileObject);
 		if (bytes_read != filesize)
 		{
 			ERR("read_file returned %I64u\n", bytes_read);
@@ -2728,7 +2728,7 @@ exit:
 	return Status;
 }
 
-static NTSTATUS set_label(_In_ device_extension* Vcb, _In_ FILE_FS_LABEL_INFORMATION* ffli)
+static NTSTATUS set_label(_In_ device_extension* Vcb, _In_ FILE_FS_LABEL_INFORMATION* ffli, PFILE_OBJECT FileObject)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 	ULONG labellen = ffli->VolumeLabelLength / sizeof(WCHAR);
@@ -2770,7 +2770,7 @@ static NTSTATUS set_label(_In_ device_extension* Vcb, _In_ FILE_FS_LABEL_INFORMA
 	{
 		if (labellen > filesize)
 		{
-			if (find_block(&Vcb->vde->pdode->KMCSFS, index, labellen - filesize))
+			if (find_block(&Vcb->vde->pdode->KMCSFS, index, labellen - filesize, FileObject))
 			{
 				filesize = labellen;
 			}
@@ -2783,11 +2783,11 @@ static NTSTATUS set_label(_In_ device_extension* Vcb, _In_ FILE_FS_LABEL_INFORMA
 		else
 		{
 			dealloc(&Vcb->vde->pdode->KMCSFS, index, filesize, 0);
-			find_block(&Vcb->vde->pdode->KMCSFS, index, labellen);
+			find_block(&Vcb->vde->pdode->KMCSFS, index, labellen, FileObject);
 			filesize = labellen;
 		}
 	}
-	Status = write_file(fcb, label, 0, labellen, index, filesize, NULL);
+	Status = write_file(fcb, label, 0, labellen, index, filesize, FileObject);
 
 free:
 	free_fcb(fcb);
@@ -2850,7 +2850,7 @@ static NTSTATUS __stdcall SetVolumeInformation(_In_ PDEVICE_OBJECT DeviceObject,
 	case FileFsLabelInformation:
 		TRACE("FileFsLabelInformation\n");
 
-		Status = set_label(Vcb, Irp->AssociatedIrp.SystemBuffer);
+		Status = set_label(Vcb, Irp->AssociatedIrp.SystemBuffer, IrpSp->FileObject);
 		break;
 
 	case FileFsObjectIdInformation:

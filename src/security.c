@@ -4196,7 +4196,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 	{
 		if (NewBUFLEN > filesize)
 		{
-			if (find_block(&Vcb->vde->pdode->KMCSFS, index, NewBUFLEN - filesize))
+			if (find_block(&Vcb->vde->pdode->KMCSFS, index, NewBUFLEN - filesize, FileObject))
 			{
 				filesize = NewBUFLEN;
 			}
@@ -4209,7 +4209,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 		else
 		{
 			dealloc(&Vcb->vde->pdode->KMCSFS, index, filesize, 0);
-			find_block(&Vcb->vde->pdode->KMCSFS, index, NewBUFLEN);
+			find_block(&Vcb->vde->pdode->KMCSFS, index, NewBUFLEN, FileObject);
 			filesize = NewBUFLEN;
 		}
 	}

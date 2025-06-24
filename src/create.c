@@ -514,8 +514,8 @@ open:
 					securityfn.Length = fn.Length - sizeof(WCHAR);
 					securityfn.Buffer = fn.Buffer + 1;
 					unsigned long long securityindex = get_filename_index(securityfn, &Vcb->vde->pdode->KMCSFS);
-					delete_file(&Vcb->vde->pdode->KMCSFS, securityfn, securityindex);
-					delete_file(&Vcb->vde->pdode->KMCSFS, fn, index);
+					delete_file(&Vcb->vde->pdode->KMCSFS, securityfn, securityindex, FileObject);
+					delete_file(&Vcb->vde->pdode->KMCSFS, fn, index, FileObject);
 				}
 			}
 			if (!NT_SUCCESS(Status))
@@ -869,7 +869,7 @@ loaded:
 				}
 				else
 				{
-					if (find_block(&Vcb->vde->pdode->KMCSFS, securityindex, filesize))
+					if (find_block(&Vcb->vde->pdode->KMCSFS, securityindex, filesize, FileObject))
 					{
 						Status = write_file(fcb, security, 0, filesize, securityindex, filesize, FileObject);
 					}
@@ -890,13 +890,13 @@ delsecfile:
 				}
 				else
 				{
-					delete_file(&Vcb->vde->pdode->KMCSFS, securityfn, securityindex);
+					delete_file(&Vcb->vde->pdode->KMCSFS, securityfn, securityindex, FileObject);
 				}
 			}
 			if (!NT_SUCCESS(Status))
 			{
 				index = get_filename_index(fn, &Vcb->vde->pdode->KMCSFS);
-				delete_file(&Vcb->vde->pdode->KMCSFS, fn, index);
+				delete_file(&Vcb->vde->pdode->KMCSFS, fn, index, FileObject);
 				goto exit;
 			}
 		}

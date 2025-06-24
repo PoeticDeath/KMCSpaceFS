@@ -26,7 +26,6 @@ typedef struct
 	unsigned long long tablestrlen;
 	char* table;
 	char* tablestr;
-	PDEVICE_OBJECT DeviceObject;
 	unsigned long long used_blocks;
 	unsigned long long CurDictSize;
 	unsigned long long DictSize;

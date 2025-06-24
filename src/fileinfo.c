@@ -267,7 +267,7 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 
 	if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
 	{
-		PIRP Irp2 = IoAllocateIrp(Vcb->vde->pdode->KMCSFS.DeviceObject->StackSize, false);
+		PIRP Irp2 = IoAllocateIrp(FileObject->DeviceObject->StackSize, false);
 		if (!Irp2)
 		{
 			ERR("out of memory\n");
@@ -340,7 +340,7 @@ static NTSTATUS set_end_of_file_information(device_extension* Vcb, PIRP Irp, PFI
 	}
 	if (feofi->EndOfFile.QuadPart > filesize)
 	{
-		if (!find_block(&Vcb->vde->pdode->KMCSFS, index, feofi->EndOfFile.QuadPart - filesize))
+		if (!find_block(&Vcb->vde->pdode->KMCSFS, index, feofi->EndOfFile.QuadPart - filesize, FileObject))
 		{
 			return STATUS_DISK_FULL;
 		}
@@ -394,7 +394,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	TRACE("New FileName = %.*S\n", (int)(tfo->FileName.Length / sizeof(WCHAR)), tfo->FileName.Buffer);
 	TRACE("Old FileName = %.*S\n", (int)(FileObject->FileName.Length / sizeof(WCHAR)), FileObject->FileName.Buffer);
 
-	Status = rename_file(&Vcb->vde->pdode->KMCSFS, FileObject->FileName, tfo->FileName);
+	Status = rename_file(&Vcb->vde->pdode->KMCSFS, FileObject->FileName, tfo->FileName, FileObject);
 
 	UNICODE_STRING sfn;
 	sfn.Buffer = FileObject->FileName.Buffer + 1;
@@ -406,7 +406,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 
 	if (NT_SUCCESS(Status))
 	{
-		Status = rename_file(&Vcb->vde->pdode->KMCSFS, sfn, nsfn);
+		Status = rename_file(&Vcb->vde->pdode->KMCSFS, sfn, nsfn, FileObject);
 	}
 
 	return Status;
