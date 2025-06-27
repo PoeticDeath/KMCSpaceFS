@@ -64,6 +64,20 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 		if (find_block(&Vcb->vde->pdode->KMCSFS, index, start + length - size, FileObject))
 		{
 			size = start + length;
+
+			unsigned long lastslash = 0;
+			for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+			{
+				if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+				{
+					lastslash = i;
+				}
+				if (i - lastslash > MAX_PATH - 5)
+				{
+					ERR("file name too long\n");
+				}
+			}
+			FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_SIZE, FILE_ACTION_MODIFIED, NULL);
 		}
 		else
 		{

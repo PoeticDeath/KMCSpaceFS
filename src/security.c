@@ -4215,6 +4215,23 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 	}
 	Status = write_file(fcb, Newsecurity, 0, NewBUFLEN, index, filesize, FileObject);
 
+	if (NT_SUCCESS(Status))
+	{
+		unsigned long lastslash = 0;
+		for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+		{
+			if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+			{
+				lastslash = i;
+			}
+			if (i - lastslash > MAX_PATH - 5)
+			{
+				ERR("file name too long\n");
+			}
+		}
+		FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_SECURITY, FILE_ACTION_MODIFIED, NULL);
+	}
+
 end:
 	ExReleaseResourceLite(fcb->Header.Resource);
 

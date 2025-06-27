@@ -362,6 +362,20 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 						{
 							WARN("failed to delete security file\n");
 						}
+
+						unsigned long lastslash = 0;
+						for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+						{
+							if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
+							{
+								lastslash = i;
+							}
+							if (i - lastslash > MAX_PATH - 5)
+							{
+								ERR("file name too long\n");
+							}
+						}
+						FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (winattrs & FILE_ATTRIBUTE_DIRECTORY) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_REMOVED, NULL);
 					}
 					else
 					{

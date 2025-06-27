@@ -192,19 +192,24 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 		fbi->ChangeTime.QuadPart = 0;
 	}
 
+	ULONG NotifyFilter = 0;
+
 	if (fbi->CreationTime.QuadPart != 0)
 	{
 		chtime(index, fbi->CreationTime.QuadPart, 5, Vcb->vde->pdode->KMCSFS);
+		NotifyFilter |= FILE_NOTIFY_CHANGE_CREATION;
 	}
 
 	if (fbi->LastAccessTime.QuadPart != 0)
 	{
 		chtime(index, fbi->LastAccessTime.QuadPart, 1, Vcb->vde->pdode->KMCSFS);
+		NotifyFilter |= FILE_NOTIFY_CHANGE_LAST_ACCESS;
 	}
 
 	if (fbi->LastWriteTime.QuadPart != 0)
 	{
 		chtime(index, fbi->LastWriteTime.QuadPart, 3, Vcb->vde->pdode->KMCSFS);
+		NotifyFilter |= FILE_NOTIFY_CHANGE_LAST_WRITE;
 	}
 
 	// FileAttributes == 0 means don't set - undocumented, but seen in fastfat
@@ -220,9 +225,24 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 			fbi->FileAttributes |= FILE_ATTRIBUTE_REPARSE_POINT;
 		}
 		chwinattrs(index, fbi->FileAttributes, Vcb->vde->pdode->KMCSFS);
+		NotifyFilter |= FILE_NOTIFY_CHANGE_ATTRIBUTES;
 	}
 
 	Status = STATUS_SUCCESS;
+
+	unsigned long lastslash = 0;
+	for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+	{
+		if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+		{
+			lastslash = i;
+		}
+		if (i - lastslash > MAX_PATH - 5)
+		{
+			ERR("file name too long\n");
+		}
+	}
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
 
 end:
 	ExReleaseResourceLite(fcb->Header.Resource);
@@ -349,6 +369,21 @@ static NTSTATUS set_end_of_file_information(device_extension* Vcb, PIRP Irp, PFI
 	{
 		dealloc(&Vcb->vde->pdode->KMCSFS, index, filesize, feofi->EndOfFile.QuadPart);
 	}
+
+	unsigned long lastslash = 0;
+	for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+	{
+		if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+		{
+			lastslash = i;
+		}
+		if (i - lastslash > MAX_PATH - 5)
+		{
+			ERR("file name too long\n");
+		}
+	}
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_SIZE, FILE_ACTION_MODIFIED, NULL);
+
 	return STATUS_SUCCESS;
 }
 
@@ -394,6 +429,20 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	TRACE("New FileName = %.*S\n", (int)(tfo->FileName.Length / sizeof(WCHAR)), tfo->FileName.Buffer);
 	TRACE("Old FileName = %.*S\n", (int)(FileObject->FileName.Length / sizeof(WCHAR)), FileObject->FileName.Buffer);
 
+	unsigned long lastslash = 0;
+	for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+	{
+		if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+		{
+			lastslash = i;
+		}
+		if (i - lastslash > MAX_PATH - 5)
+		{
+			ERR("file name too long\n");
+		}
+	}
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_OLD_NAME, NULL);
+
 	Status = rename_file(&Vcb->vde->pdode->KMCSFS, FileObject->FileName, tfo->FileName, FileObject);
 
 	UNICODE_STRING sfn;
@@ -408,6 +457,20 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	{
 		Status = rename_file(&Vcb->vde->pdode->KMCSFS, sfn, nsfn, FileObject);
 	}
+
+	lastslash = 0;
+	for (unsigned long i = 0; i < tfo->FileName.Length / sizeof(WCHAR); i++)
+	{
+		if (tfo->FileName.Buffer[i] == *L"/" || tfo->FileName.Buffer[i] == *L"\\")
+		{
+			lastslash = i;
+		}
+		if (i - lastslash > MAX_PATH - 5)
+		{
+			ERR("file name too long\n");
+		}
+	}
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &tfo->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_NEW_NAME, NULL);
 
 	return Status;
 }
