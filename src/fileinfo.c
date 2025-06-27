@@ -242,7 +242,7 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 			ERR("file name too long\n");
 		}
 	}
-	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
 
 end:
 	ExReleaseResourceLite(fcb->Header.Resource);
@@ -382,7 +382,7 @@ static NTSTATUS set_end_of_file_information(device_extension* Vcb, PIRP Irp, PFI
 			ERR("file name too long\n");
 		}
 	}
-	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_SIZE, FILE_ACTION_MODIFIED, NULL);
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_SIZE, FILE_ACTION_MODIFIED, NULL);
 
 	return STATUS_SUCCESS;
 }
@@ -441,7 +441,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 			ERR("file name too long\n");
 		}
 	}
-	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_OLD_NAME, NULL);
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_OLD_NAME, NULL);
 
 	Status = rename_file(&Vcb->vde->pdode->KMCSFS, FileObject->FileName, tfo->FileName, FileObject);
 
@@ -470,7 +470,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 			ERR("file name too long\n");
 		}
 	}
-	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &tfo->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_NEW_NAME, NULL);
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&tfo->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_NEW_NAME, NULL);
 
 	return Status;
 }

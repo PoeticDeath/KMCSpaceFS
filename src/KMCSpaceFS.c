@@ -375,7 +375,7 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 								ERR("file name too long\n");
 							}
 						}
-						FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (winattrs & FILE_ATTRIBUTE_DIRECTORY) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_REMOVED, NULL);
+						FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (winattrs & FILE_ATTRIBUTE_DIRECTORY) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_REMOVED, NULL);
 					}
 					else
 					{

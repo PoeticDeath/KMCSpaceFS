@@ -63,6 +63,27 @@ static NTSTATUS do_read(PIRP Irp, bool wait, unsigned long long* bytes_read)
 
 	Status = read_file(fcb, data, start, length, index, bytes_read, IrpSp->FileObject);
 
+	if (NT_SUCCESS(Status))
+	{
+		unsigned long lastslash = 0;
+		for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+		{
+			if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+			{
+				lastslash = i;
+			}
+			if (i - lastslash > MAX_PATH - 5)
+			{
+				ERR("file name too long\n");
+			}
+		}
+
+		LARGE_INTEGER time;
+		KeQuerySystemTime(&time);
+		chtime(index, time.QuadPart, 1, fcb->Vcb->vde->pdode->KMCSFS);
+		FsRtlNotifyFullReportChange(fcb->Vcb->NotifySync, &fcb->Vcb->DirNotifyList, (PSTRING)&FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_LAST_ACCESS, FILE_ACTION_MODIFIED, NULL);
+	}
+
 	TRACE("read %lu bytes\n", *bytes_read);
 
 	Irp->IoStatus.Information = *bytes_read;

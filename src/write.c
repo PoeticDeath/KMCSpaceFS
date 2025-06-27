@@ -59,25 +59,28 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 	}
 	unsigned long long start = offset.QuadPart;
 
+	unsigned long lastslash = 0;
+	for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+	{
+		if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+		{
+			lastslash = i;
+		}
+		if (i - lastslash > MAX_PATH - 5)
+		{
+			ERR("file name too long\n");
+		}
+	}
+
+	ULONG NotifyFilter = FILE_NOTIFY_CHANGE_LAST_WRITE;
+
 	if (start + length > size)
 	{
 		if (find_block(&Vcb->vde->pdode->KMCSFS, index, start + length - size, FileObject))
 		{
 			size = start + length;
 
-			unsigned long lastslash = 0;
-			for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
-			{
-				if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
-				{
-					lastslash = i;
-				}
-				if (i - lastslash > MAX_PATH - 5)
-				{
-					ERR("file name too long\n");
-				}
-			}
-			FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, &FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_SIZE, FILE_ACTION_MODIFIED, NULL);
+			NotifyFilter |= FILE_NOTIFY_CHANGE_SIZE;
 		}
 		else
 		{
@@ -95,6 +98,10 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 		{
 			FileObject->CurrentByteOffset.QuadPart = start + length;
 		}
+		LARGE_INTEGER time;
+		KeQuerySystemTime(&time);
+		chtime(index, time.QuadPart, 3, Vcb->vde->pdode->KMCSFS);
+		FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
 	}
 	else if (FileObject->Flags & FO_SYNCHRONOUS_IO && !(Irp->Flags & IRP_PAGING_IO))
 	{
