@@ -542,6 +542,11 @@ open:
 			{
 				if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 				{
+					if (Vcb->vde->pdode->KMCSFS.dict[dindex].delete_pending)
+					{
+						Status = STATUS_ACCESS_DENIED;
+						goto exit;
+					}
 					Status = IoCheckShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess, false);
 					if (!NT_SUCCESS(Status))
 					{
@@ -601,6 +606,11 @@ open:
 				{
 					if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 					{
+						if (Vcb->vde->pdode->KMCSFS.dict[dindex].delete_pending)
+						{
+							Status = STATUS_ACCESS_DENIED;
+							goto exit;
+						}
 						Status = IoCheckShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess, false);
 						if (!NT_SUCCESS(Status))
 						{

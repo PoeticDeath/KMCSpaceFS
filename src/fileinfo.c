@@ -333,7 +333,13 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 	}
 
 	FileObject->DeletePending = flags & FILE_DISPOSITION_DELETE;
-	ccb->delete_on_close = true;
+	ccb->delete_on_close = flags & FILE_DISPOSITION_DELETE;
+
+	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+	if (dindex)
+	{
+		Vcb->vde->pdode->KMCSFS.dict[dindex].delete_pending = flags & FILE_DISPOSITION_DELETE;
+	}
 
 	Status = STATUS_SUCCESS;
 

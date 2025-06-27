@@ -11,6 +11,7 @@ typedef struct _Dict
 	unsigned long long opencount;
 	SHARE_ACCESS shareaccess;
 	FILE_LOCK lock;
+	BOOLEAN delete_pending;
 } Dict;
 
 Dict* CreateDict(unsigned long long size);
