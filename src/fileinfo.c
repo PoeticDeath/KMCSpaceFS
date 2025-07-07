@@ -435,6 +435,184 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	TRACE("New FileName = %.*S\n", (int)(tfo->FileName.Length / sizeof(WCHAR)), tfo->FileName.Buffer);
 	TRACE("Old FileName = %.*S\n", (int)(FileObject->FileName.Length / sizeof(WCHAR)), FileObject->FileName.Buffer);
 
+	if (FileObject->FileName.Length == tfo->FileName.Length)
+	{
+		bool same = true;
+		for (unsigned long long i = 0; i < FileObject->FileName.Length; i++)
+		{
+			if (!incmp(FileObject->FileName.Buffer[i], tfo->FileName.Buffer[i]))
+			{
+				same = false;
+				break;
+			}
+		}
+		if (same)
+		{
+			TRACE("file names are the same, not renaming\n");
+			return STATUS_SUCCESS;
+		}
+	}
+
+	unsigned long long tfo_index = get_filename_index(tfo->FileName, &Vcb->vde->pdode->KMCSFS);
+	if (tfo_index)
+	{
+		unsigned long winattrs = chwinattrs(tfo_index, 0, Vcb->vde->pdode->KMCSFS);
+		if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			return STATUS_ACCESS_DENIED;
+		}
+		if (!(flags & FILE_RENAME_REPLACE_IF_EXISTS))
+		{
+			return STATUS_OBJECT_NAME_COLLISION;
+		}
+		unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, tfo->FileName.Buffer, tfo->FileName.Length / sizeof(WCHAR));
+		if (dindex)
+		{
+			if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
+			{
+				return STATUS_ACCESS_DENIED;
+			}
+		}
+		delete_file(&Vcb->vde->pdode->KMCSFS, tfo->FileName, tfo_index, tfo);
+		UNICODE_STRING stfo;
+		stfo.Buffer = tfo->FileName.Buffer + 1;
+		stfo.Length = tfo->FileName.Length - sizeof(WCHAR);
+		unsigned long long stfo_index = get_filename_index(stfo, &Vcb->vde->pdode->KMCSFS);
+		if (stfo_index)
+		{
+			delete_file(&Vcb->vde->pdode->KMCSFS, stfo, stfo_index, tfo);
+		}
+	}
+
+	unsigned long winattrs = chwinattrs(get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS), 0, Vcb->vde->pdode->KMCSFS);
+	if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
+	{
+		WCHAR* filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+		if (!filename)
+		{
+			ERR("out of memory\n");
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+		WCHAR* newfilename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+		if (!newfilename)
+		{
+			ERR("out of memory\n");
+			ExFreePool(filename);
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+		unsigned long long filenamelen = 0;
+		UNICODE_STRING Filename;
+		Filename.Buffer = filename;
+		for (unsigned long long offset = 0; offset < Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1; offset++)
+		{
+			if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 255 || (Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 42) // 255 = file, 42 = fuse symlink
+			{
+				if (ccb->filename.Length / sizeof(WCHAR) < filenamelen)
+				{
+					bool isin = true;
+					unsigned long long i = 0;
+					for (; i < ccb->filename.Length / sizeof(WCHAR); i++)
+					{
+						if (!incmp(ccb->filename.Buffer[i] & 0xff, filename[i] & 0xff) && !(ccb->filename.Buffer[i] == *L"/" && filename[i] == *L"\\") && !(ccb->filename.Buffer[i] == *L"\\" && filename[i] == *L"/"))
+						{
+							isin = false;
+							break;
+						}
+					}
+					if (!(filename[i] == *L"/") && !(filename[i] == *L"\\") && (ccb->filename.Length > 2))
+					{
+						isin = false;
+					}
+					i++;
+					if (isin)
+					{
+						Filename.Length = filenamelen * sizeof(WCHAR);
+						unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, Filename.Buffer, Filename.Length / sizeof(WCHAR));
+						if (dindex)
+						{
+							if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
+							{
+								ExFreePool(filename);
+								ExFreePool(newfilename);
+								return STATUS_ACCESS_DENIED;
+							}
+						}
+					}
+				}
+				filenamelen = 0;
+			}
+			else
+			{
+				filename[filenamelen] = Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff;
+				filenamelen++;
+			}
+		}
+		filenamelen = 0;
+		UNICODE_STRING NewFilename;
+		NewFilename.Buffer = newfilename;
+		for (unsigned long long offset = 0; offset < Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1; offset++)
+		{
+			if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 255 || (Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 42) // 255 = file, 42 = fuse symlink
+			{
+				if (ccb->filename.Length / sizeof(WCHAR) < filenamelen)
+				{
+					bool isin = true;
+					unsigned long long i = 0;
+					for (; i < ccb->filename.Length / sizeof(WCHAR); i++)
+					{
+						if (!incmp(ccb->filename.Buffer[i] & 0xff, filename[i] & 0xff) && !(ccb->filename.Buffer[i] == *L"/" && filename[i] == *L"\\") && !(ccb->filename.Buffer[i] == *L"\\" && filename[i] == *L"/"))
+						{
+							isin = false;
+							break;
+						}
+					}
+					if (!(filename[i] == *L"/") && !(filename[i] == *L"\\") && (ccb->filename.Length > 2))
+					{
+						isin = false;
+					}
+					i++;
+					if (isin)
+					{
+						Filename.Length = filenamelen * sizeof(WCHAR);
+						unsigned long long j = 0;
+						for (; j < tfo->FileName.Length / sizeof(WCHAR); j++)
+						{
+							newfilename[j] = tfo->FileName.Buffer[j];
+						}
+						newfilename[j] = 92;
+						j++;
+						for (; i < filenamelen; i++)
+						{
+							newfilename[j] = filename[i];
+							j++;
+						}
+						NewFilename.Length = j * sizeof(WCHAR);
+						rename_file(&Vcb->vde->pdode->KMCSFS, Filename, NewFilename, FileObject);
+						UNICODE_STRING SFilename;
+						SFilename.Buffer = Filename.Buffer + 1;
+						SFilename.Length = Filename.Length - sizeof(WCHAR);
+						UNICODE_STRING SNewFilename;
+						SNewFilename.Buffer = NewFilename.Buffer + 1;
+						SNewFilename.Length = NewFilename.Length - sizeof(WCHAR);
+						unsigned long long sindex = get_filename_index(SFilename, &Vcb->vde->pdode->KMCSFS);
+						if (sindex)
+						{
+							rename_file(&Vcb->vde->pdode->KMCSFS, SFilename, SNewFilename, FileObject);
+						}
+					}
+				}
+				filenamelen = 0;
+			}
+			else
+			{
+				filename[filenamelen] = Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff;
+				filenamelen++;
+			}
+		}
+		ExFreePool(filename);
+		ExFreePool(newfilename);
+	}
+
 	unsigned long lastslash = 0;
 	for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
 	{
