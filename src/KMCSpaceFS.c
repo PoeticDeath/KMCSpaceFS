@@ -297,7 +297,8 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 		if (ccb)
 		{
 			FsRtlNotifyCleanup(fcb->Vcb->NotifySync, &fcb->Vcb->DirNotifyList, ccb);
-			
+			unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
+
 			if (ccb->filter.Buffer)
 			{
 				ExFreePool(ccb->filter.Buffer);
@@ -311,12 +312,16 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 					{
 						fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount--;
 					}
+					if (!fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount && fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & trun_on_close)
+					{
+						dealloc(&fcb->Vcb->vde->pdode->KMCSFS, index, get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS), 0);
+						fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags &= ~(trun_on_close | delete_pending);
+					}
 				}
 			}
 
 			if (ccb->options & FILE_DELETE_ON_CLOSE || ccb->delete_on_close)
 			{
-				unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 				unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 				bool can_delete = true;
 				if (winattrs & FILE_ATTRIBUTE_DIRECTORY)

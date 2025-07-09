@@ -2,6 +2,9 @@
 
 #pragma once
 
+#define delete_pending 1
+#define trun_on_close 2
+
 typedef struct _Dict
 {
 	unsigned long long filenameloc;
@@ -11,7 +14,7 @@ typedef struct _Dict
 	unsigned long long opencount;
 	SHARE_ACCESS shareaccess;
 	FILE_LOCK lock;
-	BOOLEAN delete_pending;
+	unsigned long long flags;
 } Dict;
 
 Dict* CreateDict(unsigned long long size);

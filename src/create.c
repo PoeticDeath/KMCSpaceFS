@@ -542,7 +542,7 @@ open:
 			{
 				if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 				{
-					if (Vcb->vde->pdode->KMCSFS.dict[dindex].delete_pending)
+					if (Vcb->vde->pdode->KMCSFS.dict[dindex].flags & delete_pending)
 					{
 						Status = STATUS_ACCESS_DENIED;
 						goto exit;
@@ -606,7 +606,7 @@ open:
 				{
 					if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 					{
-						if (Vcb->vde->pdode->KMCSFS.dict[dindex].delete_pending)
+						if (Vcb->vde->pdode->KMCSFS.dict[dindex].flags & delete_pending)
 						{
 							Status = STATUS_ACCESS_DENIED;
 							goto exit;
@@ -629,6 +629,17 @@ open:
 				}
 				chwinattrs(index, IrpSp->Parameters.Create.FileAttributes | FILE_ATTRIBUTE_ARCHIVE, Vcb->vde->pdode->KMCSFS);
 				dealloc(&Vcb->vde->pdode->KMCSFS, index, get_file_size(index, Vcb->vde->pdode->KMCSFS), 0);
+				if (Irp->Overlay.AllocationSize.QuadPart && dindex)
+				{
+					if (find_block(&Vcb->vde->pdode->KMCSFS, index, Irp->Overlay.AllocationSize.QuadPart, FileObject))
+					{
+						Vcb->vde->pdode->KMCSFS.dict[dindex].flags |= trun_on_close;
+					}
+					else
+					{
+						Status = STATUS_DISK_FULL;
+					}
+				}
 
 				FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&fn, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE, FILE_ACTION_MODIFIED, NULL);
 			}
@@ -892,6 +903,19 @@ loaded:
 					free_fcb(fcb);
 					reap_fcb(fcb);
 					ExFreePool(security);
+					if (NT_SUCCESS(Status) && Irp->Overlay.AllocationSize.QuadPart)
+					{
+						index = get_filename_index(fn, &Vcb->vde->pdode->KMCSFS);
+						dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
+						if (find_block(&Vcb->vde->pdode->KMCSFS, index, Irp->Overlay.AllocationSize.QuadPart, FileObject))
+						{
+							Vcb->vde->pdode->KMCSFS.dict[dindex].flags |= trun_on_close;
+						}
+						else
+						{
+							Status = STATUS_DISK_FULL;
+						}
+					}
 				}
 delsecfile:
 				if (NT_SUCCESS(Status))

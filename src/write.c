@@ -52,6 +52,12 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 
 	unsigned long long index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long size = get_file_size(index, Vcb->vde->pdode->KMCSFS);
+	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+
+	if (dindex)
+	{
+		Vcb->vde->pdode->KMCSFS.dict[dindex].flags &= ~trun_on_close;
+	}
 
 	if (offset.LowPart == FILE_WRITE_TO_END_OF_FILE && offset.HighPart == -1)
 	{
