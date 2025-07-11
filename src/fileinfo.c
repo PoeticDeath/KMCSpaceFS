@@ -600,6 +600,8 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 						{
 							rename_file(&Vcb->vde->pdode->KMCSFS, SFilename, SNewFilename, FileObject);
 						}
+						offset += j;
+						offset -= filenamelen;
 					}
 				}
 				filenamelen = 0;
