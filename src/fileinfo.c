@@ -957,12 +957,23 @@ static NTSTATUS fill_in_file_name_information(FILE_NAME_INFORMATION* fni, fcb* f
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS fill_in_file_attribute_information(FILE_ATTRIBUTE_TAG_INFORMATION* ati, fcb* fcb, ccb* ccb, LONG* length, unsigned long long index)
+static NTSTATUS fill_in_file_attribute_information(FILE_ATTRIBUTE_TAG_INFORMATION* ati, fcb* fcb, ccb* ccb, LONG* length, unsigned long long index, PFILE_OBJECT FileObject)
 {
 	*length -= sizeof(FILE_ATTRIBUTE_TAG_INFORMATION);
 
 	ati->FileAttributes = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 	ati->ReparseTag = 0;
+	if (ati->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+	{
+		uint8_t reparsepoint[4] = { 0 };
+		unsigned long long bytes_read = 0;
+		read_file(fcb, reparsepoint, 0, 4, index, &bytes_read, FileObject);
+		if (bytes_read != 4)
+		{
+			ERR("read_file failed\n");
+		}
+		ati->ReparseTag = reparsepoint[0] + (reparsepoint[1] << 8) + (reparsepoint[2] << 16) + (reparsepoint[3] << 24);
+	}
 
 	return STATUS_SUCCESS;
 }
@@ -1008,7 +1019,7 @@ static NTSTATUS fill_in_file_id_information(FILE_ID_INFORMATION* fii, fcb* fcb, 
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS fill_in_file_stat_information(FILE_STAT_INFORMATION* fsi, fcb* fcb, ccb* ccb, LONG* length, unsigned long long index)
+static NTSTATUS fill_in_file_stat_information(FILE_STAT_INFORMATION* fsi, fcb* fcb, ccb* ccb, LONG* length, unsigned long long index, PFILE_OBJECT FileObject)
 {
 	RtlZeroMemory(fsi, sizeof(FILE_STAT_INFORMATION));
 
@@ -1023,6 +1034,17 @@ static NTSTATUS fill_in_file_stat_information(FILE_STAT_INFORMATION* fsi, fcb* f
 	fsi->AllocationSize.QuadPart = sector_align(fsi->EndOfFile.QuadPart, fcb->Vcb->vde->pdode->KMCSFS.sectorsize);
 	fsi->FileAttributes = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 	fsi->ReparseTag = 0;
+	if (fsi->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+	{
+		uint8_t reparsepoint[4] = { 0 };
+		unsigned long long bytes_read = 0;
+		read_file(fcb, reparsepoint, 0, 4, index, &bytes_read, FileObject);
+		if (bytes_read != 4)
+		{
+			ERR("read_file failed\n");
+		}
+		fsi->ReparseTag = reparsepoint[0] + (reparsepoint[1] << 8) + (reparsepoint[2] << 16) + (reparsepoint[3] << 24);
+	}
 	fsi->NumberOfLinks = 1;
 	fsi->EffectiveAccess = ccb->access;
 
@@ -1134,7 +1156,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 		}
 
 		ExAcquireResourceSharedLite(&Vcb->tree_lock, true);
-		Status = fill_in_file_attribute_information(ati, fcb, ccb, &length, index);
+		Status = fill_in_file_attribute_information(ati, fcb, ccb, &length, index, FileObject);
 		ExReleaseResourceLite(&Vcb->tree_lock);
 
 		break;
@@ -1296,7 +1318,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 
 		TRACE("FileStatInformation\n");
 
-		Status = fill_in_file_stat_information(fsi, fcb, ccb, &length, index);
+		Status = fill_in_file_stat_information(fsi, fcb, ccb, &length, index, FileObject);
 
 		break;
 	}

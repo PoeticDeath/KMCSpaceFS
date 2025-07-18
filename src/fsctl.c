@@ -164,6 +164,153 @@ static NTSTATUS get_reparse_point(PFILE_OBJECT FileObject, void* buffer, DWORD b
 	}
 }
 
+static NTSTATUS set_reparse_point(PIRP Irp)
+{
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PFILE_OBJECT FileObject = IrpSp->FileObject;
+    REPARSE_DATA_BUFFER* rdb = Irp->AssociatedIrp.SystemBuffer;
+    DWORD buflen = IrpSp->Parameters.DeviceIoControl.InputBufferLength;
+    NTSTATUS Status = STATUS_SUCCESS;
+    fcb* fcb;
+    ccb* ccb;
+
+    TRACE("(%p)\n", Irp);
+
+    if (!FileObject)
+    {
+        ERR("FileObject was NULL\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    // IFSTest insists on this, for some reason...
+    if (Irp->UserBuffer)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    fcb = FileObject->FsContext;
+    ccb = FileObject->FsContext2;
+
+    if (!ccb)
+    {
+        ERR("ccb was NULL\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (Irp->RequestorMode == UserMode && !(ccb->access & (FILE_WRITE_ATTRIBUTES | FILE_WRITE_DATA)))
+    {
+        WARN("insufficient privileges\n");
+        return STATUS_ACCESS_DENIED;
+    }
+
+    ExAcquireResourceSharedLite(&fcb->Vcb->tree_lock, true);
+    ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
+
+    if (buflen < sizeof(ULONG))
+    {
+        WARN("buffer was not long enough to hold tag\n");
+        Status = STATUS_INVALID_BUFFER_SIZE;
+		goto end;
+    }
+
+    Status = FsRtlValidateReparsePointBuffer(buflen, rdb);
+    if (!NT_SUCCESS(Status))
+    {
+        ERR("FsRtlValidateReparsePointBuffer returned %08lx\n", Status);
+		goto end;
+    }
+
+	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
+	chwinattrs(index, winattrs | FILE_ATTRIBUTE_REPARSE_POINT, fcb->Vcb->vde->pdode->KMCSFS);
+
+    if (find_block(&fcb->Vcb->vde->pdode->KMCSFS, index, buflen, FileObject))
+    {
+        Status = write_file(fcb, (uint8_t*)rdb, 0, buflen, index, buflen, FileObject);
+    }
+    else
+    {
+        Status = STATUS_DISK_FULL;
+		chwinattrs(index, winattrs, fcb->Vcb->vde->pdode->KMCSFS);
+    }
+end:
+    ExReleaseResourceLite(fcb->Header.Resource);
+    ExReleaseResourceLite(&fcb->Vcb->tree_lock);
+
+    return Status;
+}
+
+static NTSTATUS delete_reparse_point(PIRP Irp)
+{
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PFILE_OBJECT FileObject = IrpSp->FileObject;
+    REPARSE_DATA_BUFFER* rdb = Irp->AssociatedIrp.SystemBuffer;
+    DWORD buflen = IrpSp->Parameters.DeviceIoControl.InputBufferLength;
+    NTSTATUS Status;
+    fcb* fcb;
+    ccb* ccb;
+
+    TRACE("(%p)\n", Irp);
+
+    if (!FileObject)
+    {
+        ERR("FileObject was NULL\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    fcb = FileObject->FsContext;
+
+    if (!fcb)
+    {
+        ERR("fcb was NULL\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    ccb = FileObject->FsContext2;
+
+    if (!ccb)
+    {
+        ERR("ccb was NULL\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (Irp->RequestorMode == UserMode && !(ccb->access & FILE_WRITE_ATTRIBUTES))
+    {
+        WARN("insufficient privileges\n");
+        return STATUS_ACCESS_DENIED;
+    }
+
+    ExAcquireResourceSharedLite(&fcb->Vcb->tree_lock, true);
+    ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
+
+    if (buflen < offsetof(REPARSE_DATA_BUFFER, GenericReparseBuffer.DataBuffer))
+    {
+        ERR("buffer was too short\n");
+        Status = STATUS_INVALID_PARAMETER;
+        goto end;
+    }
+
+    if (rdb->ReparseDataLength > 0)
+    {
+        WARN("rdb->ReparseDataLength was not zero\n");
+        Status = STATUS_INVALID_PARAMETER;
+        goto end;
+    }
+
+	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
+    
+	dealloc(&fcb->Vcb->vde->pdode->KMCSFS, index, get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS), 0);
+	winattrs &= ~FILE_ATTRIBUTE_REPARSE_POINT;
+    chwinattrs(index, winattrs, fcb->Vcb->vde->pdode->KMCSFS);
+	Status = STATUS_SUCCESS;
+end:
+    ExReleaseResourceLite(fcb->Header.Resource);
+    ExReleaseResourceLite(&fcb->Vcb->tree_lock);
+
+    return Status;
+}
+
 static void update_volumes(device_extension* Vcb)
 {
 	LIST_ENTRY* le;
@@ -376,7 +523,7 @@ NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type)
 
     case FSCTL_SET_REPARSE_POINT:
         WARN("STUB: FSCTL_SET_REPARSE_POINT\n");
-        Status = STATUS_INVALID_DEVICE_REQUEST;
+        Status = set_reparse_point(Irp);
         break;
 
     case FSCTL_GET_REPARSE_POINT:
@@ -386,7 +533,7 @@ NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type)
 
     case FSCTL_DELETE_REPARSE_POINT:
         WARN("STUB: FSCTL_DELETE_REPARSE_POINT\n");
-        Status = STATUS_INVALID_DEVICE_REQUEST;
+        Status = delete_reparse_point(Irp);
         break;
 
     case FSCTL_ENUM_USN_DATA:
