@@ -6,11 +6,6 @@
 
 extern PDEVICE_OBJECT devobj;
 
-static const WCHAR datastring[] = L"::$DATA";
-
-static const char root_dir[] = "$Root";
-static const WCHAR root_dir_utf16[] = L"$Root";
-
 #ifndef _MSC_VER
 typedef struct _FILE_TIMESTAMPS
 {
@@ -465,6 +460,52 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 		fn.Length = max(lastslash, 1) * sizeof(WCHAR);
 	}
 
+	bool creatednostream = false;
+	UNICODE_STRING nostream_fn;
+	nostream_fn.Buffer = fn.Buffer;
+	nostream_fn.Length = 0;
+	for (unsigned long i = 0; i < fn.Length / sizeof(WCHAR); i++)
+	{
+		if (fn.Buffer[i] == *L":")
+		{
+			nostream_fn.Length = i * sizeof(WCHAR);
+			break;
+		}
+	}
+
+	if (nostream_fn.Length)
+	{
+		if (options & FILE_DIRECTORY_FILE)
+		{
+			ERR("stream tried to be a directory\n");
+			Status = STATUS_NOT_A_DIRECTORY;
+			goto exit;
+		}
+		if (fn.Length == nostream_fn.Length + sizeof(WCHAR))
+		{
+			ERR("no stream name in file name with stream\n");
+			Status = STATUS_OBJECT_NAME_INVALID;
+			goto exit;
+		}
+		for (unsigned long i = nostream_fn.Length / sizeof(WCHAR) + 1; i < fn.Length / sizeof(WCHAR); i++)
+		{
+			if (fn.Buffer[i] == *L":")
+			{
+				if (fn.Length / sizeof(WCHAR) - i == 6)
+				{
+					if (fn.Buffer[i + 1] == *L"$" && fn.Buffer[i + 2] == *L"D" && fn.Buffer[i + 3] == *L"A" && fn.Buffer[i + 4] == *L"T" && fn.Buffer[i + 5] == *L"A")
+					{
+						fn.Length = nostream_fn.Length;
+						break;
+					}
+				}
+				ERR("stream name in stream name\n");
+				Status = STATUS_OBJECT_NAME_INVALID;
+				goto exit;
+			}
+		}
+	}
+
 open:
 	if (RequestedDisposition == FILE_OPEN || RequestedDisposition == FILE_OPEN_IF || RequestedDisposition == FILE_CREATE)
 	{
@@ -511,11 +552,23 @@ open:
 				else
 				{
 					UNICODE_STRING securityfn;
-					securityfn.Length = fn.Length - sizeof(WCHAR);
+					if (nostream_fn.Length)
+					{
+						securityfn.Length = nostream_fn.Length - sizeof(WCHAR);
+					}
+					else
+					{
+						securityfn.Length = fn.Length - sizeof(WCHAR);
+					}
 					securityfn.Buffer = fn.Buffer + 1;
 					unsigned long long securityindex = get_filename_index(securityfn, &Vcb->vde->pdode->KMCSFS);
 					delete_file(&Vcb->vde->pdode->KMCSFS, securityfn, securityindex, FileObject);
 					delete_file(&Vcb->vde->pdode->KMCSFS, fn, index, FileObject);
+					if (creatednostream)
+					{
+						unsigned long long nostream_index = get_filename_index(nostream_fn, &Vcb->vde->pdode->KMCSFS);
+						delete_file(&Vcb->vde->pdode->KMCSFS, nostream_fn, nostream_index, FileObject);
+					}
 				}
 			}
 			if (!NT_SUCCESS(Status))
@@ -785,12 +838,42 @@ loaded:
 		{
 			IrpSp->Parameters.Create.FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
 		}
-		Status = create_file(Irp, Vcb, FileObject, fn);
+		if (nostream_fn.Length)
+		{
+			index = get_filename_index(nostream_fn, &Vcb->vde->pdode->KMCSFS);
+			if (!index)
+			{
+				Status = create_file(Irp, Vcb, FileObject, nostream_fn);
+				if (NT_SUCCESS(Status))
+				{
+					creatednostream = true;
+				}
+			}
+			else
+			{
+				Status = STATUS_SUCCESS;
+			}
+		}
+		else
+		{
+			Status = STATUS_SUCCESS;
+		}
 		if (NT_SUCCESS(Status))
+		{
+			Status = create_file(Irp, Vcb, FileObject, fn);
+		}
+		if (NT_SUCCESS(Status) && (creatednostream || !nostream_fn.Length))
 		{
 			IrpSp->Parameters.Create.FileAttributes = 0;
 			UNICODE_STRING securityfn;
-			securityfn.Length = fn.Length - sizeof(WCHAR);
+			if (nostream_fn.Length)
+			{
+				securityfn.Length = nostream_fn.Length - sizeof(WCHAR);
+			}
+			else
+			{
+				securityfn.Length = fn.Length - sizeof(WCHAR);
+			}
 			securityfn.Buffer = fn.Buffer + 1;
 			Status = create_file(Irp, Vcb, FileObject, securityfn);
 			if (NT_SUCCESS(Status))
@@ -936,14 +1019,22 @@ delsecfile:
 			{
 				index = get_filename_index(fn, &Vcb->vde->pdode->KMCSFS);
 				delete_file(&Vcb->vde->pdode->KMCSFS, fn, index, FileObject);
-				goto exit;
 			}
 		}
-	}
+		if (!NT_SUCCESS(Status) && creatednostream)
+		{
+			index = get_filename_index(nostream_fn, &Vcb->vde->pdode->KMCSFS);
+			delete_file(&Vcb->vde->pdode->KMCSFS, nostream_fn, index, FileObject);
+		}
+		else
+		{
+			Irp->IoStatus.Information = FILE_CREATED;
+			created = true;
 
-	if (NT_SUCCESS(Status) && !(options & FILE_NO_INTERMEDIATE_BUFFERING))
-	{
-		FileObject->Flags |= FO_CACHE_SUPPORTED;
+			FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&fn, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_ADDED, NULL);
+
+			goto open;
+		}
 	}
 
 exit:
@@ -957,6 +1048,11 @@ exit:
 		if (!FileObject->Vpb)
 		{
 			FileObject->Vpb = DeviceObject->Vpb;
+		}
+
+		if (!(options & FILE_NO_INTERMEDIATE_BUFFERING))
+		{
+			FileObject->Flags |= FO_CACHE_SUPPORTED;
 		}
 
 		fcb2 = FileObject->FsContext;

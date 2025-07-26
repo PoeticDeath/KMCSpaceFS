@@ -360,12 +360,75 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 					TRACE("deleting file\n");
 					if (delete_file(&Vcb->vde->pdode->KMCSFS, ccb->filename, index, FileObject))
 					{
-						UNICODE_STRING securityfile;
-						securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
-						securityfile.Buffer = ccb->filename.Buffer + 1;
-						if (!delete_file(&Vcb->vde->pdode->KMCSFS, securityfile, get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS), FileObject))
+						bool stream = false;
+						for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
 						{
-							WARN("failed to delete security file\n");
+							if (ccb->filename.Buffer[i] == *L":")
+							{
+								stream = true;
+								break;
+							}
+						}
+						if (!stream)
+						{
+							UNICODE_STRING securityfile;
+							securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
+							securityfile.Buffer = ccb->filename.Buffer + 1;
+							if (!delete_file(&Vcb->vde->pdode->KMCSFS, securityfile, get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS), FileObject))
+							{
+								WARN("failed to delete security file\n");
+							}
+							WCHAR* filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+							if (!filename)
+							{
+								ERR("out of memory\n");
+							}
+							else
+							{
+								unsigned long long filenamelen = 0;
+								UNICODE_STRING Filename;
+								Filename.Buffer = filename;
+								for (unsigned long long offset = 0; offset < Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1; offset++)
+								{
+									if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 255 || (Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 42) // 255 = file, 42 = fuse symlink
+									{
+										if (ccb->filename.Length / sizeof(WCHAR) < filenamelen)
+										{
+											bool isin = true;
+											unsigned long long i = 0;
+											for (; i < ccb->filename.Length / sizeof(WCHAR); i++)
+											{
+												if (!incmp(ccb->filename.Buffer[i] & 0xff, filename[i] & 0xff) && !(ccb->filename.Buffer[i] == *L"/" && filename[i] == *L"\\") && !(ccb->filename.Buffer[i] == *L"\\" && filename[i] == *L"/"))
+												{
+													isin = false;
+													break;
+												}
+											}
+											if (!(filename[i] == *L":") && (ccb->filename.Length > 2))
+											{
+												isin = false;
+											}
+											i++;
+											if (isin)
+											{
+												Filename.Length = filenamelen * sizeof(WCHAR);
+												if (!delete_file(&Vcb->vde->pdode->KMCSFS, Filename, get_filename_index(Filename, &Vcb->vde->pdode->KMCSFS), FileObject))
+												{
+													WARN("failed to delete file %.*S\n", (int)Filename.Length / sizeof(WCHAR), Filename.Buffer);
+												}
+												offset -= filenamelen + 1;
+											}
+										}
+										filenamelen = 0;
+									}
+									else
+									{
+										filename[filenamelen] = Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff;
+										filenamelen++;
+									}
+								}
+								ExFreePool(filename);
+							}
 						}
 
 						unsigned long lastslash = 0;

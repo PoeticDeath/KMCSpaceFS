@@ -3367,8 +3367,27 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	buflen = IrpSp->Parameters.QuerySecurity.Length;
 
+	UNICODE_STRING nostream_fn;
+	nostream_fn.Buffer = ccb->filename.Buffer;
+	nostream_fn.Length = 0;
+	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+	{
+		if (ccb->filename.Buffer[i] == *L":")
+		{
+			nostream_fn.Length = i * sizeof(WCHAR);
+			break;
+		}
+	}
+
 	UNICODE_STRING securityfile;
-	securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
+	if (nostream_fn.Length)
+	{
+		securityfile.Length = nostream_fn.Length - sizeof(WCHAR);
+	}
+	else
+	{
+		securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
+	}
 	securityfile.Buffer = ccb->filename.Buffer + 1;
 	unsigned long long index = get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
@@ -4125,8 +4144,27 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 
 	ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
 
+	UNICODE_STRING nostream_fn;
+	nostream_fn.Buffer = ccb->filename.Buffer;
+	nostream_fn.Length = 0;
+	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+	{
+		if (ccb->filename.Buffer[i] == *L":")
+		{
+			nostream_fn.Length = i * sizeof(WCHAR);
+			break;
+		}
+	}
+
 	UNICODE_STRING securityfile;
-	securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
+	if (nostream_fn.Length)
+	{
+		securityfile.Length = nostream_fn.Length - sizeof(WCHAR);
+	}
+	else
+	{
+		securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
+	}
 	securityfile.Buffer = ccb->filename.Buffer + 1;
 	unsigned long long index = get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
@@ -4372,8 +4410,27 @@ NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, 
 	NTSTATUS Status = STATUS_SUCCESS;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
+	UNICODE_STRING nostream_fn;
+	nostream_fn.Buffer = FileName->Buffer;
+	nostream_fn.Length = 0;
+	for (unsigned long i = 0; i < FileName->Length / sizeof(WCHAR); i++)
+	{
+		if (FileName->Buffer[i] == *L":")
+		{
+			nostream_fn.Length = i * sizeof(WCHAR);
+			break;
+		}
+	}
+
 	UNICODE_STRING securityfile;
-	securityfile.Length = FileName->Length - sizeof(WCHAR);
+	if (nostream_fn.Length)
+	{
+		securityfile.Length = nostream_fn.Length - sizeof(WCHAR);
+	}
+	else
+	{
+		securityfile.Length = FileName->Length - sizeof(WCHAR);
+	}
 	securityfile.Buffer = FileName->Buffer + 1;
 	unsigned long long index = get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
