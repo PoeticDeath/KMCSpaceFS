@@ -312,9 +312,16 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 					{
 						fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount--;
 					}
-					if (!fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount && fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & trun_on_close)
+					if (!fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 					{
-						dealloc(&fcb->Vcb->vde->pdode->KMCSFS, index, get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS), 0);
+						if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & trun_on_close)
+						{
+							dealloc(&fcb->Vcb->vde->pdode->KMCSFS, index, get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS), 0);
+						}
+						if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & delete_pending)
+						{
+							ccb->delete_on_close = true;
+						}
 						fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags &= ~(trun_on_close | delete_pending);
 					}
 				}
@@ -412,11 +419,19 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 											if (isin)
 											{
 												Filename.Length = filenamelen * sizeof(WCHAR);
-												if (!delete_file(&Vcb->vde->pdode->KMCSFS, Filename, get_filename_index(Filename, &Vcb->vde->pdode->KMCSFS), FileObject))
+												unsigned long long tdindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, Filename.Buffer, Filename.Length / sizeof(WCHAR));
+												if (Vcb->vde->pdode->KMCSFS.dict[tdindex].opencount)
 												{
-													WARN("failed to delete file %.*S\n", (int)Filename.Length / sizeof(WCHAR), Filename.Buffer);
+													Vcb->vde->pdode->KMCSFS.dict[tdindex].flags |= delete_pending;
 												}
-												offset -= filenamelen + 1;
+												else
+												{
+													if (!delete_file(&Vcb->vde->pdode->KMCSFS, Filename, get_filename_index(Filename, &Vcb->vde->pdode->KMCSFS), FileObject))
+													{
+														WARN("failed to delete file %.*S\n", (int)Filename.Length / sizeof(WCHAR), Filename.Buffer);
+													}
+													offset -= filenamelen + 1;
+												}
 											}
 										}
 										filenamelen = 0;

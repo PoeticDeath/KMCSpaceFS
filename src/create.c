@@ -693,6 +693,80 @@ open:
 						Status = STATUS_DISK_FULL;
 					}
 				}
+				if (NT_SUCCESS(Status))
+				{
+					bool stream = false;
+					for (unsigned long i = 0; i < fn.Length / sizeof(WCHAR); i++)
+					{
+						if (fn.Buffer[i] == *L":")
+						{
+							stream = true;
+							break;
+						}
+					}
+					if (!stream)
+					{
+						WCHAR* filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+						if (!filename)
+						{
+							ERR("out of memory\n");
+						}
+						else
+						{
+							unsigned long long filenamelen = 0;
+							UNICODE_STRING Filename;
+							Filename.Buffer = filename;
+							for (unsigned long long offset = 0; offset < Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1; offset++)
+							{
+								if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 255 || (Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 42) // 255 = file, 42 = fuse symlink
+								{
+									if (fn.Length / sizeof(WCHAR) < filenamelen)
+									{
+										bool isin = true;
+										unsigned long long i = 0;
+										for (; i < fn.Length / sizeof(WCHAR); i++)
+										{
+											if (!incmp(fn.Buffer[i] & 0xff, filename[i] & 0xff) && !(fn.Buffer[i] == *L"/" && filename[i] == *L"\\") && !(fn.Buffer[i] == *L"\\" && filename[i] == *L"/"))
+											{
+												isin = false;
+												break;
+											}
+										}
+										if (!(filename[i] == *L":") && (fn.Length > 2))
+										{
+											isin = false;
+										}
+										i++;
+										if (isin)
+										{
+											Filename.Length = filenamelen * sizeof(WCHAR);
+											unsigned long long tdindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, Filename.Buffer, Filename.Length / sizeof(WCHAR));
+											if (Vcb->vde->pdode->KMCSFS.dict[tdindex].opencount)
+											{
+												Vcb->vde->pdode->KMCSFS.dict[tdindex].flags |= delete_pending;
+											}
+											else
+											{
+												if (!delete_file(&Vcb->vde->pdode->KMCSFS, Filename, get_filename_index(Filename, &Vcb->vde->pdode->KMCSFS), FileObject))
+												{
+													WARN("failed to delete file %.*S\n", (int)Filename.Length / sizeof(WCHAR), Filename.Buffer);
+												}
+												offset -= filenamelen + 1;
+											}
+										}
+									}
+									filenamelen = 0;
+								}
+								else
+								{
+									filename[filenamelen] = Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff;
+									filenamelen++;
+								}
+							}
+							ExFreePool(filename);
+						}
+					}
+				}
 
 				FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&fn, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE, FILE_ACTION_MODIFIED, NULL);
 			}

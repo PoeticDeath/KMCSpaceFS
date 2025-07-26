@@ -567,7 +567,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 							break;
 						}
 					}
-					if (!(filename[i] == *L"/") && !(filename[i] == *L"\\") && (ccb->filename.Length > 2))
+					if (!(filename[i] == *L":") && !(filename[i] == *L"/") && !(filename[i] == *L"\\") && (ccb->filename.Length > 2))
 					{
 						isin = false;
 					}
@@ -580,7 +580,14 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 						{
 							newfilename[j] = tfo->FileName.Buffer[j];
 						}
-						newfilename[j] = 92;
+						if (filename[i - 1] == *L":")
+						{
+							newfilename[j] = 58;
+						}
+						else
+						{
+							newfilename[j] = 92;
+						}
 						j++;
 						for (; i < filenamelen; i++)
 						{

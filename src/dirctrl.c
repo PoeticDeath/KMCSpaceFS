@@ -289,6 +289,14 @@ NTSTATUS query_directory(PIRP Irp)
 								}
 							}
 						}
+						for (unsigned long long j = 0; j < filenamelen; j++)
+						{
+							if (filename[j] == *L":")
+							{
+								isin = false;
+								break;
+							}
+						}
 						if (isin)
 						{
 							break;
