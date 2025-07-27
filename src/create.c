@@ -496,6 +496,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 					if (fn.Buffer[i + 1] == *L"$" && fn.Buffer[i + 2] == *L"D" && fn.Buffer[i + 3] == *L"A" && fn.Buffer[i + 4] == *L"T" && fn.Buffer[i + 5] == *L"A")
 					{
 						fn.Length = nostream_fn.Length;
+						nostream_fn.Length = 0;
 						break;
 					}
 				}
