@@ -388,17 +388,33 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 			UNICODE_STRING fn2;
 			if (FileObject->RelatedFileObject && FileObject->RelatedFileObject->FileName.Length > 2)
 			{
-				fn2.Length = FileObject->RelatedFileObject->FileName.Length + FileObject->FileName.Length + sizeof(WCHAR);
-				fn2.Buffer = ExAllocatePoolWithTag(pool_type, fn2.Length, ALLOC_TAG);
-				if (!fn2.Buffer)
+				if (FileObject->FileName.Buffer[0] == *L":")
 				{
-					ERR("out of memory\n");
-					Status = STATUS_INSUFFICIENT_RESOURCES;
-					goto exit;
+					fn2.Length = FileObject->RelatedFileObject->FileName.Length + FileObject->FileName.Length;
+					fn2.Buffer = ExAllocatePoolWithTag(pool_type, fn2.Length, ALLOC_TAG);
+					if (!fn2.Buffer)
+					{
+						ERR("out of memory\n");
+						Status = STATUS_INSUFFICIENT_RESOURCES;
+						goto exit;
+					}
+					RtlCopyMemory(fn2.Buffer, FileObject->RelatedFileObject->FileName.Buffer, FileObject->RelatedFileObject->FileName.Length);
+					RtlCopyMemory(fn2.Buffer + FileObject->RelatedFileObject->FileName.Length / sizeof(WCHAR), FileObject->FileName.Buffer, FileObject->FileName.Length);
 				}
-				RtlCopyMemory(fn2.Buffer, FileObject->RelatedFileObject->FileName.Buffer, FileObject->RelatedFileObject->FileName.Length);
-				fn2.Buffer[FileObject->RelatedFileObject->FileName.Length / sizeof(WCHAR)] = *L"\\";
-				RtlCopyMemory(fn2.Buffer + FileObject->RelatedFileObject->FileName.Length / sizeof(WCHAR) + 1, FileObject->FileName.Buffer, FileObject->FileName.Length);
+				else
+				{
+					fn2.Length = FileObject->RelatedFileObject->FileName.Length + FileObject->FileName.Length + sizeof(WCHAR);
+					fn2.Buffer = ExAllocatePoolWithTag(pool_type, fn2.Length, ALLOC_TAG);
+					if (!fn2.Buffer)
+					{
+						ERR("out of memory\n");
+						Status = STATUS_INSUFFICIENT_RESOURCES;
+						goto exit;
+					}
+					RtlCopyMemory(fn2.Buffer, FileObject->RelatedFileObject->FileName.Buffer, FileObject->RelatedFileObject->FileName.Length);
+					fn2.Buffer[FileObject->RelatedFileObject->FileName.Length / sizeof(WCHAR)] = *L"\\";
+					RtlCopyMemory(fn2.Buffer + FileObject->RelatedFileObject->FileName.Length / sizeof(WCHAR) + 1, FileObject->FileName.Buffer, FileObject->FileName.Length);
+				}
 			}
 			else
 			{
