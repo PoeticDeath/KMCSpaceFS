@@ -1157,7 +1157,14 @@ delsecfile:
 					Irp->IoStatus.Information = FILE_CREATED;
 					created = true;
 
-					FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&fn, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_ADDED, NULL);
+					if (nostream_fn.Length)
+					{
+						FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&fn, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_STREAM_NAME, FILE_ACTION_ADDED_STREAM, NULL);
+					}
+					else
+					{
+						FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&fn, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_ADDED, NULL);
+					}
 
 					goto open;
 				}
@@ -1182,7 +1189,14 @@ delsecfile:
 			Irp->IoStatus.Information = FILE_CREATED;
 			created = true;
 
-			FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&fn, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_ADDED, NULL);
+			if (nostream_fn.Length)
+			{
+				FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&fn, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_STREAM_NAME, FILE_ACTION_ADDED_STREAM, NULL);
+			}
+			else
+			{
+				FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&fn, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_ADDED, NULL);
+			}
 
 			goto open;
 		}
