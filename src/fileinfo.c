@@ -170,6 +170,23 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 
 	unsigned long long index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
 
+	UNICODE_STRING nostream_fn;
+	nostream_fn.Buffer = ccb->filename.Buffer;
+	nostream_fn.Length = 0;
+	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+	{
+		if (ccb->filename.Buffer[i] == *L":")
+		{
+			nostream_fn.Length = i * sizeof(WCHAR);
+			break;
+		}
+	}
+	unsigned long long nostream_index = get_filename_index(nostream_fn, &fcb->Vcb->vde->pdode->KMCSFS);
+	if (!nostream_index)
+	{
+		nostream_index = index;
+	}
+
 	// times of -2 are some sort of undocumented behaviour to do with LXSS
 
 	if (fbi->CreationTime.QuadPart == -2)
@@ -196,26 +213,26 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 
 	if (fbi->CreationTime.QuadPart != 0)
 	{
-		chtime(index, fbi->CreationTime.QuadPart, 5, Vcb->vde->pdode->KMCSFS);
+		chtime(nostream_index, fbi->CreationTime.QuadPart, 5, Vcb->vde->pdode->KMCSFS);
 		NotifyFilter |= FILE_NOTIFY_CHANGE_CREATION;
 	}
 
 	if (fbi->LastAccessTime.QuadPart != 0)
 	{
-		chtime(index, fbi->LastAccessTime.QuadPart, 1, Vcb->vde->pdode->KMCSFS);
+		chtime(nostream_index, fbi->LastAccessTime.QuadPart, 1, Vcb->vde->pdode->KMCSFS);
 		NotifyFilter |= FILE_NOTIFY_CHANGE_LAST_ACCESS;
 	}
 
 	if (fbi->LastWriteTime.QuadPart != 0)
 	{
-		chtime(index, fbi->LastWriteTime.QuadPart, 3, Vcb->vde->pdode->KMCSFS);
+		chtime(nostream_index, fbi->LastWriteTime.QuadPart, 3, Vcb->vde->pdode->KMCSFS);
 		NotifyFilter |= FILE_NOTIFY_CHANGE_LAST_WRITE;
 	}
 
 	// FileAttributes == 0 means don't set - undocumented, but seen in fastfat
 	if (fbi->FileAttributes != 0)
 	{
-		unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
+		unsigned long winattrs = chwinattrs(nostream_index, 0, Vcb->vde->pdode->KMCSFS);
 		if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
 		{
 			fbi->FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
@@ -224,7 +241,7 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 		{
 			fbi->FileAttributes |= FILE_ATTRIBUTE_REPARSE_POINT;
 		}
-		chwinattrs(index, fbi->FileAttributes, Vcb->vde->pdode->KMCSFS);
+		chwinattrs(nostream_index, fbi->FileAttributes, Vcb->vde->pdode->KMCSFS);
 		NotifyFilter |= FILE_NOTIFY_CHANGE_ATTRIBUTES;
 	}
 
@@ -897,17 +914,17 @@ end:
 	return Status;
 }
 
-static NTSTATUS fill_in_file_basic_information(FILE_BASIC_INFORMATION* fbi, LONG* length, fcb* fcb, unsigned long long index)
+static NTSTATUS fill_in_file_basic_information(FILE_BASIC_INFORMATION* fbi, LONG* length, fcb* fcb, unsigned long long nostream_index)
 {
 	RtlZeroMemory(fbi, sizeof(FILE_BASIC_INFORMATION));
 
 	*length -= sizeof(FILE_BASIC_INFORMATION);
 
-	fbi->CreationTime.QuadPart = chtime(index, 0, 4, fcb->Vcb->vde->pdode->KMCSFS) + 2;
-	fbi->LastAccessTime.QuadPart = chtime(index, 0, 0, fcb->Vcb->vde->pdode->KMCSFS) + 2;
-	fbi->LastWriteTime.QuadPart = chtime(index, 0, 2, fcb->Vcb->vde->pdode->KMCSFS) + 2;
+	fbi->CreationTime.QuadPart = chtime(nostream_index, 0, 4, fcb->Vcb->vde->pdode->KMCSFS);
+	fbi->LastAccessTime.QuadPart = chtime(nostream_index, 0, 0, fcb->Vcb->vde->pdode->KMCSFS);
+	fbi->LastWriteTime.QuadPart = chtime(nostream_index, 0, 2, fcb->Vcb->vde->pdode->KMCSFS);
 	fbi->ChangeTime.QuadPart = fbi->LastWriteTime.QuadPart;
-	fbi->FileAttributes = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
+	fbi->FileAttributes = chwinattrs(nostream_index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 
 	return STATUS_SUCCESS;
 }
@@ -927,11 +944,11 @@ static NTSTATUS fill_in_file_standard_information(FILE_STANDARD_INFORMATION* fsi
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS fill_in_file_internal_information(FILE_INTERNAL_INFORMATION* fii, fcb* fcb, LONG* length, unsigned long long index)
+static NTSTATUS fill_in_file_internal_information(FILE_INTERNAL_INFORMATION* fii, fcb* fcb, LONG* length, unsigned long long nostream_index)
 {
 	*length -= sizeof(FILE_INTERNAL_INFORMATION);
 
-	fii->IndexNumber.QuadPart = index;
+	fii->IndexNumber.QuadPart = nostream_index;
 
 	return STATUS_SUCCESS;
 }
@@ -964,11 +981,11 @@ static NTSTATUS fill_in_file_name_information(FILE_NAME_INFORMATION* fni, fcb* f
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS fill_in_file_attribute_information(FILE_ATTRIBUTE_TAG_INFORMATION* ati, fcb* fcb, ccb* ccb, LONG* length, unsigned long long index, PFILE_OBJECT FileObject)
+static NTSTATUS fill_in_file_attribute_information(FILE_ATTRIBUTE_TAG_INFORMATION* ati, fcb* fcb, ccb* ccb, LONG* length, unsigned long long index, unsigned long long nostream_index, PFILE_OBJECT FileObject)
 {
 	*length -= sizeof(FILE_ATTRIBUTE_TAG_INFORMATION);
 
-	ati->FileAttributes = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
+	ati->FileAttributes = chwinattrs(nostream_index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 	ati->ReparseTag = 0;
 	if (ati->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
 	{
@@ -985,7 +1002,7 @@ static NTSTATUS fill_in_file_attribute_information(FILE_ATTRIBUTE_TAG_INFORMATIO
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS fill_in_file_network_open_information(FILE_NETWORK_OPEN_INFORMATION* fnoi, fcb* fcb, LONG* length, unsigned long long index)
+static NTSTATUS fill_in_file_network_open_information(FILE_NETWORK_OPEN_INFORMATION* fnoi, fcb* fcb, LONG* length, unsigned long long index, unsigned long long nostream_index)
 {
 	if (*length < sizeof(FILE_NETWORK_OPEN_INFORMATION))
 	{
@@ -997,13 +1014,13 @@ static NTSTATUS fill_in_file_network_open_information(FILE_NETWORK_OPEN_INFORMAT
 
 	*length -= sizeof(FILE_NETWORK_OPEN_INFORMATION);
 
-	fnoi->CreationTime.QuadPart = chtime(index, 0, 4, fcb->Vcb->vde->pdode->KMCSFS);
-	fnoi->LastAccessTime.QuadPart = chtime(index, 0, 0, fcb->Vcb->vde->pdode->KMCSFS);
-	fnoi->LastWriteTime.QuadPart = chtime(index, 0, 2, fcb->Vcb->vde->pdode->KMCSFS);
+	fnoi->CreationTime.QuadPart = chtime(nostream_index, 0, 4, fcb->Vcb->vde->pdode->KMCSFS);
+	fnoi->LastAccessTime.QuadPart = chtime(nostream_index, 0, 0, fcb->Vcb->vde->pdode->KMCSFS);
+	fnoi->LastWriteTime.QuadPart = chtime(nostream_index, 0, 2, fcb->Vcb->vde->pdode->KMCSFS);
 	fnoi->ChangeTime.QuadPart = fnoi->LastWriteTime.QuadPart;
 	fnoi->EndOfFile.QuadPart = get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS);
 	fnoi->AllocationSize.QuadPart = sector_align(fnoi->EndOfFile.QuadPart, fcb->Vcb->vde->pdode->KMCSFS.sectorsize);
-	fnoi->FileAttributes = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
+	fnoi->FileAttributes = chwinattrs(nostream_index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 
 	return STATUS_SUCCESS;
 }
@@ -1026,20 +1043,20 @@ static NTSTATUS fill_in_file_id_information(FILE_ID_INFORMATION* fii, fcb* fcb, 
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS fill_in_file_stat_information(FILE_STAT_INFORMATION* fsi, fcb* fcb, ccb* ccb, LONG* length, unsigned long long index, PFILE_OBJECT FileObject)
+static NTSTATUS fill_in_file_stat_information(FILE_STAT_INFORMATION* fsi, fcb* fcb, ccb* ccb, LONG* length, unsigned long long index, unsigned long long nostream_index, PFILE_OBJECT FileObject)
 {
 	RtlZeroMemory(fsi, sizeof(FILE_STAT_INFORMATION));
 
 	*length -= sizeof(FILE_STAT_INFORMATION);
 
 	fsi->FileId.QuadPart = index;
-	fsi->CreationTime.QuadPart = chtime(index, 0, 4, fcb->Vcb->vde->pdode->KMCSFS);
-	fsi->LastAccessTime.QuadPart = chtime(index, 0, 0, fcb->Vcb->vde->pdode->KMCSFS);
-	fsi->LastWriteTime.QuadPart = chtime(index, 0, 2, fcb->Vcb->vde->pdode->KMCSFS);
+	fsi->CreationTime.QuadPart = chtime(nostream_index, 0, 4, fcb->Vcb->vde->pdode->KMCSFS);
+	fsi->LastAccessTime.QuadPart = chtime(nostream_index, 0, 0, fcb->Vcb->vde->pdode->KMCSFS);
+	fsi->LastWriteTime.QuadPart = chtime(nostream_index, 0, 2, fcb->Vcb->vde->pdode->KMCSFS);
 	fsi->ChangeTime.QuadPart = fsi->LastWriteTime.QuadPart;
 	fsi->EndOfFile.QuadPart = get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS);
 	fsi->AllocationSize.QuadPart = sector_align(fsi->EndOfFile.QuadPart, fcb->Vcb->vde->pdode->KMCSFS.sectorsize);
-	fsi->FileAttributes = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
+	fsi->FileAttributes = chwinattrs(nostream_index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 	fsi->ReparseTag = 0;
 	if (fsi->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
 	{
@@ -1096,6 +1113,23 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 		return STATUS_INVALID_PARAMETER;
 	}
 
+	UNICODE_STRING nostream_fn;
+	nostream_fn.Buffer = ccb->filename.Buffer;
+	nostream_fn.Length = 0;
+	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+	{
+		if (ccb->filename.Buffer[i] == *L":")
+		{
+			nostream_fn.Length = i * sizeof(WCHAR);
+			break;
+		}
+	}
+	unsigned long long nostream_index = get_filename_index(nostream_fn, &fcb->Vcb->vde->pdode->KMCSFS);
+	if (!nostream_index)
+	{
+		nostream_index = index;
+	}
+
 	switch (IrpSp->Parameters.QueryFile.FileInformationClass)
 	{
 	case FileAllInformation:
@@ -1115,7 +1149,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 
 		if (length > 0)
 		{
-			fill_in_file_basic_information(&fai->BasicInformation, &length, fcb, index);
+			fill_in_file_basic_information(&fai->BasicInformation, &length, fcb, nostream_index);
 		}
 
 		if (length > 0)
@@ -1125,7 +1159,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 
 		if (length > 0)
 		{
-			fill_in_file_internal_information(&fai->InternalInformation, fcb, &length, index);
+			fill_in_file_internal_information(&fai->InternalInformation, fcb, &length, nostream_index);
 		}
 
 		length -= sizeof(FILE_ACCESS_INFORMATION);
@@ -1163,7 +1197,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 		}
 
 		ExAcquireResourceSharedLite(&Vcb->tree_lock, true);
-		Status = fill_in_file_attribute_information(ati, fcb, ccb, &length, index, FileObject);
+		Status = fill_in_file_attribute_information(ati, fcb, ccb, &length, index, nostream_index, FileObject);
 		ExReleaseResourceLite(&Vcb->tree_lock);
 
 		break;
@@ -1189,7 +1223,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 			goto exit;
 		}
 
-		Status = fill_in_file_basic_information(fbi, &length, fcb, index);
+		Status = fill_in_file_basic_information(fbi, &length, fcb, nostream_index);
 		break;
 	}
 
@@ -1199,7 +1233,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 
 		TRACE("FileInternalInformation\n");
 
-		Status = fill_in_file_internal_information(fii, fcb, &length, index);
+		Status = fill_in_file_internal_information(fii, fcb, &length, nostream_index);
 
 		break;
 	}
@@ -1228,7 +1262,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 			goto exit;
 		}
 
-		Status = fill_in_file_network_open_information(fnoi, fcb, &length, index);
+		Status = fill_in_file_network_open_information(fnoi, fcb, &length, index, nostream_index);
 
 		break;
 	}
@@ -1325,7 +1359,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 
 		TRACE("FileStatInformation\n");
 
-		Status = fill_in_file_stat_information(fsi, fcb, ccb, &length, index, FileObject);
+		Status = fill_in_file_stat_information(fsi, fcb, ccb, &length, index, nostream_index, FileObject);
 
 		break;
 	}

@@ -218,11 +218,24 @@ unsigned long long chtime(unsigned long long filenameindex, unsigned long long t
 		}
 		double t;
 		RtlCopyMemory(&t, ti, 8);
-		return t * 10000000 + 116444736000000000;
+		unsigned long long rtime = t * 10000000 + 116444736000000000;
+		if (rtime > 116444736000000000)
+		{
+			rtime += 2;
+		}
+		else if (rtime == 279172874304)
+		{
+			rtime++;
+		}
+		else if (rtime == 287762808896)
+		{
+			rtime += 3;
+		}
+		return rtime;
 	}
 	else
 	{
-		double t = (time - 116444736000000000) / 10000000.0;
+		double t = (long long)(time - 116444736000000000) / 10000000.0;
 		char ti[8] = {0};
 		RtlCopyMemory(ti, &t, 8);
 		char tim[8] = {0};
