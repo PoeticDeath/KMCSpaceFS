@@ -4,6 +4,7 @@
 
 #define delete_pending 1
 #define trun_on_close 2
+#define stream_delete 4
 
 typedef struct _Dict
 {
@@ -15,6 +16,7 @@ typedef struct _Dict
 	SHARE_ACCESS shareaccess;
 	FILE_LOCK lock;
 	unsigned long long flags;
+	unsigned long long streamdeletecount;
 } Dict;
 
 Dict* CreateDict(unsigned long long size);

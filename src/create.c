@@ -610,6 +610,36 @@ open:
 			dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
 			if (dindex)
 			{
+				unsigned long long nostreamdindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, nostream_fn.Buffer, nostream_fn.Length / sizeof(WCHAR));
+				if (dindex != nostreamdindex && nostreamdindex)
+				{
+					if (Vcb->vde->pdode->KMCSFS.dict[nostreamdindex].opencount)
+					{
+						if (Vcb->vde->pdode->KMCSFS.dict[nostreamdindex].flags & delete_pending)
+						{
+							Status = STATUS_ACCESS_DENIED;
+							goto exit;
+						}
+						if (Vcb->vde->pdode->KMCSFS.dict[nostreamdindex].shareaccess.Deleters)
+						{
+							if (!(IrpSp->Parameters.Create.ShareAccess & FILE_SHARE_DELETE) && granted_access & (FILE_EXECUTE | FILE_READ_DATA | FILE_WRITE_DATA | FILE_APPEND_DATA | DELETE))
+							{
+								Status = STATUS_SHARING_VIOLATION;
+								goto exit;
+							}
+						}
+					}
+					if (!(IrpSp->Parameters.Create.ShareAccess & FILE_SHARE_DELETE) && granted_access & DELETE)
+					{
+						Vcb->vde->pdode->KMCSFS.dict[dindex].flags |= stream_delete;
+						Vcb->vde->pdode->KMCSFS.dict[nostreamdindex].streamdeletecount++;
+					}
+				}
+				else if (Vcb->vde->pdode->KMCSFS.dict[dindex].streamdeletecount && granted_access & DELETE)
+				{
+					Status = STATUS_SHARING_VIOLATION;
+					goto exit;
+				}
 				if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 				{
 					if (Vcb->vde->pdode->KMCSFS.dict[dindex].flags & delete_pending)
@@ -674,6 +704,36 @@ open:
 				dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
 				if (dindex)
 				{
+					unsigned long long nostreamdindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, nostream_fn.Buffer, nostream_fn.Length / sizeof(WCHAR));
+					if (dindex != nostreamdindex && nostreamdindex)
+					{
+						if (Vcb->vde->pdode->KMCSFS.dict[nostreamdindex].opencount)
+						{
+							if (Vcb->vde->pdode->KMCSFS.dict[nostreamdindex].flags & delete_pending)
+							{
+								Status = STATUS_ACCESS_DENIED;
+								goto exit;
+							}
+							if (Vcb->vde->pdode->KMCSFS.dict[nostreamdindex].shareaccess.Deleters)
+							{
+								if (!(IrpSp->Parameters.Create.ShareAccess & FILE_SHARE_DELETE) && granted_access & (FILE_EXECUTE | FILE_READ_DATA | FILE_WRITE_DATA | FILE_APPEND_DATA | DELETE))
+								{
+									Status = STATUS_SHARING_VIOLATION;
+									goto exit;
+								}
+							}
+						}
+						if (!(IrpSp->Parameters.Create.ShareAccess & FILE_SHARE_DELETE) && granted_access & DELETE)
+						{
+							Vcb->vde->pdode->KMCSFS.dict[dindex].flags |= stream_delete;
+							Vcb->vde->pdode->KMCSFS.dict[nostreamdindex].streamdeletecount++;
+						}
+					}
+					else if (Vcb->vde->pdode->KMCSFS.dict[dindex].streamdeletecount && granted_access & DELETE)
+					{
+						Status = STATUS_SHARING_VIOLATION;
+						goto exit;
+					}
 					if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 					{
 						if (Vcb->vde->pdode->KMCSFS.dict[dindex].flags & delete_pending)

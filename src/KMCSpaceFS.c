@@ -314,6 +314,22 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 					}
 					if (!fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 					{
+						if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & stream_delete)
+						{
+							UNICODE_STRING nostream_fn;
+							nostream_fn.Buffer = ccb->filename.Buffer;
+							nostream_fn.Length = 0;
+							for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+							{
+								if (ccb->filename.Buffer[i] == *L":")
+								{
+									nostream_fn.Length = i * sizeof(WCHAR);
+									break;
+								}
+							}
+							unsigned long long nostreamdindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, nostream_fn.Buffer, nostream_fn.Length / sizeof(WCHAR));
+							Vcb->vde->pdode->KMCSFS.dict[nostreamdindex].streamdeletecount--;
+						}
 						if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & trun_on_close)
 						{
 							dealloc(&fcb->Vcb->vde->pdode->KMCSFS, index, get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS), 0);
@@ -322,7 +338,7 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 						{
 							ccb->delete_on_close = true;
 						}
-						fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags &= ~(trun_on_close | delete_pending);
+						fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags &= ~(stream_delete | trun_on_close | delete_pending);
 					}
 				}
 			}
