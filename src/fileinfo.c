@@ -929,16 +929,18 @@ static NTSTATUS fill_in_file_basic_information(FILE_BASIC_INFORMATION* fbi, LONG
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS fill_in_file_standard_information(FILE_STANDARD_INFORMATION* fsi, fcb* fcb, LONG* length, unsigned long long index)
+static NTSTATUS fill_in_file_standard_information(FILE_STANDARD_INFORMATION* fsi, fcb* fcb, ccb* ccb, LONG* length, unsigned long long index)
 {
 	RtlZeroMemory(fsi, sizeof(FILE_STANDARD_INFORMATION));
 
 	*length -= sizeof(FILE_STANDARD_INFORMATION);
 
+	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+
 	fsi->EndOfFile.QuadPart = get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS);
 	fsi->AllocationSize.QuadPart = sector_align(fsi->EndOfFile.QuadPart, fcb->Vcb->vde->pdode->KMCSFS.sectorsize);
 	fsi->NumberOfLinks = 1;
-	fsi->DeletePending = false;
+	fsi->DeletePending = fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & delete_pending;
 	fsi->Directory = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_DIRECTORY;
 
 	return STATUS_SUCCESS;
@@ -1154,7 +1156,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 
 		if (length > 0)
 		{
-			fill_in_file_standard_information(&fai->StandardInformation, fcb, &length, index);
+			fill_in_file_standard_information(&fai->StandardInformation, fcb, ccb, &length, index);
 		}
 
 		if (length > 0)
@@ -1291,7 +1293,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 			goto exit;
 		}
 
-		Status = fill_in_file_standard_information(fsi, fcb, &length, index);
+		Status = fill_in_file_standard_information(fsi, fcb, ccb, &length, index);
 
 		break;
 	}

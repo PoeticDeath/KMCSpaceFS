@@ -3448,6 +3448,8 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL]           = SystemControl;
 	DriverObject->MajorFunction[IRP_MJ_PNP]                      = Pnp;
 
+	init_fast_io_dispatch(&DriverObject->FastIoDispatch);
+
 	device_nameW.Buffer = (WCHAR*)device_name;
 	device_nameW.Length = device_nameW.MaximumLength = sizeof(device_name) - sizeof(WCHAR);
 	dosdevice_nameW.Buffer = (WCHAR*)dosdevice_name;

@@ -414,6 +414,9 @@ NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 NTSTATUS dismount_volume(device_extension* Vcb, bool shutdown, PIRP Irp);
 NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type);
 
+// in fastio.c
+void init_fast_io_dispatch(FAST_IO_DISPATCH** fiod);
+
 // not in DDK headers - taken from winternl.h
 typedef struct _LDR_DATA_TABLE_ENTRY
 {
