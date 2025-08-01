@@ -429,6 +429,8 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	FILE_RENAME_INFORMATION_EX* fri = Irp->AssociatedIrp.SystemBuffer;
 	fcb* fcb = FileObject->FsContext;
 	ccb* ccb = FileObject->FsContext2;
+	bool freenfilename = false;
+	UNICODE_STRING NFileName;
 	NTSTATUS Status;
 	ULONG flags;
 	
@@ -447,18 +449,44 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 
 	if (!tfo)
 	{
-		return STATUS_INVALID_PARAMETER;
+		freenfilename = true;
+		unsigned long lastslash = 0;
+		for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+		{
+			if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+			{
+				lastslash = i;
+			}
+			if (i - lastslash > MAX_PATH - 5)
+			{
+				ERR("file name too long\n");
+			}
+		}
+		NFileName.Length = (lastslash + 1) * sizeof(WCHAR) + fri->FileNameLength;
+		NFileName.Buffer = ExAllocatePoolWithTag(NonPagedPoolNx, NFileName.Length, ALLOC_TAG);
+		if (!NFileName.Buffer)
+		{
+			ERR("out of memory\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+		RtlCopyMemory(NFileName.Buffer, FileObject->FileName.Buffer, (lastslash + 1) * sizeof(WCHAR));
+		RtlCopyMemory(NFileName.Buffer + lastslash + 1, fri->FileName, fri->FileNameLength);
+	}
+	else
+	{
+		NFileName = tfo->FileName;
 	}
 
-	TRACE("New FileName = %.*S\n", (int)(tfo->FileName.Length / sizeof(WCHAR)), tfo->FileName.Buffer);
+	TRACE("New FileName = %.*S\n", (int)(NFileName.Length / sizeof(WCHAR)), NFileName.Buffer);
 	TRACE("Old FileName = %.*S\n", (int)(FileObject->FileName.Length / sizeof(WCHAR)), FileObject->FileName.Buffer);
 
-	if (FileObject->FileName.Length == tfo->FileName.Length)
+	if (FileObject->FileName.Length == NFileName.Length)
 	{
 		bool same = true;
 		for (unsigned long long i = 0; i < FileObject->FileName.Length; i++)
 		{
-			if (!incmp(FileObject->FileName.Buffer[i], tfo->FileName.Buffer[i]))
+			if (!incmp(FileObject->FileName.Buffer[i], NFileName.Buffer[i]))
 			{
 				same = false;
 				break;
@@ -467,38 +495,42 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 		if (same)
 		{
 			TRACE("file names are the same, not renaming\n");
-			return STATUS_SUCCESS;
+			Status = STATUS_SUCCESS;
+			goto exit;
 		}
 	}
 
-	unsigned long long tfo_index = get_filename_index(tfo->FileName, &Vcb->vde->pdode->KMCSFS);
+	unsigned long long tfo_index = get_filename_index(NFileName, &Vcb->vde->pdode->KMCSFS);
 	if (tfo_index)
 	{
 		unsigned long winattrs = chwinattrs(tfo_index, 0, Vcb->vde->pdode->KMCSFS);
 		if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
 		{
-			return STATUS_ACCESS_DENIED;
+			Status = STATUS_ACCESS_DENIED;
+			goto exit;
 		}
 		if (!(flags & FILE_RENAME_REPLACE_IF_EXISTS))
 		{
-			return STATUS_OBJECT_NAME_COLLISION;
+			Status = STATUS_OBJECT_NAME_COLLISION;
+			goto exit;
 		}
-		unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, tfo->FileName.Buffer, tfo->FileName.Length / sizeof(WCHAR));
+		unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, NFileName.Buffer, NFileName.Length / sizeof(WCHAR));
 		if (dindex)
 		{
 			if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 			{
-				return STATUS_ACCESS_DENIED;
+				Status = STATUS_ACCESS_DENIED;
+				goto exit;
 			}
 		}
-		delete_file(&Vcb->vde->pdode->KMCSFS, tfo->FileName, tfo_index, tfo);
+		delete_file(&Vcb->vde->pdode->KMCSFS, NFileName, tfo_index, FileObject);
 		UNICODE_STRING stfo;
-		stfo.Buffer = tfo->FileName.Buffer + 1;
-		stfo.Length = tfo->FileName.Length - sizeof(WCHAR);
+		stfo.Buffer = NFileName.Buffer + 1;
+		stfo.Length = NFileName.Length - sizeof(WCHAR);
 		unsigned long long stfo_index = get_filename_index(stfo, &Vcb->vde->pdode->KMCSFS);
 		if (stfo_index)
 		{
-			delete_file(&Vcb->vde->pdode->KMCSFS, stfo, stfo_index, tfo);
+			delete_file(&Vcb->vde->pdode->KMCSFS, stfo, stfo_index, FileObject);
 		}
 	}
 
@@ -509,14 +541,16 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 		if (!filename)
 		{
 			ERR("out of memory\n");
-			return STATUS_INSUFFICIENT_RESOURCES;
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
 		}
 		WCHAR* newfilename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
 		if (!newfilename)
 		{
 			ERR("out of memory\n");
 			ExFreePool(filename);
-			return STATUS_INSUFFICIENT_RESOURCES;
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
 		}
 		unsigned long long filenamelen = 0;
 		UNICODE_STRING Filename;
@@ -552,7 +586,8 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 							{
 								ExFreePool(filename);
 								ExFreePool(newfilename);
-								return STATUS_ACCESS_DENIED;
+								Status = STATUS_ACCESS_DENIED;
+								goto exit;
 							}
 						}
 					}
@@ -593,9 +628,9 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 					{
 						Filename.Length = filenamelen * sizeof(WCHAR);
 						unsigned long long j = 0;
-						for (; j < tfo->FileName.Length / sizeof(WCHAR); j++)
+						for (; j < NFileName.Length / sizeof(WCHAR); j++)
 						{
-							newfilename[j] = tfo->FileName.Buffer[j];
+							newfilename[j] = NFileName.Buffer[j];
 						}
 						if (filename[i - 1] == *L":")
 						{
@@ -654,15 +689,15 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	}
 	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_OLD_NAME, NULL);
 
-	Status = rename_file(&Vcb->vde->pdode->KMCSFS, FileObject->FileName, tfo->FileName, FileObject);
+	Status = rename_file(&Vcb->vde->pdode->KMCSFS, FileObject->FileName, NFileName, FileObject);
 
 	UNICODE_STRING sfn;
 	sfn.Buffer = FileObject->FileName.Buffer + 1;
 	sfn.Length = FileObject->FileName.Length - sizeof(WCHAR);
 
 	UNICODE_STRING nsfn;
-	nsfn.Buffer = tfo->FileName.Buffer + 1;
-	nsfn.Length = tfo->FileName.Length - sizeof(WCHAR);
+	nsfn.Buffer = NFileName.Buffer + 1;
+	nsfn.Length = NFileName.Length - sizeof(WCHAR);
 
 	if (NT_SUCCESS(Status))
 	{
@@ -670,9 +705,9 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	}
 
 	lastslash = 0;
-	for (unsigned long i = 0; i < tfo->FileName.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < NFileName.Length / sizeof(WCHAR); i++)
 	{
-		if (tfo->FileName.Buffer[i] == *L"/" || tfo->FileName.Buffer[i] == *L"\\")
+		if (NFileName.Buffer[i] == *L"/" || NFileName.Buffer[i] == *L"\\")
 		{
 			lastslash = i;
 		}
@@ -681,8 +716,13 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 			ERR("file name too long\n");
 		}
 	}
-	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&tfo->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_NEW_NAME, NULL);
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&NFileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_NEW_NAME, NULL);
 
+exit:
+	if (NFileName.Buffer && freenfilename)
+	{
+		ExFreePool(NFileName.Buffer);
+	}
 	return Status;
 }
 
