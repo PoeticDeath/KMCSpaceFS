@@ -52,6 +52,9 @@ startover:
 			ndict[j].opencount = dict[i].opencount;
 			ndict[j].shareaccess = dict[i].shareaccess;
 			ndict[j].lock = dict[i].lock;
+			ndict[j].flags = dict[i].flags;
+			ndict[j].streamdeletecount = dict[i].streamdeletecount;
+			ndict[j].fcb = dict[i].fcb;
 		}
 	}
 	return ndict;

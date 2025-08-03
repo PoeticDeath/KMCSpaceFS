@@ -311,6 +311,7 @@ void init_device(_In_ device_extension* Vcb, _Inout_ device* dev, _In_ bool get_
 NTSTATUS get_device_pnp_name(_In_ PDEVICE_OBJECT DeviceObject, _Out_ PUNICODE_STRING pnp_name, _Out_ const GUID** guid);
 void uninit(_In_ device_extension* Vcb);
 extern ERESOURCE op_lock;
+bool is_windows_7;
 
 _Function_class_(DRIVER_ADD_DEVICE)
 NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject);

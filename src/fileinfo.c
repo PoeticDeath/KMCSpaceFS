@@ -341,12 +341,9 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 
 	if (!MmFlushImageSection(&fcb->nonpaged->segment_object, MmFlushForDelete))
 	{
-		if (!ex || flags & FILE_DISPOSITION_FORCE_IMAGE_SECTION_CHECK)
-		{
-			TRACE("trying to delete file which is being mapped as an image\n");
-			Status = STATUS_CANNOT_DELETE;
-			goto end;
-		}
+		TRACE("trying to delete file which is being mapped as an image\n");
+		Status = STATUS_CANNOT_DELETE;
+		goto end;
 	}
 
 	FileObject->DeletePending = flags & FILE_DISPOSITION_DELETE;
@@ -519,6 +516,15 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 		{
 			if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 			{
+				Status = STATUS_ACCESS_DENIED;
+				goto exit;
+			}
+		}
+		if (tfo)
+		{
+			if (!MmFlushImageSection(&((struct _fcb*)tfo->FsContext)->nonpaged->segment_object, MmFlushForDelete))
+			{
+				TRACE("trying to delete file which is being mapped as an image\n");
 				Status = STATUS_ACCESS_DENIED;
 				goto exit;
 			}

@@ -923,7 +923,16 @@ loaded:
 
 	if (NT_SUCCESS(Status))
 	{
-		FileObject->FsContext = create_fcb(Vcb, pool_type);
+		if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
+		{
+			FileObject->FsContext = Vcb->vde->pdode->KMCSFS.dict[dindex].fcb;
+			Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->refcount++;
+		}
+		else
+		{
+			FileObject->FsContext = create_fcb(Vcb, pool_type);
+			Vcb->vde->pdode->KMCSFS.dict[dindex].fcb = (fcb*)FileObject->FsContext;
+		}
 		if (!FileObject->FsContext)
 		{
 			ERR("create_fcb returned NULL\n");

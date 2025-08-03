@@ -17,6 +17,7 @@ typedef struct _Dict
 	FILE_LOCK lock;
 	unsigned long long flags;
 	unsigned long long streamdeletecount;
+	struct _fcb* fcb;
 } Dict;
 
 Dict* CreateDict(unsigned long long size);

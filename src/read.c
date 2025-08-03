@@ -173,6 +173,8 @@ NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	if (!dindex)
 	{
 		ERR("failed to find dict entry\n");
+		Status = STATUS_SUCCESS;
+		goto exit;
 	}
 	else if (!wait && !FsRtlCheckLockForReadAccess(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock, Irp))
 	{
@@ -184,11 +186,34 @@ NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	if (!(Irp->Flags & IRP_PAGING_IO) && FileObject->SectionObjectPointer && FileObject->SectionObjectPointer->DataSectionObject)
 	{
 		IO_STATUS_BLOCK iosb;
+		iosb.Status = STATUS_SUCCESS;
 
-		CcFlushCache(FileObject->SectionObjectPointer, &IrpSp->Parameters.Read.ByteOffset, IrpSp->Parameters.Read.Length, &iosb);
+		/* it is unclear if the Cc* calls below can raise or not; wrap them just in case */
+		try
+		{
+			if (is_windows_7)
+			{
+				/* if we are on Win7+ use CcCoherencyFlushAndPurgeCache */
+				CcCoherencyFlushAndPurgeCache(&fcb->nonpaged->segment_object, &IrpSp->Parameters.Read.ByteOffset, IrpSp->Parameters.Read.Length, &iosb, CC_FLUSH_AND_PURGE_NO_PURGE);
+
+				if (STATUS_CACHE_PAGE_LOCKED == iosb.Status)
+				{
+					iosb.Status = STATUS_SUCCESS;
+				}
+			}
+			else
+			{
+				/* do it the old-fashioned way; non-cached and mmap'ed I/O are non-coherent */
+				CcFlushCache(&fcb->nonpaged->segment_object, &IrpSp->Parameters.Read.ByteOffset, IrpSp->Parameters.Read.Length, &iosb);
+			}
+		}
+		except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			iosb.Status = GetExceptionCode();
+		}
 		if (!NT_SUCCESS(iosb.Status))
 		{
-			ERR("CcFlushCache returned %08lx\n", iosb.Status);
+			TRACE("Cache failed with status %08x\n", iosb.Status);
 			Status = iosb.Status;
 			goto exit;
 		}

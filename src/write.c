@@ -15,13 +15,6 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 		goto exit;
 	}
 
-	if (FileObject->Flags & FO_CLEANUP_COMPLETE)
-	{
-		TRACE("FileObject %p already cleaned up\n", FileObject);
-		Status = STATUS_SUCCESS;
-		goto exit;
-	}
-
 	fcb* fcb = FileObject->FsContext;
 	ccb* ccb = FileObject->FsContext2;
 	unsigned long long length = IrpSp->Parameters.Write.Length;
@@ -189,12 +182,61 @@ NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	if (!dindex)
 	{
 		ERR("failed to find dict entry\n");
+		Status = STATUS_SUCCESS;
+		goto end;
 	}
 	else if (!wait && !FsRtlCheckLockForWriteAccess(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock, Irp))
 	{
 		WARN("failed to acquire write lock\n");
 		Status = STATUS_FILE_LOCK_CONFLICT;
 		goto end;
+	}
+
+	if (!(Irp->Flags & IRP_PAGING_IO) && FileObject->SectionObjectPointer && FileObject->SectionObjectPointer->DataSectionObject)
+	{
+		IO_STATUS_BLOCK iosb;
+		iosb.Status = STATUS_SUCCESS;
+		PLARGE_INTEGER offset = &IrpSp->Parameters.Write.ByteOffset;
+
+		if (FILE_WRITE_TO_END_OF_FILE == offset->LowPart && -1L == offset->HighPart)
+		{
+			offset = 0;
+		}
+
+		/* it is unclear if the Cc* calls below can raise or not; wrap them just in case */
+		try
+		{
+			if (is_windows_7)
+			{
+				/* if we are on Win7+ use CcCoherencyFlushAndPurgeCache */
+				CcCoherencyFlushAndPurgeCache(&fcb->nonpaged->segment_object, offset, IrpSp->Parameters.Write.Length, &iosb, 0);
+
+				if (STATUS_CACHE_PAGE_LOCKED == iosb.Status)
+				{
+					iosb.Status = STATUS_SUCCESS;
+				}
+			}
+			else
+			{
+				/* do it the old-fashioned way; non-cached and mmap'ed I/O are non-coherent */
+				CcFlushCache(&fcb->nonpaged->segment_object, offset, IrpSp->Parameters.Write.Length, &iosb);
+				if (NT_SUCCESS(iosb.Status))
+				{
+					CcPurgeCacheSection(&fcb->nonpaged->segment_object, offset, IrpSp->Parameters.Write.Length, false);
+					iosb.Status = STATUS_SUCCESS;
+				}
+			}
+		}
+		except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			iosb.Status = GetExceptionCode();
+		}
+		if (!NT_SUCCESS(iosb.Status))
+		{
+			TRACE("Cache failed with %08lx\n", iosb.Status);
+			Status = iosb.Status;
+			goto end;
+		}
 	}
 
 	try

@@ -3401,6 +3401,7 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	}
 
 	is_windows_8 = ver.dwMajorVersion > 6 || (ver.dwMajorVersion == 6 && ver.dwMinorVersion >= 2);
+	is_windows_7 = ver.dwMajorVersion == 6 && ver.dwMinorVersion == 1 || is_windows_8;
 
 	registry_path.Length = registry_path.MaximumLength = RegistryPath->Length;
 	registry_path.Buffer = ExAllocatePoolWithTag(PagedPool, registry_path.Length, ALLOC_TAG);
