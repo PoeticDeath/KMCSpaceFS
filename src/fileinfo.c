@@ -426,8 +426,10 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	FILE_RENAME_INFORMATION_EX* fri = Irp->AssociatedIrp.SystemBuffer;
 	fcb* fcb = FileObject->FsContext;
 	ccb* ccb = FileObject->FsContext2;
+	unsigned long long dindex = 0;
 	bool freenfilename = false;
 	UNICODE_STRING NFileName;
+	IO_STATUS_BLOCK iosb;
 	NTSTATUS Status;
 	ULONG flags;
 	
@@ -511,7 +513,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 			Status = STATUS_OBJECT_NAME_COLLISION;
 			goto exit;
 		}
-		unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, NFileName.Buffer, NFileName.Length / sizeof(WCHAR));
+		dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, NFileName.Buffer, NFileName.Length / sizeof(WCHAR));
 		if (dindex)
 		{
 			if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
@@ -585,7 +587,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 					if (isin)
 					{
 						Filename.Length = filenamelen * sizeof(WCHAR);
-						unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, Filename.Buffer, Filename.Length / sizeof(WCHAR));
+						dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, Filename.Buffer, Filename.Length / sizeof(WCHAR));
 						if (dindex)
 						{
 							if (Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
@@ -594,6 +596,10 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 								ExFreePool(newfilename);
 								Status = STATUS_ACCESS_DENIED;
 								goto exit;
+							}
+							if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
+							{
+								CcFlushCache(&Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->nonpaged->segment_object, NULL, 0, &iosb);
 							}
 						}
 					}
@@ -604,6 +610,14 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 			{
 				filename[filenamelen] = Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff;
 				filenamelen++;
+			}
+		}
+		dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, FileObject->FileName.Buffer, FileObject->FileName.Length / sizeof(WCHAR));
+		if (dindex)
+		{
+			if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
+			{
+				CcFlushCache(&Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->nonpaged->segment_object, NULL, 0, &iosb);
 			}
 		}
 		filenamelen = 0;
