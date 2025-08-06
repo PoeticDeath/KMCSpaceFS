@@ -91,6 +91,8 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 	{
 		if ((*dict)[i].hash == hash)
 		{
+			RtlZeroMemory(*dict + i, sizeof(Dict));
+			(*dict)[i].hash = hash;
 			(*dict)[i].filenameloc = filenameloc;
 			(*dict)[i].index = index;
 			return true;
@@ -135,10 +137,10 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 			}
 		}
 	}
-	(*dict)[i].filenameloc = filenameloc;
+	RtlZeroMemory(*dict + i, sizeof(Dict));
 	(*dict)[i].hash = hash;
+	(*dict)[i].filenameloc = filenameloc;
 	(*dict)[i].index = index;
-	(*dict)[i].opencount = 0;
 	FsRtlInitializeFileLock(&(*dict)[i].lock, NULL, NULL);
 	if (*cursize * 3 / 4 > *size)
 	{
