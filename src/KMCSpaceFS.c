@@ -308,6 +308,8 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 				unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
 				if (dindex)
 				{
+					IoRemoveShareAccess(FileObject, &fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess);
+					FsRtlFastUnlockAll(&fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].lock, FileObject, IoGetRequestorProcess(Irp), NULL);
 					if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 					{
 						fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount--;
