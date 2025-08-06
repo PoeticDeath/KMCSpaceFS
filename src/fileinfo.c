@@ -522,15 +522,6 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 				goto exit;
 			}
 		}
-		if (tfo)
-		{
-			if (!MmFlushImageSection(&((struct _fcb*)tfo->FsContext)->nonpaged->segment_object, MmFlushForDelete))
-			{
-				TRACE("trying to delete file which is being mapped as an image\n");
-				Status = STATUS_ACCESS_DENIED;
-				goto exit;
-			}
-		}
 		delete_file(&Vcb->vde->pdode->KMCSFS, NFileName, tfo_index, FileObject);
 		UNICODE_STRING stfo;
 		stfo.Buffer = NFileName.Buffer + 1;

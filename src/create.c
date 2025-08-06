@@ -1214,8 +1214,6 @@ delsecfile:
 exit:
 	if (Status == STATUS_SUCCESS)
 	{
-		fcb* fcb2;
-
 		IrpSp->Parameters.Create.SecurityContext->AccessState->PreviouslyGrantedAccess |= granted_access;
 		IrpSp->Parameters.Create.SecurityContext->AccessState->RemainingDesiredAccess &= ~(granted_access | MAXIMUM_ALLOWED);
 
@@ -1228,8 +1226,6 @@ exit:
 		{
 			FileObject->Flags |= FO_CACHE_SUPPORTED;
 		}
-
-		fcb2 = FileObject->FsContext;
 	}
 	else if (Status != STATUS_REPARSE && Status != STATUS_OBJECT_NAME_NOT_FOUND && Status != STATUS_OBJECT_PATH_NOT_FOUND)
 	{
