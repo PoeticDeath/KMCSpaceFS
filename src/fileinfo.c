@@ -1055,6 +1055,168 @@ static NTSTATUS fill_in_file_attribute_information(FILE_ATTRIBUTE_TAG_INFORMATIO
 	return STATUS_SUCCESS;
 }
 
+static NTSTATUS fill_in_file_stream_information(FILE_STREAM_INFORMATION* fsi, fcb* fcb, ccb* ccb, LONG* length, unsigned long long nostream_index)
+{
+	RtlZeroMemory(fsi, *length);
+
+	LONG reqsize = 0;
+	FILE_STREAM_INFORMATION* entry, *lastentry;
+	NTSTATUS Status;
+
+	UNICODE_STRING nostreamname;
+	nostreamname.Buffer = ccb->filename.Buffer;
+	nostreamname.Length = ccb->filename.Length;
+
+	for (unsigned long i = 0; i < nostreamname.Length / sizeof(WCHAR); i++)
+	{
+		if (nostreamname.Buffer[i] == *L":")
+		{
+			nostreamname.Length = i * sizeof(WCHAR);
+			break;
+		}
+	}
+
+	static const WCHAR datasuf[] = L":$DATA";
+	UNICODE_STRING suf;
+
+	suf.Buffer = (WCHAR*)datasuf;
+	suf.Length = suf.MaximumLength = sizeof(datasuf) - sizeof(WCHAR);
+
+	WCHAR* filename = NULL;
+	unsigned long winattrs = chwinattrs(nostream_index, 0, fcb->Vcb->vde->pdode->KMCSFS);
+
+	ExAcquireResourceSharedLite(&fcb->nonpaged->dir_children_lock, true);
+
+	TRACE("length = %li\n", *length);
+
+	entry = fsi;
+	lastentry = NULL;
+
+	if (!(winattrs & FILE_ATTRIBUTE_DIRECTORY))
+	{
+		ULONG off = (ULONG)sector_align(sizeof(FILE_STREAM_INFORMATION) + suf.Length, sizeof(LONGLONG));
+		reqsize += off;
+		if (*length < reqsize)
+		{
+			WARN("overflow\n");
+			Status = STATUS_BUFFER_OVERFLOW;
+			reqsize -= off;
+			goto end;
+		}
+
+		entry->NextEntryOffset = 0;
+		entry->StreamNameLength = suf.Length + sizeof(WCHAR);
+		entry->StreamSize.QuadPart = get_file_size(nostream_index, fcb->Vcb->vde->pdode->KMCSFS);
+		entry->StreamAllocationSize.QuadPart = sector_align(entry->StreamSize.QuadPart, fcb->Vcb->vde->pdode->KMCSFS.sectorsize);
+
+		entry->StreamName[0] = ':';
+		RtlCopyMemory(&entry->StreamName + 1, suf.Buffer, suf.Length);
+
+		lastentry = entry;
+		entry = (FILE_STREAM_INFORMATION*)((uint8_t*)entry + off);
+	}
+
+	filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+	if (!filename)
+	{
+		ERR("out of memory\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
+	}
+
+	unsigned long long filenamelen = 0;
+	unsigned long long stream_start = 0;
+	unsigned long long tableoffset = 0;
+	unsigned long long index = 0;
+
+	while (tableoffset < fcb->Vcb->vde->pdode->KMCSFS.filenamesend - fcb->Vcb->vde->pdode->KMCSFS.tableend + 1)
+	{
+		filenamelen = 0;
+		for (; tableoffset < fcb->Vcb->vde->pdode->KMCSFS.filenamesend - fcb->Vcb->vde->pdode->KMCSFS.tableend + 1; tableoffset++)
+		{
+			if ((fcb->Vcb->vde->pdode->KMCSFS.table[fcb->Vcb->vde->pdode->KMCSFS.tableend + tableoffset] & 0xff) == 255 || (fcb->Vcb->vde->pdode->KMCSFS.table[fcb->Vcb->vde->pdode->KMCSFS.tableend + tableoffset] & 0xff) == 42) // 255 = file, 42 = fuse symlink
+			{
+				if (nostreamname.Length / sizeof(WCHAR) < filenamelen)
+				{
+					bool isin = true;
+					unsigned long long i = 0;
+					for (; i < nostreamname.Length / sizeof(WCHAR); i++)
+					{
+						if (!incmp(nostreamname.Buffer[i] & 0xff, filename[i] & 0xff) && !(nostreamname.Buffer[i] == *L"/" && filename[i] == *L"\\") && !(nostreamname.Buffer[i] == *L"\\" && filename[i] == *L"/"))
+						{
+							isin = false;
+							break;
+						}
+					}
+					if (!(filename[i] == *L":"))
+					{
+						isin = false;
+					}
+					stream_start = i;
+					i++;
+					if (isin)
+					{
+						break;
+					}
+				}
+				filenamelen = 0;
+				if ((fcb->Vcb->vde->pdode->KMCSFS.table[fcb->Vcb->vde->pdode->KMCSFS.tableend + tableoffset] & 0xff) == 255)
+				{
+					index++;
+				}
+			}
+			else
+			{
+				filename[filenamelen] = fcb->Vcb->vde->pdode->KMCSFS.table[fcb->Vcb->vde->pdode->KMCSFS.tableend + tableoffset] & 0xff;
+				filenamelen++;
+			}
+		}
+
+		if (filenamelen)
+		{
+			ULONG off = (ULONG)sector_align(sizeof(FILE_STREAM_INFORMATION) + (filenamelen - stream_start) * sizeof(WCHAR) + suf.Length, sizeof(LONGLONG));
+			reqsize += off;
+			if (*length < reqsize)
+			{
+				WARN("overflow\n");
+				Status = STATUS_BUFFER_OVERFLOW;
+				reqsize -= off;
+				goto end;
+			}
+
+			entry->NextEntryOffset = 0;
+			entry->StreamNameLength = (filenamelen - stream_start) * sizeof(WCHAR);
+			entry->StreamSize.QuadPart = get_file_size(index - 1, fcb->Vcb->vde->pdode->KMCSFS);
+			entry->StreamAllocationSize.QuadPart = sector_align(entry->StreamSize.QuadPart, fcb->Vcb->vde->pdode->KMCSFS.sectorsize);
+
+			entry->StreamName[0] = ':';
+			RtlCopyMemory(&entry->StreamName + 1, filename + stream_start + 1, entry->StreamNameLength - sizeof(WCHAR));
+			RtlCopyMemory(&entry->StreamName + entry->StreamNameLength / sizeof(WCHAR), suf.Buffer, suf.Length);
+			entry->StreamNameLength += suf.Length;
+
+			if (lastentry)
+			{
+				lastentry->NextEntryOffset = (uint32_t)((uint8_t*)entry - (uint8_t*)lastentry);
+			}
+
+			lastentry = entry;
+			entry = (FILE_STREAM_INFORMATION*)((uint8_t*)entry + off);
+		}
+	}
+
+	Status = STATUS_SUCCESS;
+
+end:
+	ExReleaseResourceLite(&fcb->nonpaged->dir_children_lock);
+	*length -= reqsize;
+	if (filename)
+	{
+		ExFreePool(filename);
+	}
+
+	return Status;
+}
+
 static NTSTATUS fill_in_file_network_open_information(FILE_NETWORK_OPEN_INFORMATION* fnoi, fcb* fcb, LONG* length, unsigned long long index, unsigned long long nostream_index)
 {
 	if (*length < sizeof(FILE_NETWORK_OPEN_INFORMATION))
@@ -1349,16 +1511,16 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 		break;
 	}
 
-	/*case FileStreamInformation:
+	case FileStreamInformation:
 	{
 		FILE_STREAM_INFORMATION* fsi = Irp->AssociatedIrp.SystemBuffer;
 
 		TRACE("FileStreamInformation\n");
 
-		Status = fill_in_file_stream_information(fsi, &length);
+		Status = fill_in_file_stream_information(fsi, fcb, ccb, &length, nostream_index);
 
 		break;
-	}*/
+	}
 
 	case FileNormalizedNameInformation:
 	{
