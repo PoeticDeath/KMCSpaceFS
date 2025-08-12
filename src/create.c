@@ -269,6 +269,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	POOL_TYPE pool_type = IrpSp->Flags & SL_OPEN_PAGING_FILE ? NonPagedPoolNx : PagedPool;
 	ACCESS_MASK granted_access, parent_granted_access;
 	UNICODE_STRING fn;
+	fn.Buffer = NULL;
 	bool created = false;
 	bool has_parent_perm = false;
 	unsigned long long index = 0;
@@ -385,54 +386,50 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 		}
 		if (FileObject->FileName.Buffer[0] != *L"\\")
 		{
-			UNICODE_STRING fn2;
 			if (FileObject->RelatedFileObject && FileObject->RelatedFileObject->FileName.Length > 2)
 			{
 				if (FileObject->FileName.Buffer[0] == *L":")
 				{
-					fn2.Length = FileObject->RelatedFileObject->FileName.Length + FileObject->FileName.Length;
-					fn2.Buffer = ExAllocatePoolWithTag(pool_type, fn2.Length, ALLOC_TAG);
-					if (!fn2.Buffer)
+					fn.Length = FileObject->RelatedFileObject->FileName.Length + FileObject->FileName.Length;
+					fn.Buffer = ExAllocatePoolWithTag(pool_type, fn.Length, ALLOC_TAG);
+					if (!fn.Buffer)
 					{
 						ERR("out of memory\n");
 						Status = STATUS_INSUFFICIENT_RESOURCES;
 						goto exit;
 					}
-					RtlCopyMemory(fn2.Buffer, FileObject->RelatedFileObject->FileName.Buffer, FileObject->RelatedFileObject->FileName.Length);
-					RtlCopyMemory(fn2.Buffer + FileObject->RelatedFileObject->FileName.Length / sizeof(WCHAR), FileObject->FileName.Buffer, FileObject->FileName.Length);
+					RtlCopyMemory(fn.Buffer, FileObject->RelatedFileObject->FileName.Buffer, FileObject->RelatedFileObject->FileName.Length);
+					RtlCopyMemory(fn.Buffer + FileObject->RelatedFileObject->FileName.Length / sizeof(WCHAR), FileObject->FileName.Buffer, FileObject->FileName.Length);
 				}
 				else
 				{
-					fn2.Length = FileObject->RelatedFileObject->FileName.Length + FileObject->FileName.Length + sizeof(WCHAR);
-					fn2.Buffer = ExAllocatePoolWithTag(pool_type, fn2.Length, ALLOC_TAG);
-					if (!fn2.Buffer)
+					fn.Length = FileObject->RelatedFileObject->FileName.Length + FileObject->FileName.Length + sizeof(WCHAR);
+					fn.Buffer = ExAllocatePoolWithTag(pool_type, fn.Length, ALLOC_TAG);
+					if (!fn.Buffer)
 					{
 						ERR("out of memory\n");
 						Status = STATUS_INSUFFICIENT_RESOURCES;
 						goto exit;
 					}
-					RtlCopyMemory(fn2.Buffer, FileObject->RelatedFileObject->FileName.Buffer, FileObject->RelatedFileObject->FileName.Length);
-					fn2.Buffer[FileObject->RelatedFileObject->FileName.Length / sizeof(WCHAR)] = *L"\\";
-					RtlCopyMemory(fn2.Buffer + FileObject->RelatedFileObject->FileName.Length / sizeof(WCHAR) + 1, FileObject->FileName.Buffer, FileObject->FileName.Length);
+					RtlCopyMemory(fn.Buffer, FileObject->RelatedFileObject->FileName.Buffer, FileObject->RelatedFileObject->FileName.Length);
+					fn.Buffer[FileObject->RelatedFileObject->FileName.Length / sizeof(WCHAR)] = *L"\\";
+					RtlCopyMemory(fn.Buffer + FileObject->RelatedFileObject->FileName.Length / sizeof(WCHAR) + 1, FileObject->FileName.Buffer, FileObject->FileName.Length);
 				}
 			}
 			else
 			{
-				fn2.Length = FileObject->FileName.Length + sizeof(WCHAR);
-				fn2.Buffer = ExAllocatePoolWithTag(pool_type, fn2.Length, ALLOC_TAG);
-				if (!fn2.Buffer)
+				fn.Length = FileObject->FileName.Length + sizeof(WCHAR);
+				fn.Buffer = ExAllocatePoolWithTag(pool_type, fn.Length, ALLOC_TAG);
+				if (!fn.Buffer)
 				{
 					ERR("out of memory\n");
 					Status = STATUS_INSUFFICIENT_RESOURCES;
 					goto exit;
 				}
-				fn2.Buffer[0] = *L"\\";
-				RtlCopyMemory(fn2.Buffer + 1, FileObject->FileName.Buffer, FileObject->FileName.Length);
+				fn.Buffer[0] = *L"\\";
+				RtlCopyMemory(fn.Buffer + 1, FileObject->FileName.Buffer, FileObject->FileName.Length);
 			}
-			ExFreePool(FileObject->FileName.Buffer);
-			FileObject->FileName = fn2;
 		}
-		fn = FileObject->FileName;
 	}
 	else
 	{
@@ -445,6 +442,19 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 			goto exit;
 		}
 		fn.Buffer[0] = *L"\\";
+	}
+
+	if (!fn.Buffer)
+	{
+		fn.Length = FileObject->FileName.Length;
+		fn.Buffer = ExAllocatePoolWithTag(pool_type, fn.Length, ALLOC_TAG);
+		if (!fn.Buffer)
+		{
+			ERR("out of memory\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+		RtlCopyMemory(fn.Buffer, FileObject->FileName.Buffer, fn.Length);
 	}
 
 	TRACE("(%.*S)\n", (int)(fn.Length / sizeof(WCHAR)), fn.Buffer);
@@ -1230,6 +1240,10 @@ exit:
 	else if (Status != STATUS_REPARSE && Status != STATUS_OBJECT_NAME_NOT_FOUND && Status != STATUS_OBJECT_PATH_NOT_FOUND)
 	{
 		TRACE("returning %08lx\n", Status);
+	}
+	if (!(NT_SUCCESS(Status) || Status == STATUS_REPARSE) && fn.Buffer)
+	{
+		ExFreePool(fn.Buffer);
 	}
 
 	return Status;

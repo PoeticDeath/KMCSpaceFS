@@ -248,9 +248,9 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 	Status = STATUS_SUCCESS;
 
 	unsigned long lastslash = 0;
-	for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
 	{
-		if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+		if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
 		{
 			lastslash = i;
 		}
@@ -259,7 +259,7 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 			ERR("file name too long\n");
 		}
 	}
-	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
 
 end:
 	ExReleaseResourceLite(fcb->Header.Resource);
@@ -392,9 +392,9 @@ static NTSTATUS set_end_of_file_information(device_extension* Vcb, PIRP Irp, PFI
 	}
 
 	unsigned long lastslash = 0;
-	for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ((ccb*)FileObject->FsContext2)->filename.Length / sizeof(WCHAR); i++)
 	{
-		if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+		if (((ccb*)FileObject->FsContext2)->filename.Buffer[i] == *L"/" || ((ccb*)FileObject->FsContext2)->filename.Buffer[i] == *L"\\")
 		{
 			lastslash = i;
 		}
@@ -403,7 +403,7 @@ static NTSTATUS set_end_of_file_information(device_extension* Vcb, PIRP Irp, PFI
 			ERR("file name too long\n");
 		}
 	}
-	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_SIZE, FILE_ACTION_MODIFIED, NULL);
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&((ccb*)FileObject->FsContext2)->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_SIZE, FILE_ACTION_MODIFIED, NULL);
 
 	return STATUS_SUCCESS;
 }
@@ -450,9 +450,9 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	{
 		freenfilename = true;
 		unsigned long lastslash = 0;
-		for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+		for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
 		{
-			if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+			if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
 			{
 				lastslash = i;
 			}
@@ -469,7 +469,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 			Status = STATUS_INSUFFICIENT_RESOURCES;
 			goto exit;
 		}
-		RtlCopyMemory(NFileName.Buffer, FileObject->FileName.Buffer, (lastslash + 1) * sizeof(WCHAR));
+		RtlCopyMemory(NFileName.Buffer, ccb->filename.Buffer, (lastslash + 1) * sizeof(WCHAR));
 		RtlCopyMemory(NFileName.Buffer + lastslash + 1, fri->FileName, fri->FileNameLength);
 	}
 	else
@@ -478,14 +478,14 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	}
 
 	TRACE("New FileName = %.*S\n", (int)(NFileName.Length / sizeof(WCHAR)), NFileName.Buffer);
-	TRACE("Old FileName = %.*S\n", (int)(FileObject->FileName.Length / sizeof(WCHAR)), FileObject->FileName.Buffer);
+	TRACE("Old FileName = %.*S\n", (int)(ccb->filename.Length / sizeof(WCHAR)), ccb->filename.Buffer);
 
-	if (FileObject->FileName.Length == NFileName.Length)
+	if (ccb->filename.Length == NFileName.Length)
 	{
 		bool same = true;
-		for (unsigned long long i = 0; i < FileObject->FileName.Length; i++)
+		for (unsigned long long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
 		{
-			if (!incmp(FileObject->FileName.Buffer[i], NFileName.Buffer[i]))
+			if (!incmp(ccb->filename.Buffer[i], NFileName.Buffer[i]))
 			{
 				same = false;
 				break;
@@ -603,7 +603,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 				filenamelen++;
 			}
 		}
-		dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, FileObject->FileName.Buffer, FileObject->FileName.Length / sizeof(WCHAR));
+		dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
 		if (dindex)
 		{
 			if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
@@ -687,9 +687,9 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	}
 
 	unsigned long lastslash = 0;
-	for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
 	{
-		if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+		if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
 		{
 			lastslash = i;
 		}
@@ -698,13 +698,13 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 			ERR("file name too long\n");
 		}
 	}
-	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_OLD_NAME, NULL);
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_OLD_NAME, NULL);
 
-	Status = rename_file(&Vcb->vde->pdode->KMCSFS, FileObject->FileName, NFileName, FileObject);
+	Status = rename_file(&Vcb->vde->pdode->KMCSFS, ccb->filename, NFileName, FileObject);
 
 	UNICODE_STRING sfn;
-	sfn.Buffer = FileObject->FileName.Buffer + 1;
-	sfn.Length = FileObject->FileName.Length - sizeof(WCHAR);
+	sfn.Buffer = ccb->filename.Buffer + 1;
+	sfn.Length = ccb->filename.Length - sizeof(WCHAR);
 
 	UNICODE_STRING nsfn;
 	nsfn.Buffer = NFileName.Buffer + 1;

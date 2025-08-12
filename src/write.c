@@ -59,9 +59,9 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 	unsigned long long start = offset.QuadPart;
 
 	unsigned long lastslash = 0;
-	for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
 	{
-		if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+		if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
 		{
 			lastslash = i;
 		}
@@ -100,7 +100,7 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 		LARGE_INTEGER time;
 		KeQuerySystemTime(&time);
 		chtime(index, time.QuadPart, 3, Vcb->vde->pdode->KMCSFS);
-		FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
+		FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
 	}
 	else if (FileObject->Flags & FO_SYNCHRONOUS_IO && !(Irp->Flags & IRP_PAGING_IO))
 	{

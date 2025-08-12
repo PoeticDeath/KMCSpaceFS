@@ -66,9 +66,9 @@ static NTSTATUS do_read(PIRP Irp, bool wait, unsigned long long* bytes_read)
 	if (NT_SUCCESS(Status))
 	{
 		unsigned long lastslash = 0;
-		for (unsigned long i = 0; i < FileObject->FileName.Length / sizeof(WCHAR); i++)
+		for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
 		{
-			if (FileObject->FileName.Buffer[i] == *L"/" || FileObject->FileName.Buffer[i] == *L"\\")
+			if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
 			{
 				lastslash = i;
 			}
@@ -81,7 +81,7 @@ static NTSTATUS do_read(PIRP Irp, bool wait, unsigned long long* bytes_read)
 		LARGE_INTEGER time;
 		KeQuerySystemTime(&time);
 		chtime(index, time.QuadPart, 1, fcb->Vcb->vde->pdode->KMCSFS);
-		FsRtlNotifyFullReportChange(fcb->Vcb->NotifySync, &fcb->Vcb->DirNotifyList, (PSTRING)&FileObject->FileName, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_LAST_ACCESS, FILE_ACTION_MODIFIED, NULL);
+		FsRtlNotifyFullReportChange(fcb->Vcb->NotifySync, &fcb->Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_LAST_ACCESS, FILE_ACTION_MODIFIED, NULL);
 	}
 
 	TRACE("read %lu bytes\n", *bytes_read);

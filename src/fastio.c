@@ -141,6 +141,7 @@ _Function_class_(FAST_IO_CHECK_IF_POSSIBLE)
 static BOOLEAN __stdcall fast_io_check_if_possible(PFILE_OBJECT FileObject, PLARGE_INTEGER FileOffset, ULONG Length, BOOLEAN Wait, ULONG LockKey, BOOLEAN CheckForReadOperation, PIO_STATUS_BLOCK IoStatus, PDEVICE_OBJECT DeviceObject)
 {
     fcb* fcb = FileObject->FsContext;
+	ccb* ccb = FileObject->FsContext2;
     LARGE_INTEGER len2;
 
     UNUSED(Wait);
@@ -149,7 +150,7 @@ static BOOLEAN __stdcall fast_io_check_if_possible(PFILE_OBJECT FileObject, PLAR
 
     len2.QuadPart = Length;
 
-    unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, FileObject->FileName.Buffer, FileObject->FileName.Length / sizeof(WCHAR));
+    unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
 
     if (CheckForReadOperation)
     {
@@ -347,12 +348,13 @@ static BOOLEAN __stdcall fast_io_lock(PFILE_OBJECT FileObject, PLARGE_INTEGER Fi
 {
     BOOLEAN ret;
     fcb* fcb = FileObject->FsContext;
+	ccb* ccb = FileObject->FsContext2;
 
     UNUSED(DeviceObject);
 
     TRACE("(%p, %I64x, %I64x, %p, %lx, %u, %u, %p, %p)\n", FileObject, FileOffset ? FileOffset->QuadPart : 0, Length ? Length->QuadPart : 0, ProcessId, Key, FailImmediately, ExclusiveLock, IoStatus, DeviceObject);
 
-	unsigned long long index = get_filename_index(FileObject->FileName, &fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 	unsigned long long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 
     if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
@@ -366,7 +368,7 @@ static BOOLEAN __stdcall fast_io_lock(PFILE_OBJECT FileObject, PLARGE_INTEGER Fi
     FsRtlEnterFileSystem();
     ExAcquireResourceSharedLite(fcb->Header.Resource, true);
 
-	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, FileObject->FileName.Buffer, FileObject->FileName.Length / sizeof(WCHAR));
+	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
     ret = FsRtlFastLock(&fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].lock, FileObject, FileOffset, Length, ProcessId, Key, FailImmediately, ExclusiveLock, IoStatus, NULL, false);
 
     ExReleaseResourceLite(fcb->Header.Resource);
@@ -379,6 +381,7 @@ _Function_class_(FAST_IO_UNLOCK_SINGLE)
 static BOOLEAN __stdcall fast_io_unlock_single(PFILE_OBJECT FileObject, PLARGE_INTEGER FileOffset, PLARGE_INTEGER Length, PEPROCESS ProcessId, ULONG Key, PIO_STATUS_BLOCK IoStatus, PDEVICE_OBJECT DeviceObject)
 {
     fcb* fcb = FileObject->FsContext;
+	ccb* ccb = FileObject->FsContext2;
 
     UNUSED(DeviceObject);
 
@@ -386,7 +389,7 @@ static BOOLEAN __stdcall fast_io_unlock_single(PFILE_OBJECT FileObject, PLARGE_I
 
     IoStatus->Information = 0;
 
-	unsigned long long index = get_filename_index(FileObject->FileName, &fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 	unsigned long long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 
     if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
@@ -398,7 +401,7 @@ static BOOLEAN __stdcall fast_io_unlock_single(PFILE_OBJECT FileObject, PLARGE_I
 
     FsRtlEnterFileSystem();
 
-	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, FileObject->FileName.Buffer, FileObject->FileName.Length / sizeof(WCHAR));
+	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
     IoStatus->Status = FsRtlFastUnlockSingle(&fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].lock, FileObject, FileOffset, Length, ProcessId, Key, NULL, false);
 
     fcb->Header.IsFastIoPossible = fcb->Vcb->readonly ? FastIoIsNotPossible : FastIoIsPossible;
@@ -412,6 +415,7 @@ _Function_class_(FAST_IO_UNLOCK_ALL)
 static BOOLEAN __stdcall fast_io_unlock_all(PFILE_OBJECT FileObject, PEPROCESS ProcessId, PIO_STATUS_BLOCK IoStatus, PDEVICE_OBJECT DeviceObject)
 {
     fcb* fcb = FileObject->FsContext;
+	ccb* ccb = FileObject->FsContext2;
 
     UNUSED(DeviceObject);
 
@@ -419,7 +423,7 @@ static BOOLEAN __stdcall fast_io_unlock_all(PFILE_OBJECT FileObject, PEPROCESS P
 
     IoStatus->Information = 0;
 
-	unsigned long long index = get_filename_index(FileObject->FileName, &fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 	unsigned long long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 
     if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
@@ -433,7 +437,7 @@ static BOOLEAN __stdcall fast_io_unlock_all(PFILE_OBJECT FileObject, PEPROCESS P
 
     ExAcquireResourceSharedLite(fcb->Header.Resource, true);
 
-	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, FileObject->FileName.Buffer, FileObject->FileName.Length / sizeof(WCHAR));
+	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
     IoStatus->Status = FsRtlFastUnlockAll(&fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].lock, FileObject, ProcessId, NULL);
 
 	fcb->Header.IsFastIoPossible = fcb->Vcb->readonly ? FastIoIsNotPossible : FastIoIsPossible;
@@ -449,6 +453,7 @@ _Function_class_(FAST_IO_UNLOCK_ALL_BY_KEY)
 static BOOLEAN __stdcall fast_io_unlock_all_by_key(PFILE_OBJECT FileObject, PVOID ProcessId, ULONG Key, PIO_STATUS_BLOCK IoStatus, PDEVICE_OBJECT DeviceObject)
 {
     fcb* fcb = FileObject->FsContext;
+	ccb* ccb = FileObject->FsContext2;
 
     UNUSED(DeviceObject);
 
@@ -456,7 +461,7 @@ static BOOLEAN __stdcall fast_io_unlock_all_by_key(PFILE_OBJECT FileObject, PVOI
 
     IoStatus->Information = 0;
 
-	unsigned long long index = get_filename_index(FileObject->FileName, &fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 	unsigned long long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 
     if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
@@ -470,7 +475,7 @@ static BOOLEAN __stdcall fast_io_unlock_all_by_key(PFILE_OBJECT FileObject, PVOI
 
     ExAcquireResourceSharedLite(fcb->Header.Resource, true);
 
-	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, FileObject->FileName.Buffer, FileObject->FileName.Length / sizeof(WCHAR));
+	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
     IoStatus->Status = FsRtlFastUnlockAllByKey(&fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].lock, FileObject, ProcessId, Key, NULL);
 
 	fcb->Header.IsFastIoPossible = fcb->Vcb->readonly ? FastIoIsNotPossible : FastIoIsPossible;

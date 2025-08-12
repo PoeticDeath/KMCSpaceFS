@@ -1115,6 +1115,10 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 
 	if (ccb)
 	{
+		if (ccb->filename.Buffer)
+		{
+			ExFreePool(ccb->filename.Buffer);
+		}
 		ExFreePool(ccb);
 	}
 
