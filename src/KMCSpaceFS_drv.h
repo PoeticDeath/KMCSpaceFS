@@ -48,7 +48,7 @@ extern uint32_t no_pnp;
 #define WARN(s, ...) DbgPrint("KMCSpaceFS WARN : %s : " s, funcname, ##__VA_ARGS__)
 #define ERR(s, ...) DbgPrint("KMCSpaceFS ERR : %s : " s, funcname, ##__VA_ARGS__)
 
-#define ALLOC_TAG 0x7442484D //'MHBt'
+#define ALLOC_TAG 0x70534B41 //'AKSp'
 #define KMCSpaceFS_NODE_TYPE_CCB 0x2295
 #define KMCSpaceFS_NODE_TYPE_FCB 0x2296
 #define UNUSED(x) (void)(x)

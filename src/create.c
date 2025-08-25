@@ -936,7 +936,7 @@ loaded:
 		if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
 		{
 			FileObject->FsContext = Vcb->vde->pdode->KMCSFS.dict[dindex].fcb;
-			Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->refcount++;
+			InterlockedIncrement(&Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->refcount);
 		}
 		else
 		{

@@ -299,10 +299,6 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 			FsRtlNotifyCleanup(fcb->Vcb->NotifySync, &fcb->Vcb->DirNotifyList, ccb);
 			unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 
-			if (ccb->filter.Buffer)
-			{
-				ExFreePool(ccb->filter.Buffer);
-			}
 			if (ccb->filename.Buffer)
 			{
 				unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
@@ -1118,6 +1114,10 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 		if (ccb->filename.Buffer)
 		{
 			ExFreePool(ccb->filename.Buffer);
+		}
+		if (ccb->filter.Buffer)
+		{
+			ExFreePool(ccb->filter.Buffer);
 		}
 		ExFreePool(ccb);
 	}
