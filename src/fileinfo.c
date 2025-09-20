@@ -168,14 +168,14 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 		goto end;
 	}
 
-	unsigned long long index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(*ccb->filename, &Vcb->vde->pdode->KMCSFS);
 
 	UNICODE_STRING nostream_fn;
-	nostream_fn.Buffer = ccb->filename.Buffer;
+	nostream_fn.Buffer = ccb->filename->Buffer;
 	nostream_fn.Length = 0;
-	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 	{
-		if (ccb->filename.Buffer[i] == *L":")
+		if (ccb->filename->Buffer[i] == *L":")
 		{
 			nostream_fn.Length = i * sizeof(WCHAR);
 			break;
@@ -248,9 +248,9 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 	Status = STATUS_SUCCESS;
 
 	unsigned long lastslash = 0;
-	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 	{
-		if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
+		if (ccb->filename->Buffer[i] == *L"/" || ccb->filename->Buffer[i] == *L"\\")
 		{
 			lastslash = i;
 		}
@@ -259,7 +259,7 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 			ERR("file name too long\n");
 		}
 	}
-	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
 
 end:
 	ExReleaseResourceLite(fcb->Header.Resource);
@@ -291,7 +291,7 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 
 	TRACE("changing delete_on_close to %s for fcb %p\n", flags & FILE_DISPOSITION_DELETE ? "true" : "false", fcb);
 
-	unsigned long winattrs = chwinattrs(get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS), 0, Vcb->vde->pdode->KMCSFS);
+	unsigned long winattrs = chwinattrs(get_filename_index(*ccb->filename, &Vcb->vde->pdode->KMCSFS), 0, Vcb->vde->pdode->KMCSFS);
 
 	TRACE("atts = %lx\n", winattrs);
 
@@ -349,7 +349,7 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 	FileObject->DeletePending = flags & FILE_DISPOSITION_DELETE;
 	ccb->delete_on_close = flags & FILE_DISPOSITION_DELETE;
 
-	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
 	if (dindex)
 	{
 		Vcb->vde->pdode->KMCSFS.dict[dindex].flags &= ~delete_pending;
@@ -373,7 +373,7 @@ end:
 static NTSTATUS set_end_of_file_information(device_extension* Vcb, PIRP Irp, PFILE_OBJECT FileObject, bool advance_only, bool prealloc)
 {
 	FILE_END_OF_FILE_INFORMATION* feofi = Irp->AssociatedIrp.SystemBuffer;
-	unsigned long long index = get_filename_index(((ccb*)FileObject->FsContext2)->filename, &Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(*((ccb*)FileObject->FsContext2)->filename, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 	if (advance_only)
 	{
@@ -392,9 +392,9 @@ static NTSTATUS set_end_of_file_information(device_extension* Vcb, PIRP Irp, PFI
 	}
 
 	unsigned long lastslash = 0;
-	for (unsigned long i = 0; i < ((ccb*)FileObject->FsContext2)->filename.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ((ccb*)FileObject->FsContext2)->filename->Length / sizeof(WCHAR); i++)
 	{
-		if (((ccb*)FileObject->FsContext2)->filename.Buffer[i] == *L"/" || ((ccb*)FileObject->FsContext2)->filename.Buffer[i] == *L"\\")
+		if (((ccb*)FileObject->FsContext2)->filename->Buffer[i] == *L"/" || ((ccb*)FileObject->FsContext2)->filename->Buffer[i] == *L"\\")
 		{
 			lastslash = i;
 		}
@@ -450,9 +450,9 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	{
 		freenfilename = true;
 		unsigned long lastslash = 0;
-		for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+		for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 		{
-			if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
+			if (ccb->filename->Buffer[i] == *L"/" || ccb->filename->Buffer[i] == *L"\\")
 			{
 				lastslash = i;
 			}
@@ -469,7 +469,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 			Status = STATUS_INSUFFICIENT_RESOURCES;
 			goto exit;
 		}
-		RtlCopyMemory(NFileName.Buffer, ccb->filename.Buffer, (lastslash + 1) * sizeof(WCHAR));
+		RtlCopyMemory(NFileName.Buffer, ccb->filename->Buffer, (lastslash + 1) * sizeof(WCHAR));
 		RtlCopyMemory(NFileName.Buffer + lastslash + 1, fri->FileName, fri->FileNameLength);
 	}
 	else
@@ -478,14 +478,14 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	}
 
 	TRACE("New FileName = %.*S\n", (int)(NFileName.Length / sizeof(WCHAR)), NFileName.Buffer);
-	TRACE("Old FileName = %.*S\n", (int)(ccb->filename.Length / sizeof(WCHAR)), ccb->filename.Buffer);
+	TRACE("Old FileName = %.*S\n", (int)(ccb->filename->Length / sizeof(WCHAR)), ccb->filename->Buffer);
 
-	if (ccb->filename.Length == NFileName.Length)
+	if (ccb->filename->Length == NFileName.Length)
 	{
 		bool same = true;
-		for (unsigned long long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+		for (unsigned long long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 		{
-			if (!incmp(ccb->filename.Buffer[i], NFileName.Buffer[i]))
+			if (!incmp(ccb->filename->Buffer[i], NFileName.Buffer[i]))
 			{
 				same = false;
 				break;
@@ -533,7 +533,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 		}
 	}
 
-	unsigned long winattrs = chwinattrs(get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS), 0, Vcb->vde->pdode->KMCSFS);
+	unsigned long winattrs = chwinattrs(get_filename_index(*ccb->filename, &Vcb->vde->pdode->KMCSFS), 0, Vcb->vde->pdode->KMCSFS);
 	if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
 	{
 		WCHAR* filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
@@ -558,19 +558,19 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 		{
 			if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 255 || (Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 42) // 255 = file, 42 = fuse symlink
 			{
-				if (ccb->filename.Length / sizeof(WCHAR) < filenamelen)
+				if (ccb->filename->Length / sizeof(WCHAR) < filenamelen)
 				{
 					bool isin = true;
 					unsigned long long i = 0;
-					for (; i < ccb->filename.Length / sizeof(WCHAR); i++)
+					for (; i < ccb->filename->Length / sizeof(WCHAR); i++)
 					{
-						if (!incmp(ccb->filename.Buffer[i] & 0xff, filename[i] & 0xff) && !(ccb->filename.Buffer[i] == *L"/" && filename[i] == *L"\\") && !(ccb->filename.Buffer[i] == *L"\\" && filename[i] == *L"/"))
+						if (!incmp(ccb->filename->Buffer[i] & 0xff, filename[i] & 0xff) && !(ccb->filename->Buffer[i] == *L"/" && filename[i] == *L"\\") && !(ccb->filename->Buffer[i] == *L"\\" && filename[i] == *L"/"))
 						{
 							isin = false;
 							break;
 						}
 					}
-					if (!(filename[i] == *L"/") && !(filename[i] == *L"\\") && (ccb->filename.Length > 2))
+					if (!(filename[i] == *L"/") && !(filename[i] == *L"\\") && (ccb->filename->Length > 2))
 					{
 						isin = false;
 					}
@@ -603,7 +603,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 				filenamelen++;
 			}
 		}
-		dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+		dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
 		if (dindex)
 		{
 			if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
@@ -618,19 +618,19 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 		{
 			if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 255 || (Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 42) // 255 = file, 42 = fuse symlink
 			{
-				if (ccb->filename.Length / sizeof(WCHAR) < filenamelen)
+				if (ccb->filename->Length / sizeof(WCHAR) < filenamelen)
 				{
 					bool isin = true;
 					unsigned long long i = 0;
-					for (; i < ccb->filename.Length / sizeof(WCHAR); i++)
+					for (; i < ccb->filename->Length / sizeof(WCHAR); i++)
 					{
-						if (!incmp(ccb->filename.Buffer[i] & 0xff, filename[i] & 0xff) && !(ccb->filename.Buffer[i] == *L"/" && filename[i] == *L"\\") && !(ccb->filename.Buffer[i] == *L"\\" && filename[i] == *L"/"))
+						if (!incmp(ccb->filename->Buffer[i] & 0xff, filename[i] & 0xff) && !(ccb->filename->Buffer[i] == *L"/" && filename[i] == *L"\\") && !(ccb->filename->Buffer[i] == *L"\\" && filename[i] == *L"/"))
 						{
 							isin = false;
 							break;
 						}
 					}
-					if (!(filename[i] == *L":") && !(filename[i] == *L"/") && !(filename[i] == *L"\\") && (ccb->filename.Length > 2))
+					if (!(filename[i] == *L":") && !(filename[i] == *L"/") && !(filename[i] == *L"\\") && (ccb->filename->Length > 2))
 					{
 						isin = false;
 					}
@@ -687,9 +687,9 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	}
 
 	unsigned long lastslash = 0;
-	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 	{
-		if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
+		if (ccb->filename->Buffer[i] == *L"/" || ccb->filename->Buffer[i] == *L"\\")
 		{
 			lastslash = i;
 		}
@@ -698,13 +698,13 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 			ERR("file name too long\n");
 		}
 	}
-	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_OLD_NAME, NULL);
+	FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (ccb->options & FILE_DIRECTORY_FILE) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_RENAMED_OLD_NAME, NULL);
 
-	Status = rename_file(&Vcb->vde->pdode->KMCSFS, ccb->filename, NFileName, FileObject);
+	Status = rename_file(&Vcb->vde->pdode->KMCSFS, *ccb->filename, NFileName, FileObject);
 
 	UNICODE_STRING sfn;
-	sfn.Buffer = ccb->filename.Buffer + 1;
-	sfn.Length = ccb->filename.Length - sizeof(WCHAR);
+	sfn.Buffer = ccb->filename->Buffer + 1;
+	sfn.Length = ccb->filename->Length - sizeof(WCHAR);
 
 	UNICODE_STRING nsfn;
 	nsfn.Buffer = NFileName.Buffer + 1;
@@ -986,7 +986,7 @@ static NTSTATUS fill_in_file_standard_information(FILE_STANDARD_INFORMATION* fsi
 
 	*length -= sizeof(FILE_STANDARD_INFORMATION);
 
-	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
 
 	fsi->EndOfFile.QuadPart = get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS);
 	fsi->AllocationSize.QuadPart = sector_align(fsi->EndOfFile.QuadPart, fcb->Vcb->vde->pdode->KMCSFS.sectorsize);
@@ -1021,8 +1021,8 @@ static NTSTATUS fill_in_file_name_information(FILE_NAME_INFORMATION* fni, fcb* f
 {
 	*length -= offsetof(FILE_NAME_INFORMATION, FileName[0]);
 
-	fni->FileNameLength = ccb->filename.Length;
-	RtlCopyMemory(fni->FileName, ccb->filename.Buffer, min(fni->FileNameLength, *length));
+	fni->FileNameLength = ccb->filename->Length;
+	RtlCopyMemory(fni->FileName, ccb->filename->Buffer, min(fni->FileNameLength, *length));
 	*length -= min(fni->FileNameLength, *length);
 
 	if (*length < fni->FileNameLength)
@@ -1064,8 +1064,8 @@ static NTSTATUS fill_in_file_stream_information(FILE_STREAM_INFORMATION* fsi, fc
 	NTSTATUS Status;
 
 	UNICODE_STRING nostreamname;
-	nostreamname.Buffer = ccb->filename.Buffer;
-	nostreamname.Length = ccb->filename.Length;
+	nostreamname.Buffer = ccb->filename->Buffer;
+	nostreamname.Length = ccb->filename->Length;
 
 	for (unsigned long i = 0; i < nostreamname.Length / sizeof(WCHAR); i++)
 	{
@@ -1321,7 +1321,7 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 		return STATUS_INVALID_PARAMETER;
 	}
 
-	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(*ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 	if (!index)
 	{
 		ERR("index is 0\n");
@@ -1329,11 +1329,11 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 	}
 
 	UNICODE_STRING nostream_fn;
-	nostream_fn.Buffer = ccb->filename.Buffer;
+	nostream_fn.Buffer = ccb->filename->Buffer;
 	nostream_fn.Length = 0;
-	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 	{
-		if (ccb->filename.Buffer[i] == *L":")
+		if (ccb->filename->Buffer[i] == *L":")
 		{
 			nostream_fn.Length = i * sizeof(WCHAR);
 			break;

@@ -968,8 +968,16 @@ loaded:
 		ccb->query_dir_index = 0;
 		ccb->query_dir_file_count = 0;
 		ccb->access = granted_access;
-		ccb->filename.Buffer = fn.Buffer;
-		ccb->filename.Length = fn.Length;
+		ccb->filename = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(UNICODE_STRING), ALLOC_TAG);
+		if (!ccb->filename)
+		{
+			ERR("out of memory\n");
+			ExFreePool(ccb);
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+		ccb->filename->Buffer = fn.Buffer;
+		ccb->filename->Length = fn.Length;
 
 		InterlockedIncrement(&Vcb->open_files);
 

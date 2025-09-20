@@ -43,9 +43,9 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 		goto exit;
 	}
 
-	unsigned long long index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(*ccb->filename, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long size = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
 
 	if (dindex)
 	{
@@ -59,9 +59,9 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 	unsigned long long start = offset.QuadPart;
 
 	unsigned long lastslash = 0;
-	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 	{
-		if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
+		if (ccb->filename->Buffer[i] == *L"/" || ccb->filename->Buffer[i] == *L"\\")
 		{
 			lastslash = i;
 		}
@@ -100,7 +100,7 @@ static NTSTATUS do_write(device_extension* Vcb, PIRP Irp, bool wait)
 		LARGE_INTEGER time;
 		KeQuerySystemTime(&time);
 		chtime(index, time.QuadPart, 3, Vcb->vde->pdode->KMCSFS);
-		FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
+		FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, NotifyFilter, FILE_ACTION_MODIFIED, NULL);
 	}
 	else if (FileObject->Flags & FO_SYNCHRONOUS_IO && !(Irp->Flags & IRP_PAGING_IO))
 	{
@@ -178,7 +178,7 @@ NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		goto end;
 	}
 
-	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
 	if (!dindex)
 	{
 		ERR("failed to find dict entry\n");

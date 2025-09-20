@@ -3368,11 +3368,11 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	buflen = IrpSp->Parameters.QuerySecurity.Length;
 
 	UNICODE_STRING nostream_fn;
-	nostream_fn.Buffer = ccb->filename.Buffer;
+	nostream_fn.Buffer = ccb->filename->Buffer;
 	nostream_fn.Length = 0;
-	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 	{
-		if (ccb->filename.Buffer[i] == *L":")
+		if (ccb->filename->Buffer[i] == *L":")
 		{
 			nostream_fn.Length = i * sizeof(WCHAR);
 			break;
@@ -3386,9 +3386,9 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 	else
 	{
-		securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
+		securityfile.Length = ccb->filename->Length - sizeof(WCHAR);
 	}
-	securityfile.Buffer = ccb->filename.Buffer + 1;
+	securityfile.Buffer = ccb->filename->Buffer + 1;
 	unsigned long long index = get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 	char* security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
@@ -4145,11 +4145,11 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 	ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
 
 	UNICODE_STRING nostream_fn;
-	nostream_fn.Buffer = ccb->filename.Buffer;
+	nostream_fn.Buffer = ccb->filename->Buffer;
 	nostream_fn.Length = 0;
-	for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+	for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 	{
-		if (ccb->filename.Buffer[i] == *L":")
+		if (ccb->filename->Buffer[i] == *L":")
 		{
 			nostream_fn.Length = i * sizeof(WCHAR);
 			break;
@@ -4163,9 +4163,9 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 	}
 	else
 	{
-		securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
+		securityfile.Length = ccb->filename->Length - sizeof(WCHAR);
 	}
-	securityfile.Buffer = ccb->filename.Buffer + 1;
+	securityfile.Buffer = ccb->filename->Buffer + 1;
 	unsigned long long index = get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 	security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
@@ -4256,9 +4256,9 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 	if (NT_SUCCESS(Status))
 	{
 		unsigned long lastslash = 0;
-		for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+		for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 		{
-			if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
+			if (ccb->filename->Buffer[i] == *L"/" || ccb->filename->Buffer[i] == *L"\\")
 			{
 				lastslash = i;
 			}
@@ -4267,7 +4267,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 				ERR("file name too long\n");
 			}
 		}
-		FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_SECURITY, FILE_ACTION_MODIFIED, NULL);
+		FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_SECURITY, FILE_ACTION_MODIFIED, NULL);
 	}
 
 end:

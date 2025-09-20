@@ -140,7 +140,7 @@ static NTSTATUS get_reparse_point(PFILE_OBJECT FileObject, void* buffer, DWORD b
     }
     ccb* ccb = FileObject->FsContext2;
     fcb* fcb = FileObject->FsContext;
-    unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
+    unsigned long long index = get_filename_index(*ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
     unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
     if (winattrs & FILE_ATTRIBUTE_REPARSE_POINT)
 	{
@@ -220,7 +220,7 @@ static NTSTATUS set_reparse_point(PIRP Irp)
 		goto end;
     }
 
-	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(*ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 	unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 	chwinattrs(index, winattrs | FILE_ATTRIBUTE_REPARSE_POINT, fcb->Vcb->vde->pdode->KMCSFS);
 
@@ -297,7 +297,7 @@ static NTSTATUS delete_reparse_point(PIRP Irp)
         goto end;
     }
 
-	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(*ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 	unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
     
 	dealloc(&fcb->Vcb->vde->pdode->KMCSFS, index, get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS), 0);

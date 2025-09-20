@@ -24,7 +24,7 @@ static NTSTATUS do_read(PIRP Irp, bool wait, unsigned long long* bytes_read)
 	TRACE("offset = %I64x, length = %lx\n", start, length);
 	TRACE("paging_io = %s, no cache = %s\n", Irp->Flags & IRP_PAGING_IO ? "true" : "false", Irp->Flags & IRP_NOCACHE ? "true" : "false");
 
-	unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(*ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
 
 	if (chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_DIRECTORY)
 	{
@@ -66,9 +66,9 @@ static NTSTATUS do_read(PIRP Irp, bool wait, unsigned long long* bytes_read)
 	if (NT_SUCCESS(Status))
 	{
 		unsigned long lastslash = 0;
-		for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+		for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 		{
-			if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
+			if (ccb->filename->Buffer[i] == *L"/" || ccb->filename->Buffer[i] == *L"\\")
 			{
 				lastslash = i;
 			}
@@ -81,7 +81,7 @@ static NTSTATUS do_read(PIRP Irp, bool wait, unsigned long long* bytes_read)
 		LARGE_INTEGER time;
 		KeQuerySystemTime(&time);
 		chtime(index, time.QuadPart, 1, fcb->Vcb->vde->pdode->KMCSFS);
-		FsRtlNotifyFullReportChange(fcb->Vcb->NotifySync, &fcb->Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_LAST_ACCESS, FILE_ACTION_MODIFIED, NULL);
+		FsRtlNotifyFullReportChange(fcb->Vcb->NotifySync, &fcb->Vcb->DirNotifyList, (PSTRING)ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_LAST_ACCESS, FILE_ACTION_MODIFIED, NULL);
 	}
 
 	TRACE("read %lu bytes\n", *bytes_read);
@@ -169,7 +169,7 @@ NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		wait = true;
 	}
 
-	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
 	if (!dindex)
 	{
 		ERR("failed to find dict entry\n");

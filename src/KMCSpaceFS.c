@@ -297,51 +297,54 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 		if (ccb)
 		{
 			FsRtlNotifyCleanup(fcb->Vcb->NotifySync, &fcb->Vcb->DirNotifyList, ccb);
-			unsigned long long index = get_filename_index(ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
-
-			if (ccb->filename.Buffer)
+			unsigned long long index = 0;
+			if (ccb->filename)
 			{
-				unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
-				if (dindex)
+				index = get_filename_index(*ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
+				if (ccb->filename->Buffer && index)
 				{
-					IoRemoveShareAccess(FileObject, &fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess);
-					FsRtlFastUnlockAll(&fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].lock, FileObject, IoGetRequestorProcess(Irp), NULL);
-					if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
+					unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
+					if (dindex)
 					{
-						fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount--;
-					}
-					if (!fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
-					{
-						if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & stream_delete)
+						IoRemoveShareAccess(FileObject, &fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess);
+						FsRtlFastUnlockAll(&fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].lock, FileObject, IoGetRequestorProcess(Irp), NULL);
+						if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
 						{
-							UNICODE_STRING nostream_fn;
-							nostream_fn.Buffer = ccb->filename.Buffer;
-							nostream_fn.Length = 0;
-							for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+							fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount--;
+						}
+						if (!fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].opencount)
+						{
+							if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & stream_delete)
 							{
-								if (ccb->filename.Buffer[i] == *L":")
+								UNICODE_STRING nostream_fn;
+								nostream_fn.Buffer = ccb->filename->Buffer;
+								nostream_fn.Length = 0;
+								for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 								{
-									nostream_fn.Length = i * sizeof(WCHAR);
-									break;
+									if (ccb->filename->Buffer[i] == *L":")
+									{
+										nostream_fn.Length = i * sizeof(WCHAR);
+										break;
+									}
 								}
+								unsigned long long nostreamdindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, nostream_fn.Buffer, nostream_fn.Length / sizeof(WCHAR));
+								Vcb->vde->pdode->KMCSFS.dict[nostreamdindex].streamdeletecount--;
 							}
-							unsigned long long nostreamdindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, nostream_fn.Buffer, nostream_fn.Length / sizeof(WCHAR));
-							Vcb->vde->pdode->KMCSFS.dict[nostreamdindex].streamdeletecount--;
+							if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & trun_on_close)
+							{
+								dealloc(&fcb->Vcb->vde->pdode->KMCSFS, index, get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS), 0);
+							}
+							if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & delete_pending)
+							{
+								ccb->delete_on_close = true;
+							}
+							fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags &= ~(stream_delete | trun_on_close | delete_pending);
 						}
-						if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & trun_on_close)
-						{
-							dealloc(&fcb->Vcb->vde->pdode->KMCSFS, index, get_file_size(index, fcb->Vcb->vde->pdode->KMCSFS), 0);
-						}
-						if (fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags & delete_pending)
-						{
-							ccb->delete_on_close = true;
-						}
-						fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].flags &= ~(stream_delete | trun_on_close | delete_pending);
 					}
 				}
 			}
 
-			if (ccb->options & FILE_DELETE_ON_CLOSE || ccb->delete_on_close)
+			if ((ccb->options & FILE_DELETE_ON_CLOSE || ccb->delete_on_close) && index)
 			{
 				unsigned long winattrs = chwinattrs(index, 0, fcb->Vcb->vde->pdode->KMCSFS);
 				bool can_delete = true;
@@ -379,12 +382,12 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 				if (can_delete)
 				{
 					TRACE("deleting file\n");
-					if (delete_file(&Vcb->vde->pdode->KMCSFS, ccb->filename, index, FileObject))
+					if (delete_file(&Vcb->vde->pdode->KMCSFS, *ccb->filename, index, FileObject))
 					{
 						bool stream = false;
-						for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+						for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 						{
-							if (ccb->filename.Buffer[i] == *L":")
+							if (ccb->filename->Buffer[i] == *L":")
 							{
 								stream = true;
 								break;
@@ -393,8 +396,8 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 						if (!stream)
 						{
 							UNICODE_STRING securityfile;
-							securityfile.Length = ccb->filename.Length - sizeof(WCHAR);
-							securityfile.Buffer = ccb->filename.Buffer + 1;
+							securityfile.Length = ccb->filename->Length - sizeof(WCHAR);
+							securityfile.Buffer = ccb->filename->Buffer + 1;
 							if (!delete_file(&Vcb->vde->pdode->KMCSFS, securityfile, get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS), FileObject))
 							{
 								WARN("failed to delete security file\n");
@@ -413,19 +416,19 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 								{
 									if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 255 || (Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + offset] & 0xff) == 42) // 255 = file, 42 = fuse symlink
 									{
-										if (ccb->filename.Length / sizeof(WCHAR) < filenamelen)
+										if (ccb->filename->Length / sizeof(WCHAR) < filenamelen)
 										{
 											bool isin = true;
 											unsigned long long i = 0;
-											for (; i < ccb->filename.Length / sizeof(WCHAR); i++)
+											for (; i < ccb->filename->Length / sizeof(WCHAR); i++)
 											{
-												if (!incmp(ccb->filename.Buffer[i] & 0xff, filename[i] & 0xff) && !(ccb->filename.Buffer[i] == *L"/" && filename[i] == *L"\\") && !(ccb->filename.Buffer[i] == *L"\\" && filename[i] == *L"/"))
+												if (!incmp(ccb->filename->Buffer[i] & 0xff, filename[i] & 0xff) && !(ccb->filename->Buffer[i] == *L"/" && filename[i] == *L"\\") && !(ccb->filename->Buffer[i] == *L"\\" && filename[i] == *L"/"))
 												{
 													isin = false;
 													break;
 												}
 											}
-											if (!(filename[i] == *L":") && (ccb->filename.Length > 2))
+											if (!(filename[i] == *L":") && (ccb->filename->Length > 2))
 											{
 												isin = false;
 											}
@@ -461,9 +464,9 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 						}
 
 						unsigned long lastslash = 0;
-						for (unsigned long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+						for (unsigned long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 						{
-							if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
+							if (ccb->filename->Buffer[i] == *L"/" || ccb->filename->Buffer[i] == *L"\\")
 							{
 								lastslash = i;
 							}
@@ -474,11 +477,11 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 						}
 						if (stream)
 						{
-							FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_STREAM_NAME, FILE_ACTION_REMOVED_STREAM, NULL);
+							FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, FILE_NOTIFY_CHANGE_STREAM_NAME, FILE_ACTION_REMOVED_STREAM, NULL);
 						}
 						else
 						{
-							FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)&ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (winattrs & FILE_ATTRIBUTE_DIRECTORY) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_REMOVED, NULL);
+							FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (winattrs & FILE_ATTRIBUTE_DIRECTORY) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_REMOVED, NULL);
 						}
 					}
 					else
@@ -564,7 +567,7 @@ static NTSTATUS __stdcall LockControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIR
 		goto exit;
 	}
 
-	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename.Buffer, ccb->filename.Length / sizeof(WCHAR));
+	unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
 	if (!dindex)
 	{
 		ERR("failed to find dict entry\n");
@@ -1111,10 +1114,10 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 
 	if (ccb)
 	{
-		if (ccb->filename.Buffer)
-		{
-			ExFreePool(ccb->filename.Buffer);
-		}
+		//if (ccb->filename->Buffer)
+		//{
+		//	ExFreePool(ccb->filename->Buffer);
+		//}
 		if (ccb->filter.Buffer)
 		{
 			ExFreePool(ccb->filter.Buffer);
@@ -1252,7 +1255,7 @@ static NTSTATUS __stdcall FlushBuffers(_In_ PDEVICE_OBJECT DeviceObject, _In_ PI
 	Irp->IoStatus.Information = 0;
 	Irp->IoStatus.Status = Status;
 
-	unsigned long long index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(*ccb->filename, &Vcb->vde->pdode->KMCSFS);
 
 	if (!(chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_DIRECTORY))
 	{

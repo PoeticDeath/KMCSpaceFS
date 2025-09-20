@@ -165,22 +165,22 @@ NTSTATUS query_directory(PIRP Irp)
 			ccb->filter.Length = IrpSp->Parameters.QueryDirectory.FileName->Length;
 			if (IrpSp->Parameters.QueryDirectory.FileName->Buffer[0] == *L"/" || IrpSp->Parameters.QueryDirectory.FileName->Buffer[0] == *L"\\")
 			{
-				RtlCopyMemory(ccb->filter.Buffer, ccb->filename.Buffer, ccb->filename.Length);
-				ccb->filter.Length += ccb->filename.Length;
-				RtlCopyMemory(ccb->filter.Buffer + ccb->filename.Length / sizeof(WCHAR), IrpSp->Parameters.QueryDirectory.FileName->Buffer, IrpSp->Parameters.QueryDirectory.FileName->Length);
+				RtlCopyMemory(ccb->filter.Buffer, ccb->filename->Buffer, ccb->filename->Length);
+				ccb->filter.Length += ccb->filename->Length;
+				RtlCopyMemory(ccb->filter.Buffer + ccb->filename->Length / sizeof(WCHAR), IrpSp->Parameters.QueryDirectory.FileName->Buffer, IrpSp->Parameters.QueryDirectory.FileName->Length);
 			}
 			else
 			{
-				RtlCopyMemory(ccb->filter.Buffer, ccb->filename.Buffer, ccb->filename.Length);
-				ccb->filter.Length += ccb->filename.Length;
+				RtlCopyMemory(ccb->filter.Buffer, ccb->filename->Buffer, ccb->filename->Length);
+				ccb->filter.Length += ccb->filename->Length;
 				bool addedslash = false;
-				if (ccb->filter.Buffer[ccb->filename.Length / sizeof(WCHAR) - 1] != *L"/" && ccb->filter.Buffer[ccb->filename.Length / sizeof(WCHAR) - 1] != *L"\\")
+				if (ccb->filter.Buffer[ccb->filename->Length / sizeof(WCHAR) - 1] != *L"/" && ccb->filter.Buffer[ccb->filename->Length / sizeof(WCHAR) - 1] != *L"\\")
 				{
-					ccb->filter.Buffer[ccb->filename.Length / sizeof(WCHAR)] = 47;
+					ccb->filter.Buffer[ccb->filename->Length / sizeof(WCHAR)] = 47;
 					ccb->filter.Length += sizeof(WCHAR);
 					addedslash = true;
 				}
-				RtlCopyMemory(ccb->filter.Buffer + ccb->filename.Length / sizeof(WCHAR) + addedslash, IrpSp->Parameters.QueryDirectory.FileName->Buffer, IrpSp->Parameters.QueryDirectory.FileName->Length);
+				RtlCopyMemory(ccb->filter.Buffer + ccb->filename->Length / sizeof(WCHAR) + addedslash, IrpSp->Parameters.QueryDirectory.FileName->Buffer, IrpSp->Parameters.QueryDirectory.FileName->Length);
 			}
 			if (!filterb && !ccb->query_dir_offset)
 			{
@@ -209,9 +209,9 @@ NTSTATUS query_directory(PIRP Irp)
 	unsigned long long lastslash = 0;
 	if (ccb->query_dir_file_count == 1)
 	{
-		for (unsigned long long i = 0; i < ccb->filename.Length / sizeof(WCHAR); i++)
+		for (unsigned long long i = 0; i < ccb->filename->Length / sizeof(WCHAR); i++)
 		{
-			if (ccb->filename.Buffer[i] == *L"/" || ccb->filename.Buffer[i] == *L"\\")
+			if (ccb->filename->Buffer[i] == *L"/" || ccb->filename->Buffer[i] == *L"\\")
 			{
 				lastslash = i;
 			}
@@ -226,25 +226,25 @@ NTSTATUS query_directory(PIRP Irp)
 		unsigned long long index;
 		unsigned long long FNL = 0;
 
-		if (ccb->query_dir_file_count > 1 || ccb->filename.Length / sizeof(WCHAR) < 2 || !buf)
+		if (ccb->query_dir_file_count > 1 || ccb->filename->Length / sizeof(WCHAR) < 2 || !buf)
 		{
 			for (; ccb->query_dir_offset < Vcb->vde->pdode->KMCSFS.filenamesend - Vcb->vde->pdode->KMCSFS.tableend + 1; ccb->query_dir_offset++)
 			{
 				if ((Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + ccb->query_dir_offset] & 0xff) == 255 || (Vcb->vde->pdode->KMCSFS.table[Vcb->vde->pdode->KMCSFS.tableend + ccb->query_dir_offset] & 0xff) == 42) // 255 = file, 42 = fuse symlink
 				{
-					if (ccb->filename.Length / sizeof(WCHAR) < filenamelen)
+					if (ccb->filename->Length / sizeof(WCHAR) < filenamelen)
 					{
 						bool isin = true;
 						unsigned long long i = 0;
-						for (; i < ccb->filename.Length / sizeof(WCHAR); i++)
+						for (; i < ccb->filename->Length / sizeof(WCHAR); i++)
 						{
-							if (!incmp(ccb->filename.Buffer[i] & 0xff, filename[i] & 0xff) && !(ccb->filename.Buffer[i] == *L"/" && filename[i] == *L"\\") && !(ccb->filename.Buffer[i] == *L"\\" && filename[i] == *L"/"))
+							if (!incmp(ccb->filename->Buffer[i] & 0xff, filename[i] & 0xff) && !(ccb->filename->Buffer[i] == *L"/" && filename[i] == *L"\\") && !(ccb->filename->Buffer[i] == *L"\\" && filename[i] == *L"/"))
 							{
 								isin = false;
 								break;
 							}
 						}
-						if (!(filename[i] == *L"/") && !(filename[i] == *L"\\") && (ccb->filename.Length > 2))
+						if (!(filename[i] == *L"/") && !(filename[i] == *L"\\") && (ccb->filename->Length > 2))
 						{
 							isin = false;
 						}
@@ -261,7 +261,7 @@ NTSTATUS query_directory(PIRP Irp)
 						{
 							if (IrpSp->Parameters.QueryDirectory.FileName->Buffer[0] != *L"*" && !filterb)
 							{
-								if (IrpSp->Parameters.QueryDirectory.FileName->Length / sizeof(WCHAR) != filenamelen - ccb->filename.Length / sizeof(WCHAR) - (ccb->filename.Length > 2))
+								if (IrpSp->Parameters.QueryDirectory.FileName->Length / sizeof(WCHAR) != filenamelen - ccb->filename->Length / sizeof(WCHAR) - (ccb->filename->Length > 2))
 								{
 									isin = false;
 								}
@@ -269,7 +269,7 @@ NTSTATUS query_directory(PIRP Irp)
 								{
 									for (i = 0; i < IrpSp->Parameters.QueryDirectory.FileName->Length / sizeof(WCHAR); i++)
 									{
-										if (!incmp(IrpSp->Parameters.QueryDirectory.FileName->Buffer[i] & 0xff, filename[i + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2)] & 0xff) && !(IrpSp->Parameters.QueryDirectory.FileName->Buffer[i] == *L"/" && filename[i + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2)] == *L"\\") && !(IrpSp->Parameters.QueryDirectory.FileName->Buffer[i] == *L"\\" && filename[i + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2)] == *L"/"))
+										if (!incmp(IrpSp->Parameters.QueryDirectory.FileName->Buffer[i] & 0xff, filename[i + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2)] & 0xff) && !(IrpSp->Parameters.QueryDirectory.FileName->Buffer[i] == *L"/" && filename[i + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2)] == *L"\\") && !(IrpSp->Parameters.QueryDirectory.FileName->Buffer[i] == *L"\\" && filename[i + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2)] == *L"/"))
 										{
 											isin = false;
 											break;
@@ -321,21 +321,21 @@ NTSTATUS query_directory(PIRP Irp)
 		{
 			if (!ccb->query_dir_file_count)
 			{
-				index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
-				Filename.Buffer[ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2)] = 46;
-				Filename.Buffer[ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2) + 1] = 0;
+				index = get_filename_index(*ccb->filename, &Vcb->vde->pdode->KMCSFS);
+				Filename.Buffer[ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2)] = 46;
+				Filename.Buffer[ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2) + 1] = 0;
 				filenamelen = 1;
 				FNL = filenamelen * sizeof(WCHAR);
 			}
 			else
 			{
-				unsigned long long namelen = ccb->filename.Length;
-				ccb->filename.Length = max(lastslash * sizeof(WCHAR), 2);
-				index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
-				ccb->filename.Length = namelen;
-				Filename.Buffer[ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2)] = 46;
-				Filename.Buffer[ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2) + 1] = 46;
-				Filename.Buffer[ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2) + 2] = 0;
+				unsigned long long namelen = ccb->filename->Length;
+				ccb->filename->Length = max(lastslash * sizeof(WCHAR), 2);
+				index = get_filename_index(*ccb->filename, &Vcb->vde->pdode->KMCSFS);
+				ccb->filename->Length = namelen;
+				Filename.Buffer[ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2)] = 46;
+				Filename.Buffer[ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2) + 1] = 46;
+				Filename.Buffer[ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2) + 2] = 0;
 				filenamelen = 2;
 				FNL = filenamelen * sizeof(WCHAR);
 			}
@@ -349,7 +349,7 @@ NTSTATUS query_directory(PIRP Irp)
 				goto end;
 			}
 			Filename.Length = filenamelen * sizeof(WCHAR);
-			if (ccb->query_dir_file_count > 1 || ccb->filename.Length / sizeof(WCHAR) < 2 || !buf)
+			if (ccb->query_dir_file_count > 1 || ccb->filename->Length / sizeof(WCHAR) < 2 || !buf)
 			{
 				index = ccb->query_dir_index - 1;
 			}
@@ -359,9 +359,9 @@ NTSTATUS query_directory(PIRP Irp)
 			unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
 			unsigned long long AS = sector_align(filesize, Vcb->vde->pdode->KMCSFS.sectorsize);
 			unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
-			if (ccb->query_dir_file_count > 1 || ccb->filename.Length / sizeof(WCHAR) < 2 || !buf)
+			if (ccb->query_dir_file_count > 1 || ccb->filename->Length / sizeof(WCHAR) < 2 || !buf)
 			{
-				FNL = Filename.Length - ccb->filename.Length - (ccb->filename.Length > 2) * sizeof(WCHAR);
+				FNL = Filename.Length - ccb->filename->Length - (ccb->filename->Length > 2) * sizeof(WCHAR);
 			}
 			unsigned long RPT = 0;
 			if (winattrs & FILE_ATTRIBUTE_REPARSE_POINT)
@@ -419,7 +419,7 @@ NTSTATUS query_directory(PIRP Irp)
 				fbdi->EaSize = EA;
 				fbdi->ShortNameLength = 0;
 
-				RtlCopyMemory(fbdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
+				RtlCopyMemory(fbdi->FileName, Filename.Buffer + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -459,7 +459,7 @@ NTSTATUS query_directory(PIRP Irp)
 					break;
 				}
 
-				RtlCopyMemory(fdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
+				RtlCopyMemory(fdi->FileName, Filename.Buffer + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -490,7 +490,7 @@ NTSTATUS query_directory(PIRP Irp)
 				ffdi->FileNameLength = FNL;
 				ffdi->EaSize = EA;
 
-				RtlCopyMemory(ffdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
+				RtlCopyMemory(ffdi->FileName, Filename.Buffer + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -523,7 +523,7 @@ NTSTATUS query_directory(PIRP Irp)
 				fibdi->ShortNameLength = 0;
 				fibdi->FileId.QuadPart = index;
 
-				RtlCopyMemory(fibdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
+				RtlCopyMemory(fibdi->FileName, Filename.Buffer + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -568,7 +568,7 @@ NTSTATUS query_directory(PIRP Irp)
 				fiedi->FileId.Identifier[14] = 0;
 				fiedi->FileId.Identifier[15] = 0;
 
-				RtlCopyMemory(fiedi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
+				RtlCopyMemory(fiedi->FileName, Filename.Buffer + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -610,7 +610,7 @@ NTSTATUS query_directory(PIRP Irp)
 				fiebdi->FileId.Identifier[15] = 0;
 				fiebdi->ShortNameLength = 0;
 
-				RtlCopyMemory(fiebdi->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
+				RtlCopyMemory(fiebdi->FileName, Filename.Buffer + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -636,7 +636,7 @@ NTSTATUS query_directory(PIRP Irp)
 				fni->FileIndex = 0;
 				fni->FileNameLength = FNL;
 
-				RtlCopyMemory(fni->FileName, Filename.Buffer + ccb->filename.Length / sizeof(WCHAR) + (ccb->filename.Length > 2), FNL);
+				RtlCopyMemory(fni->FileName, Filename.Buffer + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2), FNL);
 
 				len -= needed;
 				break;
@@ -735,7 +735,7 @@ static NTSTATUS notify_change_directory(device_extension* Vcb, PIRP Irp)
 	ExAcquireResourceSharedLite(&fcb->Vcb->tree_lock, true);
 	ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
 
-	unsigned long long index = get_filename_index(ccb->filename, &Vcb->vde->pdode->KMCSFS);
+	unsigned long long index = get_filename_index(*ccb->filename, &Vcb->vde->pdode->KMCSFS);
 	if (!(chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS) & FILE_ATTRIBUTE_DIRECTORY))
 	{
 		Status = STATUS_INVALID_PARAMETER;
@@ -746,7 +746,7 @@ static NTSTATUS notify_change_directory(device_extension* Vcb, PIRP Irp)
 
 	TRACE("FileObject %p\n", FileObject);
 
-	FsRtlNotifyFilterChangeDirectory(Vcb->NotifySync, &Vcb->DirNotifyList, FileObject->FsContext2, (PSTRING)&ccb->filename, IrpSp->Flags & SL_WATCH_TREE, false, IrpSp->Parameters.NotifyDirectory.CompletionFilter, Irp, NULL, NULL, NULL);
+	FsRtlNotifyFilterChangeDirectory(Vcb->NotifySync, &Vcb->DirNotifyList, FileObject->FsContext2, (PSTRING)ccb->filename, IrpSp->Flags & SL_WATCH_TREE, false, IrpSp->Parameters.NotifyDirectory.CompletionFilter, Irp, NULL, NULL, NULL);
 
 	Status = STATUS_PENDING;
 
