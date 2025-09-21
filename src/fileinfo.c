@@ -462,7 +462,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 			}
 		}
 		NFileName.Length = (lastslash + 1) * sizeof(WCHAR) + fri->FileNameLength;
-		NFileName.Buffer = ExAllocatePoolWithTag(NonPagedPoolNx, NFileName.Length, ALLOC_TAG);
+		NFileName.Buffer = ExAllocatePoolWithTag(fcb->pool_type, NFileName.Length, ALLOC_TAG);
 		if (!NFileName.Buffer)
 		{
 			ERR("out of memory\n");
@@ -478,7 +478,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	}
 
 	UNICODE_STRING newccbfn;
-	newccbfn.Buffer = ExAllocatePoolWithTag(NonPagedPoolNx, NFileName.Length, ALLOC_TAG);
+	newccbfn.Buffer = ExAllocatePoolWithTag(fcb->pool_type, NFileName.Length, ALLOC_TAG);
 	if (!newccbfn.Buffer)
 	{
 		ERR("out of memory\n");
@@ -547,14 +547,14 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	unsigned long winattrs = chwinattrs(get_filename_index(*ccb->filename, &Vcb->vde->pdode->KMCSFS), 0, Vcb->vde->pdode->KMCSFS);
 	if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
 	{
-		WCHAR* filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+		WCHAR* filename = ExAllocatePoolWithTag(fcb->pool_type, 65536 * sizeof(WCHAR), ALLOC_TAG);
 		if (!filename)
 		{
 			ERR("out of memory\n");
 			Status = STATUS_INSUFFICIENT_RESOURCES;
 			goto exit;
 		}
-		WCHAR* newfilename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+		WCHAR* newfilename = ExAllocatePoolWithTag(fcb->pool_type, 65536 * sizeof(WCHAR), ALLOC_TAG);
 		if (!newfilename)
 		{
 			ERR("out of memory\n");
@@ -1141,7 +1141,7 @@ static NTSTATUS fill_in_file_stream_information(FILE_STREAM_INFORMATION* fsi, fc
 		entry = (FILE_STREAM_INFORMATION*)((uint8_t*)entry + off);
 	}
 
-	filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+	filename = ExAllocatePoolWithTag(fcb->pool_type, 65536 * sizeof(WCHAR), ALLOC_TAG);
 	if (!filename)
 	{
 		ERR("out of memory\n");

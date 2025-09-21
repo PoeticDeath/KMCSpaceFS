@@ -402,7 +402,7 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 							{
 								WARN("failed to delete security file\n");
 							}
-							WCHAR* filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+							WCHAR* filename = ExAllocatePoolWithTag(fcb->pool_type, 65536 * sizeof(WCHAR), ALLOC_TAG);
 							if (!filename)
 							{
 								ERR("out of memory\n");

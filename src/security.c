@@ -4168,7 +4168,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 	securityfile.Buffer = ccb->filename->Buffer + 1;
 	unsigned long long index = get_filename_index(securityfile, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-	security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
+	security = ExAllocatePoolWithTag(fcb->pool_type, filesize, ALLOC_TAG);
 	if (!security)
 	{
 		ERR("out of memory\n");
@@ -4183,7 +4183,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 		goto end;
 	}
 
-	securityW = ExAllocatePoolWithTag(NonPagedPoolNx, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
+	securityW = ExAllocatePoolWithTag(fcb->pool_type, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
 	if (!securityW)
 	{
 		ERR("out of memory\n");
@@ -4217,7 +4217,7 @@ static NTSTATUS set_file_security(device_extension* Vcb, PFILE_OBJECT FileObject
 		goto end;
 	}
 
-	Newsecurity = ExAllocatePoolWithTag(NonPagedPoolNx, NewBUFLEN + 1, ALLOC_TAG);
+	Newsecurity = ExAllocatePoolWithTag(fcb->pool_type, NewBUFLEN + 1, ALLOC_TAG);
 	if (!Newsecurity)
 	{
 		ERR("out of memory\n");

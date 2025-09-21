@@ -793,7 +793,7 @@ open:
 					}
 					if (!stream)
 					{
-						WCHAR* filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+						WCHAR* filename = ExAllocatePoolWithTag(pool_type, 65536 * sizeof(WCHAR), ALLOC_TAG);
 						if (!filename)
 						{
 							ERR("out of memory\n");
@@ -868,7 +868,7 @@ loaded:
 	if (Status == STATUS_REPARSE)
 	{
 		unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-		REPARSE_DATA_BUFFER* data = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
+		REPARSE_DATA_BUFFER* data = ExAllocatePoolWithTag(pool_type, filesize, ALLOC_TAG);
 		if (!data)
 		{
 			ERR("out of memory\n");
@@ -876,7 +876,7 @@ loaded:
 			goto exit;
 		}
 		unsigned long long bytes_read = 0;
-		fcb* fcb = create_fcb(Vcb, NonPagedPoolNx);
+		fcb* fcb = create_fcb(Vcb, pool_type);
 		if (!fcb)
 		{
 			ERR("out of memory\n");
@@ -950,7 +950,7 @@ loaded:
 			goto exit;
 		}
 
-		ccb* ccb = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(*ccb), ALLOC_TAG);
+		ccb* ccb = ExAllocatePoolWithTag(pool_type, sizeof(*ccb), ALLOC_TAG);
 		if (!ccb)
 		{
 			ERR("out of memory\n");
@@ -968,13 +968,13 @@ loaded:
 		ccb->query_dir_index = 0;
 		ccb->query_dir_file_count = 0;
 		ccb->access = granted_access;
-		if (Vcb->vde->pdode->KMCSFS.dict[dindex].filename)
+		if (Vcb->vde->pdode->KMCSFS.dict[dindex].filename && dindex)
 		{
 			ccb->filename = Vcb->vde->pdode->KMCSFS.dict[dindex].filename;
 		}
 		else
 		{
-			ccb->filename = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(UNICODE_STRING), ALLOC_TAG);
+			ccb->filename = ExAllocatePoolWithTag(pool_type, sizeof(UNICODE_STRING), ALLOC_TAG);
 			if (!ccb->filename)
 			{
 				ERR("out of memory\n");
@@ -1080,7 +1080,7 @@ loaded:
 				parentsecurityfn.Buffer = fn.Buffer + 1;
 				unsigned long long parentsecurityindex = get_filename_index(parentsecurityfn, &Vcb->vde->pdode->KMCSFS);
 				unsigned long long filesize = get_file_size(parentsecurityindex, Vcb->vde->pdode->KMCSFS);
-				uint8_t* security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
+				uint8_t* security = ExAllocatePoolWithTag(pool_type, filesize, ALLOC_TAG);
 				if (!security)
 				{
 					ERR("out of memory\n");
@@ -1088,7 +1088,7 @@ loaded:
 					goto delsecfile;
 				}
 				unsigned long long bytes_read = 0;
-				fcb* fcb = create_fcb(Vcb, NonPagedPoolNx);
+				fcb* fcb = create_fcb(Vcb, pool_type);
 				if (!fcb)
 				{
 					ERR("out of memory\n");
@@ -1110,7 +1110,7 @@ loaded:
 				reap_fcb(fcb);
 				if (IrpSp->Parameters.Create.SecurityContext->AccessState->SecurityDescriptor)
 				{
-					WCHAR* securityW = ExAllocatePoolWithTag(NonPagedPoolNx, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
+					WCHAR* securityW = ExAllocatePoolWithTag(pool_type, (filesize + 1) * sizeof(WCHAR), ALLOC_TAG);
 					if (!securityW)
 					{
 						ERR("out of memory\n");
@@ -1135,7 +1135,7 @@ loaded:
 					}
 					ExFreePool(securityW);
 					SECURITY_DESCRIPTOR* new_sec;
-					SeAssignSecurity(parent_sec, IrpSp->Parameters.Create.SecurityContext->AccessState->SecurityDescriptor, &new_sec, options & FILE_DIRECTORY_FILE, &IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext, IoGetFileObjectGenericMapping(), NonPagedPoolNx);
+					SeAssignSecurity(parent_sec, IrpSp->Parameters.Create.SecurityContext->AccessState->SecurityDescriptor, &new_sec, options & FILE_DIRECTORY_FILE, &IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext, IoGetFileObjectGenericMapping(), pool_type);
 					has_parent_perm = SeAccessCheck(parent_sec, &IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext, false, FILE_ADD_FILE, 0, NULL, IoGetFileObjectGenericMapping(), IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, &parent_granted_access, &Parent_Status);
 					ExFreePool(parent_sec);
 					if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(new_sec, SDDL_REVISION, OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | SACL_SECURITY_INFORMATION, &securityW, &(ULONG)filesize))
@@ -1147,7 +1147,7 @@ loaded:
 					}
 					SeDeassignSecurity(&new_sec);
 					security = NULL;
-					security = ExAllocatePoolWithTag(NonPagedPoolNx, filesize, ALLOC_TAG);
+					security = ExAllocatePoolWithTag(pool_type, filesize, ALLOC_TAG);
 					if (!security)
 					{
 						ERR("out of memory\n");
@@ -1161,7 +1161,7 @@ loaded:
 					}
 					ExFreePool(securityW);
 				}
-				fcb = create_fcb(Vcb, NonPagedPoolNx);
+				fcb = create_fcb(Vcb, pool_type);
 				if (!fcb)
 				{
 					ERR("out of memory\n");

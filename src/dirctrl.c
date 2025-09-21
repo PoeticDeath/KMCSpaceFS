@@ -114,7 +114,7 @@ NTSTATUS query_directory(PIRP Irp)
 	Irp->IoStatus.Information = 0;
 	unsigned long old_offset = 0;
 
-	WCHAR* filename = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+	WCHAR* filename = ExAllocatePoolWithTag(fcb->pool_type, 65536 * sizeof(WCHAR), ALLOC_TAG);
 	if (!filename)
 	{
 		ERR("out of memory\n");
@@ -128,7 +128,7 @@ NTSTATUS query_directory(PIRP Irp)
 	bool filterb = false;
 	if (!ccb->filter.Buffer)
 	{
-		ccb->filter.Buffer = ExAllocatePoolWithTag(NonPagedPoolNx, 65536 * sizeof(WCHAR), ALLOC_TAG);
+		ccb->filter.Buffer = ExAllocatePoolWithTag(fcb->pool_type, 65536 * sizeof(WCHAR), ALLOC_TAG);
 		if (!ccb->filter.Buffer)
 		{
 			ERR("out of memory\n");
@@ -368,7 +368,7 @@ NTSTATUS query_directory(PIRP Irp)
 			{
 				uint8_t reparsepoint[4] = {0};
 				unsigned long long bytes_read = 0;
-				rfcb = create_fcb(Vcb, NonPagedPoolNx);
+				rfcb = create_fcb(Vcb, fcb->pool_type);
 				if (!rfcb)
 				{
 					ERR("out of memory\n");
