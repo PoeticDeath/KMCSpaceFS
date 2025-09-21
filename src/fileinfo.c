@@ -477,6 +477,17 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 		NFileName = tfo->FileName;
 	}
 
+	UNICODE_STRING newccbfn;
+	newccbfn.Buffer = ExAllocatePoolWithTag(NonPagedPoolNx, NFileName.Length, ALLOC_TAG);
+	if (!newccbfn.Buffer)
+	{
+		ERR("out of memory\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto exit;
+	}
+	RtlCopyMemory(newccbfn.Buffer, NFileName.Buffer, NFileName.Length);
+	newccbfn.Length = NFileName.Length;
+
 	TRACE("New FileName = %.*S\n", (int)(NFileName.Length / sizeof(WCHAR)), NFileName.Buffer);
 	TRACE("Old FileName = %.*S\n", (int)(ccb->filename->Length / sizeof(WCHAR)), ccb->filename->Buffer);
 
@@ -715,6 +726,13 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 		Status = rename_file(&Vcb->vde->pdode->KMCSFS, sfn, nsfn, FileObject);
 	}
 
+	if (NT_SUCCESS(Status))
+	{
+		ExFreePool(ccb->filename->Buffer);
+		ccb->filename->Buffer = newccbfn.Buffer;
+		ccb->filename->Length = newccbfn.Length;
+	}
+
 	lastslash = 0;
 	for (unsigned long i = 0; i < NFileName.Length / sizeof(WCHAR); i++)
 	{
@@ -733,6 +751,13 @@ exit:
 	if (NFileName.Buffer && freenfilename)
 	{
 		ExFreePool(NFileName.Buffer);
+	}
+	if (!NT_SUCCESS(Status))
+	{
+		if (newccbfn.Buffer)
+		{
+			ExFreePool(newccbfn.Buffer);
+		}
 	}
 	return Status;
 }

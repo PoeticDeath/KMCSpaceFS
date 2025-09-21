@@ -18,6 +18,7 @@ typedef struct _Dict
 	unsigned long long flags;
 	unsigned long long streamdeletecount;
 	struct _fcb* fcb;
+	PUNICODE_STRING filename;
 } Dict;
 
 Dict* CreateDict(unsigned long long size);

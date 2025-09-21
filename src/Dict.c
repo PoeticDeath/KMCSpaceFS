@@ -55,6 +55,7 @@ startover:
 			ndict[j].flags = dict[i].flags;
 			ndict[j].streamdeletecount = dict[i].streamdeletecount;
 			ndict[j].fcb = dict[i].fcb;
+			ndict[j].filename = dict[i].filename;
 		}
 	}
 	return ndict;

@@ -968,16 +968,34 @@ loaded:
 		ccb->query_dir_index = 0;
 		ccb->query_dir_file_count = 0;
 		ccb->access = granted_access;
-		ccb->filename = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(UNICODE_STRING), ALLOC_TAG);
-		if (!ccb->filename)
+		if (Vcb->vde->pdode->KMCSFS.dict[dindex].filename)
 		{
-			ERR("out of memory\n");
-			ExFreePool(ccb);
-			Status = STATUS_INSUFFICIENT_RESOURCES;
-			goto exit;
+			ccb->filename = Vcb->vde->pdode->KMCSFS.dict[dindex].filename;
 		}
-		ccb->filename->Buffer = fn.Buffer;
-		ccb->filename->Length = fn.Length;
+		else
+		{
+			ccb->filename = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(UNICODE_STRING), ALLOC_TAG);
+			if (!ccb->filename)
+			{
+				ERR("out of memory\n");
+				ExFreePool(ccb);
+				Status = STATUS_INSUFFICIENT_RESOURCES;
+				goto exit;
+			}
+			Vcb->vde->pdode->KMCSFS.dict[dindex].filename = ccb->filename;
+			RtlZeroMemory(ccb->filename, sizeof(UNICODE_STRING));
+		}
+		if (ccb->filename->Buffer)
+		{
+			ExFreePool(fn.Buffer);
+			fn.Buffer = ccb->filename->Buffer;
+			fn.Length = ccb->filename->Length;
+		}
+		else
+		{
+			ccb->filename->Buffer = fn.Buffer;
+			ccb->filename->Length = fn.Length;
+		}
 
 		InterlockedIncrement(&Vcb->open_files);
 

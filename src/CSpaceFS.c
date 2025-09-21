@@ -151,21 +151,24 @@ unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS* KMCSF
 					break;
 				}
 			}
-			if ((incmp((KMCSFS->table[KMCSFS->tableend + loc] & 0xff), (FileName.Buffer[j] & 0xff)) || (((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) == *"/") && ((FileName.Buffer[j] & 0xff) == *"\\"))) && start) // case insensitive, / and \ are the same, make sure it is not just an end or middle of filename
+			if (j < FileNameLen)
 			{
-				if ((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) != *"/")
+				if ((incmp((KMCSFS->table[KMCSFS->tableend + loc] & 0xff), (FileName.Buffer[j] & 0xff)) || (((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) == *"/") && ((FileName.Buffer[j] & 0xff) == *"\\"))) && start) // case insensitive, / and \ are the same, make sure it is not just an end or middle of filename
 				{
-					FileName.Buffer[j] = KMCSFS->table[KMCSFS->tableend + loc] & 0xff;
+					if ((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) != *"/")
+					{
+						FileName.Buffer[j] = KMCSFS->table[KMCSFS->tableend + loc] & 0xff;
+					}
+					j++;
 				}
-				j++;
-			}
-			else
-			{
-				if ((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) != 42)
+				else
 				{
-					start = false;
+					if ((KMCSFS->table[KMCSFS->tableend + loc] & 0xff) != 42)
+					{
+						start = false;
+					}
+					j = 0;
 				}
-				j = 0;
 			}
 		}
 	}
@@ -1999,8 +2002,26 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn, 
 	if (dindex)
 	{
 		unsigned long long filenameloc = KMCSFS->dict[dindex].filenameloc;
+		unsigned long long opencount = KMCSFS->dict[dindex].opencount;
+		SHARE_ACCESS shareaccess = KMCSFS->dict[dindex].shareaccess;
+		FILE_LOCK filelock = KMCSFS->dict[dindex].lock;
+		unsigned long long flags = KMCSFS->dict[dindex].flags;
+		unsigned long long streamdeletecount = KMCSFS->dict[dindex].streamdeletecount;
+		struct _fcb* fcb = KMCSFS->dict[dindex].fcb;
+		PUNICODE_STRING filename = KMCSFS->dict[dindex].filename;
 		RemoveDictEntry(KMCSFS->dict, KMCSFS->DictSize, dindex, fn.Length / sizeof(WCHAR), &KMCSFS->CurDictSize);
 		AddDictEntry(&KMCSFS->dict, nfn.Buffer, filenameloc, nfn.Length / sizeof(WCHAR), &KMCSFS->CurDictSize, &KMCSFS->DictSize, index, true);
+		dindex = FindDictEntry(KMCSFS->dict, KMCSFS->table, KMCSFS->tableend, KMCSFS->DictSize, nfn.Buffer, nfn.Length / sizeof(WCHAR));
+		if (dindex)
+		{
+			KMCSFS->dict[dindex].opencount = opencount;
+			KMCSFS->dict[dindex].shareaccess = shareaccess;
+			KMCSFS->dict[dindex].lock = filelock;
+			KMCSFS->dict[dindex].flags = flags;
+			KMCSFS->dict[dindex].streamdeletecount = streamdeletecount;
+			KMCSFS->dict[dindex].fcb = fcb;
+			KMCSFS->dict[dindex].filename = filename;
+		}
 	}
 
 	KMCSFS->filenamesend = KMCSFS->filenamesend - fn.Length / sizeof(WCHAR) + nfn.Length / sizeof(WCHAR);

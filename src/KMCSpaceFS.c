@@ -483,6 +483,7 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 						{
 							FsRtlNotifyFullReportChange(Vcb->NotifySync, &Vcb->DirNotifyList, (PSTRING)ccb->filename, (lastslash + 1) * sizeof(WCHAR), NULL, NULL, (winattrs & FILE_ATTRIBUTE_DIRECTORY) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME, FILE_ACTION_REMOVED, NULL);
 						}
+						fcb->deleted = true;
 					}
 					else
 					{
@@ -1092,6 +1093,7 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 	fcb* fcb;
 	ccb* ccb;
 	LONG open_files;
+	unsigned long long dindex = 0;
 
 	UNUSED(Irp);
 
@@ -1114,10 +1116,23 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 
 	if (ccb)
 	{
-		//if (ccb->filename->Buffer)
-		//{
-		//	ExFreePool(ccb->filename->Buffer);
-		//}
+		if (ccb->filename && fcb->refcount == 1)
+		{
+			if (ccb->filename->Buffer)
+			{
+				dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
+				if (dindex)
+				{
+					fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].filename = NULL;
+				}
+				if (dindex || fcb->deleted)
+				{
+					ExFreePool(ccb->filename->Buffer);
+					ExFreePool(ccb->filename);
+					ccb->filename = NULL;
+				}
+			}
+		}
 		if (ccb->filter.Buffer)
 		{
 			ExFreePool(ccb->filter.Buffer);
