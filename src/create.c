@@ -933,12 +933,16 @@ loaded:
 
 	if (NT_SUCCESS(Status))
 	{
+		FileObject->FsContext = NULL;
 		if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
 		{
-			FileObject->FsContext = Vcb->vde->pdode->KMCSFS.dict[dindex].fcb;
-			InterlockedIncrement(&Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->refcount);
+			if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->nonpaged)
+			{
+				FileObject->FsContext = Vcb->vde->pdode->KMCSFS.dict[dindex].fcb;
+				InterlockedIncrement(&Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->refcount);
+			}
 		}
-		else
+		if (!FileObject->FsContext)
 		{
 			FileObject->FsContext = create_fcb(Vcb, pool_type);
 			Vcb->vde->pdode->KMCSFS.dict[dindex].fcb = (fcb*)FileObject->FsContext;
