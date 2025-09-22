@@ -1909,6 +1909,7 @@ bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long
 	newtable[3] = (tablesize >> 8) & 0xff;
 	newtable[4] = tablesize & 0xff;
 	RtlCopyMemory(newtable + 5, newtablestren, (tablestrlen + tablestrlen % 2) / 2);
+	ExFreePool(newtablestren);
 	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2, KMCSFS->table + KMCSFS->tableend, loc - KMCSFS->tableend);
 	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + loc - KMCSFS->tableend, KMCSFS->table + loc + len, KMCSFS->filenamesend - loc - len + 2);
 	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2, KMCSFS->table + KMCSFS->filenamesend + 2, 24 * index);
