@@ -1123,7 +1123,13 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 				dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
 				if (dindex)
 				{
+					if (fcb->nonpaged)
+					{
+						IO_STATUS_BLOCK iosb;
+						CcFlushCache(&fcb->nonpaged->segment_object, NULL, 0, &iosb);
+					}
 					fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].filename = NULL;
+					fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].fcb = NULL;
 				}
 				if (dindex || fcb->deleted)
 				{
@@ -1152,6 +1158,17 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 	}
 
 	free_fcb(fcb);
+
+	if (!fcb->refcount && fcb->nonpaged)
+	{
+		ExDeleteResourceLite(&fcb->nonpaged->resource);
+		ExDeleteResourceLite(&fcb->nonpaged->paging_resource);
+		ExDeleteResourceLite(&fcb->nonpaged->dir_children_lock);
+		ExFreeToNPagedLookasideList(&fcb->Vcb->fcb_np_lookaside, fcb->nonpaged);
+		fcb->nonpaged = NULL;
+		fcb->Header.Resource = NULL;
+		fcb->Header.PagingIoResource = NULL;
+	}
 
 	return STATUS_SUCCESS;
 }

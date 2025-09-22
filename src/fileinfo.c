@@ -287,7 +287,10 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 		flags = fdi->DeleteFile ? FILE_DISPOSITION_DELETE : 0;
 	}
 
-	ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
+	if (fcb->nonpaged)
+	{
+		ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
+	}
 
 	TRACE("changing delete_on_close to %s for fcb %p\n", flags & FILE_DISPOSITION_DELETE ? "true" : "false", fcb);
 
@@ -339,11 +342,14 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 		IoFreeIrp(Irp2);
 	}
 
-	if (!MmFlushImageSection(&fcb->nonpaged->segment_object, MmFlushForDelete))
+	if (fcb->nonpaged)
 	{
-		TRACE("trying to delete file which is being mapped as an image\n");
-		Status = STATUS_CANNOT_DELETE;
-		goto end;
+		if (!MmFlushImageSection(&fcb->nonpaged->segment_object, MmFlushForDelete))
+		{
+			TRACE("trying to delete file which is being mapped as an image\n");
+			Status = STATUS_CANNOT_DELETE;
+			goto end;
+		}
 	}
 
 	FileObject->DeletePending = flags & FILE_DISPOSITION_DELETE;
@@ -359,7 +365,10 @@ static NTSTATUS set_disposition_information(device_extension* Vcb, PIRP Irp, PFI
 	Status = STATUS_SUCCESS;
 
 end:
-	ExReleaseResourceLite(fcb->Header.Resource);
+	if (fcb->nonpaged)
+	{
+		ExReleaseResourceLite(fcb->Header.Resource);
+	}
 
 	// send notification that directory is about to be deleted
 	if (NT_SUCCESS(Status) && flags & FILE_DISPOSITION_DELETE && winattrs & FILE_ATTRIBUTE_DIRECTORY)
