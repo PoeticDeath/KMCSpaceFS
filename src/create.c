@@ -26,8 +26,8 @@ static const GUID GUID_ECP_CREATE_REDIRECTION = {0x188d6bd6, 0xa126, 0x4fa8, {0x
 
 typedef struct
 {
+	PDEVICE_OBJECT DeviceObject;
 	device_extension* Vcb;
-	ACCESS_MASK granted_access;
 	NTSTATUS Status;
 	KEVENT event;
 } oplock_context;
@@ -99,6 +99,8 @@ fcb* create_fcb(device_extension* Vcb, POOL_TYPE pool_type)
 	fcb->Header.Resource = &fcb->nonpaged->resource;
 
 	ExInitializeResourceLite(&fcb->nonpaged->dir_children_lock);
+
+	FsRtlInitializeOplock(fcb_oplock(fcb));
 
 	InitializeListHead(&fcb->extents);
 
@@ -256,6 +258,43 @@ static __inline void debug_create_options(ULONG RequestedOptions)
 	{
 		TRACE("requested options: (none)\n");
 	}
+}
+
+static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Curr_->tree_lock) device_extension* Vcb, PIRP Irp, oplock_context** opctx);
+
+static void __stdcall oplock_complete(PVOID Context, PIRP Irp)
+{
+	NTSTATUS Status;
+	bool skip_lock;
+	oplock_context* ctx = Context;
+	PDEVICE_OBJECT DeviceObject = ctx->DeviceObject;
+	device_extension* Vcb = ctx->Vcb;
+
+	TRACE("(%p, %p)\n", Context, Irp);
+
+	skip_lock = ExIsResourceAcquiredExclusiveLite(&Vcb->tree_lock);
+
+	if (!skip_lock)
+	{
+		ExAcquireResourceSharedLite(&Vcb->tree_lock, true);
+	}
+
+	// FIXME - trans
+	Status = open_file(DeviceObject, Vcb, Irp, &ctx);
+
+	if (!skip_lock)
+	{
+		ExReleaseResourceLite(&Vcb->tree_lock);
+	}
+
+	// FIXME - call free_trans if failed and within transaction
+
+	Irp->IoStatus.Status = Status;
+	IoCompleteRequest(Irp, NT_SUCCESS(Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+
+	ctx->Status = Status;
+
+	KeSetEvent(&ctx->event, 0, false);
 }
 
 static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Curr_->tree_lock) device_extension* Vcb, PIRP Irp, oplock_context** opctx)
@@ -663,6 +702,38 @@ open:
 						TRACE("IoCheckShareAccess failed, returning %08lx\n", Status);
 						goto exit;
 					}
+
+					if (!*opctx && Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
+					{
+						oplock_context* ctx = ExAllocatePoolWithTag(NonPagedPool, sizeof(oplock_context), ALLOC_TAG);
+						if (!ctx)
+						{
+							ERR("out of memory\n");
+							Status = STATUS_INSUFFICIENT_RESOURCES;
+							goto exit;
+						}
+
+						ctx->DeviceObject = DeviceObject;
+						ctx->Vcb = Vcb;
+
+						KeInitializeEvent(&ctx->event, NotificationEvent, false);
+
+						Status = FsRtlCheckOplock(fcb_oplock(Vcb->vde->pdode->KMCSFS.dict[dindex].fcb), Irp, ctx, oplock_complete, NULL);
+						if (Status == STATUS_PENDING)
+						{
+							*opctx = ctx;
+							goto exit;
+						}
+
+						ExFreePool(ctx);
+
+						if (!NT_SUCCESS(Status))
+						{
+							WARN("FsRtlCheckOplock returned %08lx\n", Status);
+							goto exit;
+						}
+					}
+
 					IoUpdateShareAccess(FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess);
 				}
 				else
@@ -757,6 +828,38 @@ open:
 							TRACE("IoCheckShareAccess failed, returning %08lx\n", Status);
 							goto exit;
 						}
+
+						if (!*opctx && Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
+						{
+							oplock_context* ctx = ExAllocatePoolWithTag(NonPagedPool, sizeof(oplock_context), ALLOC_TAG);
+							if (!ctx)
+							{
+								ERR("out of memory\n");
+								Status = STATUS_INSUFFICIENT_RESOURCES;
+								goto exit;
+							}
+
+							ctx->DeviceObject = DeviceObject;
+							ctx->Vcb = Vcb;
+
+							KeInitializeEvent(&ctx->event, NotificationEvent, false);
+
+							Status = FsRtlCheckOplock(fcb_oplock(Vcb->vde->pdode->KMCSFS.dict[dindex].fcb), Irp, ctx, oplock_complete, NULL);
+							if (Status == STATUS_PENDING)
+							{
+								*opctx = ctx;
+								goto exit;
+							}
+
+							ExFreePool(ctx);
+
+							if (!NT_SUCCESS(Status))
+							{
+								WARN("FsRtlCheckOplock returned %08lx\n", Status);
+								goto exit;
+							}
+						}
+
 						IoUpdateShareAccess(FileObject, &Vcb->vde->pdode->KMCSFS.dict[dindex].shareaccess);
 					}
 					else
@@ -1606,8 +1709,12 @@ exit:
 		ExReleaseResourceLite(&Vcb->load_lock);
 	}
 
+	bool skip_oplock = false;
+
 	if (Status == STATUS_PENDING)
 	{
+		ExReleaseResourceLite(&op_lock);
+		skip_oplock = true;
 		KeWaitForSingleObject(&opctx->event, Executive, KernelMode, false, NULL);
 		Status = opctx->Status;
 		ExFreePool(opctx);
@@ -1620,7 +1727,11 @@ exit:
 		IoSetTopLevelIrp(NULL);
 	}
 
-	ExReleaseResourceLite(&op_lock);
+	if (!skip_oplock)
+	{
+		ExReleaseResourceLite(&op_lock);
+	}
+
 	FsRtlExitFileSystem();
 
 	return Status;

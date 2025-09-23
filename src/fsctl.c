@@ -383,6 +383,116 @@ NTSTATUS dismount_volume(device_extension* Vcb, bool shutdown, PIRP Irp)
 	return STATUS_SUCCESS;
 }
 
+static NTSTATUS fsctl_oplock(device_extension* Vcb, PIRP* Pirp)
+{
+    NTSTATUS Status;
+    PIRP Irp = *Pirp;
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    uint32_t fsctl = IrpSp->Parameters.FileSystemControl.FsControlCode;
+    PFILE_OBJECT FileObject = IrpSp->FileObject;
+    fcb* fcb = FileObject ? FileObject->FsContext : NULL;
+    ccb* ccb = FileObject ? FileObject->FsContext2 : NULL;
+    PREQUEST_OPLOCK_INPUT_BUFFER buf = NULL;
+    bool oplock_request = false, oplock_ack = false;
+    ULONG oplock_count = 0;
+
+    if (!fcb)
+    {
+        ERR("fcb was NULL\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    unsigned long long index = get_filename_index(*ccb->filename, &Vcb->vde->pdode->KMCSFS);
+    if (!index)
+    {
+        ERR("file not found\n");
+	    return STATUS_OBJECT_NAME_NOT_FOUND;
+    }
+
+    unsigned long winattrs = chwinattrs(index, 0, Vcb->vde->pdode->KMCSFS);
+
+    unsigned long long dindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
+    if (!dindex)
+    {
+        ERR("file not found in dictionary\n");
+        return STATUS_OBJECT_NAME_NOT_FOUND;
+	}
+
+    if (fsctl == FSCTL_REQUEST_OPLOCK)
+    {
+        if (IrpSp->Parameters.FileSystemControl.InputBufferLength < sizeof(REQUEST_OPLOCK_INPUT_BUFFER))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        if (IrpSp->Parameters.FileSystemControl.OutputBufferLength < sizeof(REQUEST_OPLOCK_OUTPUT_BUFFER))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        buf = Irp->AssociatedIrp.SystemBuffer;
+
+        // flags are mutually exclusive
+        if (buf->Flags & REQUEST_OPLOCK_INPUT_FLAG_REQUEST && buf->Flags & REQUEST_OPLOCK_INPUT_FLAG_ACK)
+        {
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        oplock_request = buf->Flags & REQUEST_OPLOCK_INPUT_FLAG_REQUEST;
+        oplock_ack = buf->Flags & REQUEST_OPLOCK_INPUT_FLAG_ACK;
+
+        if (!oplock_request && !oplock_ack)
+        {
+            return STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    bool shared_request = (fsctl == FSCTL_REQUEST_OPLOCK_LEVEL_2) || (fsctl == FSCTL_REQUEST_OPLOCK && !(buf->RequestedOplockLevel & OPLOCK_LEVEL_CACHE_WRITE));
+
+    if (winattrs & FILE_DIRECTORY_FILE && (fsctl != FSCTL_REQUEST_OPLOCK || !shared_request))
+    {
+        WARN("oplock requests on directories can only be for read or read-handle oplocks\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    ExAcquireResourceSharedLite(&Vcb->tree_lock, true);
+
+    ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
+
+    if (fsctl == FSCTL_REQUEST_OPLOCK_LEVEL_1 || fsctl == FSCTL_REQUEST_BATCH_OPLOCK || fsctl == FSCTL_REQUEST_FILTER_OPLOCK || fsctl == FSCTL_REQUEST_OPLOCK_LEVEL_2 || oplock_request)
+    {
+        if (shared_request)
+        {
+            if (!(winattrs & FILE_DIRECTORY_FILE))
+            {
+                oplock_count = FsRtlAreThereCurrentFileLocks(&Vcb->vde->pdode->KMCSFS.dict[dindex].lock);
+            }
+        }
+        else
+        {
+            oplock_count = fcb->refcount;
+        }
+    }
+
+    if ((fsctl == FSCTL_REQUEST_FILTER_OPLOCK || fsctl == FSCTL_REQUEST_BATCH_OPLOCK || (fsctl == FSCTL_REQUEST_OPLOCK && buf->RequestedOplockLevel & OPLOCK_LEVEL_CACHE_HANDLE)) && ccb->delete_on_close)
+    {
+        ExReleaseResourceLite(fcb->Header.Resource);
+        ExReleaseResourceLite(&Vcb->tree_lock);
+        return STATUS_DELETE_PENDING;
+    }
+
+    Status = FsRtlOplockFsctrl(fcb_oplock(fcb), Irp, oplock_count);
+
+    *Pirp = NULL;
+
+    fcb->Header.IsFastIoPossible = fcb->Vcb->readonly ? FastIoIsNotPossible : FastIoIsPossible;
+
+    ExReleaseResourceLite(fcb->Header.Resource);
+    ExReleaseResourceLite(&Vcb->tree_lock);
+
+    return Status;
+}
+
 NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type)
 {
     PIRP Irp = *Pirp;
@@ -400,8 +510,7 @@ NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type)
     case FSCTL_OPLOCK_BREAK_ACK_NO_2:
     case FSCTL_REQUEST_FILTER_OPLOCK:
     case FSCTL_REQUEST_OPLOCK:
-        WARN("STUB: FSCTL_REQUEST_OPLOCK\n");
-        Status = STATUS_INVALID_DEVICE_REQUEST;
+        Status = fsctl_oplock(DeviceObject->DeviceExtension, Pirp);
         break;
 
     case FSCTL_LOCK_VOLUME:

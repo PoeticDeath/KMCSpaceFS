@@ -821,6 +821,8 @@ NTSTATUS __stdcall SetInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	TRACE("set information\n");
 
+	FsRtlCheckOplock(fcb_oplock(fcb), Irp, NULL, NULL, NULL);
+
 	switch (IrpSp->Parameters.SetFile.FileInformationClass)
 	{
 	case FileAllocationInformation:

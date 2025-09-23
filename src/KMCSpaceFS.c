@@ -281,6 +281,8 @@ static NTSTATUS __stdcall Cleanup(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 		goto exit;
 	}
 
+	FsRtlCheckOplock(fcb_oplock(fcb), Irp, NULL, NULL, NULL);
+
 	// We have to use the pointer to Vcb stored in the fcb, as we can receive cleanup
 	// messages belonging to other devices.
 
@@ -553,6 +555,8 @@ static NTSTATUS __stdcall LockControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIR
 		Status = STATUS_INVALID_PARAMETER;
 		goto exit;
 	}
+
+	FsRtlCheckOplock(fcb_oplock(fcb), Irp, NULL, NULL, NULL);
 
 	if (!ccb)
 	{
@@ -1278,6 +1282,8 @@ static NTSTATUS __stdcall FlushBuffers(_In_ PDEVICE_OBJECT DeviceObject, _In_ PI
 		goto end;
 	}
 
+	FsRtlCheckOplock(fcb_oplock(fcb), Irp, NULL, NULL, NULL);
+
 	if (!ccb)
 	{
 		ERR("ccb was NULL\n");
@@ -1418,6 +1424,8 @@ void reap_fcb(fcb* fcb)
 	{
 		ExFreePool(fcb->reparse_xattr.Buffer);
 	}
+
+	FsRtlUninitializeOplock(fcb_oplock(fcb));
 
 	if (fcb->pool_type == NonPagedPoolNx)
 	{

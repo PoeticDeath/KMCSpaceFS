@@ -160,6 +160,11 @@ NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		goto exit2;
 	}
 
+	if (!(Irp->Flags & IRP_PAGING_IO))
+	{
+		FsRtlCheckOplock(fcb_oplock(fcb), Irp, NULL, NULL, NULL);
+	}
+
 	wait = IoIsOperationSynchronous(Irp);
 
 	// Don't offload jobs when doing paging IO - otherwise this can lead to

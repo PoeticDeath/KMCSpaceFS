@@ -107,6 +107,7 @@ typedef struct _fcb
 	LIST_ENTRY extents;
 	ANSI_STRING reparse_xattr;
 	bool inode_item_changed;
+	OPLOCK oplock;
 	LIST_ENTRY list_entry;
 	LIST_ENTRY list_entry_all;
 	LIST_ENTRY list_entry_dirty;
@@ -265,6 +266,18 @@ __inline static uint64_t sector_align(_In_ uint64_t n, _In_ uint64_t a)
 	}
 
 	return n;
+}
+
+static __inline POPLOCK fcb_oplock(fcb* fcb)
+{
+	if (fcb->Header.Version >= FSRTL_FCB_HEADER_V2)
+	{
+		return &((FSRTL_ADVANCED_FCB_HEADER*)&fcb->Header)->Oplock;
+	}
+	else
+	{
+		return &fcb->oplock;
+	}
 }
 
 // in registry.c

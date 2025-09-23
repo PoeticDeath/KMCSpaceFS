@@ -241,14 +241,29 @@ NTSTATUS __stdcall Write(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	try
 	{
-		// Don't offload jobs when doing paging IO - otherwise this can lead to
-		// deadlocks in CcCopyWrite.
-		if (Irp->Flags & IRP_PAGING_IO)
+		if (IrpSp->MinorFunction & IRP_MN_COMPLETE)
 		{
-			wait = true;
-		}
+			CcMdlWriteComplete(IrpSp->FileObject, &IrpSp->Parameters.Write.ByteOffset, Irp->MdlAddress);
 
-		Status = do_write(Vcb, Irp, wait);
+			Irp->MdlAddress = NULL;
+			Status = STATUS_SUCCESS;
+		}
+		else
+		{
+			if (!(Irp->Flags & IRP_PAGING_IO))
+			{
+				FsRtlCheckOplock(fcb_oplock(fcb), Irp, NULL, NULL, NULL);
+			}
+
+			// Don't offload jobs when doing paging IO - otherwise this can lead to
+			// deadlocks in CcCopyWrite.
+			if (Irp->Flags & IRP_PAGING_IO)
+			{
+				wait = true;
+			}
+
+			Status = do_write(Vcb, Irp, wait);
+		}
 	}
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
