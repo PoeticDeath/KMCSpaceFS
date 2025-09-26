@@ -705,7 +705,7 @@ open:
 
 					if (!*opctx && Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
 					{
-						oplock_context* ctx = ExAllocatePoolWithTag(NonPagedPool, sizeof(oplock_context), ALLOC_TAG);
+						oplock_context* ctx = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(oplock_context), ALLOC_TAG);
 						if (!ctx)
 						{
 							ERR("out of memory\n");
@@ -831,7 +831,7 @@ open:
 
 						if (!*opctx && Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
 						{
-							oplock_context* ctx = ExAllocatePoolWithTag(NonPagedPool, sizeof(oplock_context), ALLOC_TAG);
+							oplock_context* ctx = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(oplock_context), ALLOC_TAG);
 							if (!ctx)
 							{
 								ERR("out of memory\n");
@@ -1039,7 +1039,7 @@ loaded:
 		FileObject->FsContext = NULL;
 		if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
 		{
-			if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->nonpaged)
+			if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->pool_type == NonPagedPoolNx || Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->pool_type == PagedPool)
 			{
 				FileObject->FsContext = Vcb->vde->pdode->KMCSFS.dict[dindex].fcb;
 				InterlockedIncrement(&Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->refcount);

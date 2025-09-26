@@ -1163,15 +1163,10 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 
 	free_fcb(fcb);
 
-	if (!fcb->refcount && fcb->nonpaged)
+	if (!fcb->refcount)
 	{
-		ExDeleteResourceLite(&fcb->nonpaged->resource);
-		ExDeleteResourceLite(&fcb->nonpaged->paging_resource);
-		ExDeleteResourceLite(&fcb->nonpaged->dir_children_lock);
-		ExFreeToNPagedLookasideList(&fcb->Vcb->fcb_np_lookaside, fcb->nonpaged);
-		fcb->nonpaged = NULL;
-		fcb->Header.Resource = NULL;
-		fcb->Header.PagingIoResource = NULL;
+		reap_fcb(fcb);
+		FileObject->FsContext = NULL;
 	}
 
 	return STATUS_SUCCESS;
@@ -1429,10 +1424,12 @@ void reap_fcb(fcb* fcb)
 
 	if (fcb->pool_type == NonPagedPoolNx)
 	{
+		fcb->pool_type = -1;
 		ExFreePool(fcb);
 	}
 	else
 	{
+		fcb->pool_type = -1;
 		ExFreeToPagedLookasideList(&fcb->Vcb->fcb_lookaside, fcb);
 	}
 }
