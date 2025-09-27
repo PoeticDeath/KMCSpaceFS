@@ -1135,12 +1135,9 @@ static NTSTATUS close_file(_In_ PFILE_OBJECT FileObject, _In_ PIRP Irp)
 					fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].filename = NULL;
 					fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].fcb = NULL;
 				}
-				if (dindex || fcb->deleted)
-				{
-					ExFreePool(ccb->filename->Buffer);
-					ExFreePool(ccb->filename);
-					ccb->filename = NULL;
-				}
+				ExFreePool(ccb->filename->Buffer);
+				ExFreePool(ccb->filename);
+				ccb->filename = NULL;
 			}
 		}
 		if (ccb->filter.Buffer)

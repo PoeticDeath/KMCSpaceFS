@@ -505,6 +505,7 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 		if (same)
 		{
 			TRACE("file names are the same, not renaming\n");
+			ExFreePool(newccbfn.Buffer);
 			Status = STATUS_SUCCESS;
 			goto exit;
 		}
