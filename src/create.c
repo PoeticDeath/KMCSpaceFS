@@ -1374,7 +1374,7 @@ exit:
 	{
 		TRACE("returning %08lx\n", Status);
 	}
-	if (!(NT_SUCCESS(Status) || Status == STATUS_REPARSE) && fn.Buffer)
+	if (Status != STATUS_SUCCESS && fn.Buffer)
 	{
 		ExFreePool(fn.Buffer);
 	}
