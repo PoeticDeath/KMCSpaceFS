@@ -2012,7 +2012,7 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn, 
 		PUNICODE_STRING filename = KMCSFS->dict[dindex].filename;
 		RemoveDictEntry(KMCSFS->dict, KMCSFS->DictSize, dindex, fn.Length / sizeof(WCHAR), &KMCSFS->CurDictSize);
 		AddDictEntry(&KMCSFS->dict, nfn.Buffer, filenameloc, nfn.Length / sizeof(WCHAR), &KMCSFS->CurDictSize, &KMCSFS->DictSize, index, true);
-		dindex = FindDictEntry(KMCSFS->dict, KMCSFS->table, KMCSFS->tableend, KMCSFS->DictSize, nfn.Buffer, nfn.Length / sizeof(WCHAR));
+		dindex = FindDictEntry(KMCSFS->dict, newtable, KMCSFS->tableend, KMCSFS->DictSize, nfn.Buffer, nfn.Length / sizeof(WCHAR));
 		if (dindex)
 		{
 			KMCSFS->dict[dindex].opencount = opencount;

@@ -533,6 +533,15 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 				Status = STATUS_ACCESS_DENIED;
 				goto exit;
 			}
+			if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
+			{
+				if (!MmFlushImageSection(&Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->nonpaged->segment_object, MmFlushForWrite))
+				{
+					TRACE("trying to delete file which is being mapped as an image\n");
+					Status = STATUS_ACCESS_DENIED;
+					goto exit;
+				}
+			}
 		}
 		delete_file(&Vcb->vde->pdode->KMCSFS, NFileName, tfo_index, FileObject);
 		UNICODE_STRING stfo;
@@ -671,6 +680,22 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 						}
 						NewFilename.Length = j * sizeof(WCHAR);
 						rename_file(&Vcb->vde->pdode->KMCSFS, Filename, NewFilename, FileObject);
+						unsigned long long tdindex = FindDictEntry(Vcb->vde->pdode->KMCSFS.dict, Vcb->vde->pdode->KMCSFS.table, Vcb->vde->pdode->KMCSFS.tableend, Vcb->vde->pdode->KMCSFS.DictSize, NewFilename.Buffer, NewFilename.Length / sizeof(WCHAR));
+						if (Vcb->vde->pdode->KMCSFS.dict[tdindex].filename)
+						{
+							if (Vcb->vde->pdode->KMCSFS.dict[tdindex].filename->Buffer)
+							{
+								ExFreePool(Vcb->vde->pdode->KMCSFS.dict[tdindex].filename->Buffer);
+								Vcb->vde->pdode->KMCSFS.dict[tdindex].filename->Buffer = NULL;
+								Vcb->vde->pdode->KMCSFS.dict[tdindex].filename->Length = 0;
+								Vcb->vde->pdode->KMCSFS.dict[tdindex].filename->Buffer = ExAllocatePoolWithTag(Vcb->vde->pdode->KMCSFS.dict[tdindex].fcb->pool_type, NewFilename.Length, ALLOC_TAG);
+								if (Vcb->vde->pdode->KMCSFS.dict[tdindex].filename->Buffer)
+								{
+									RtlCopyMemory(Vcb->vde->pdode->KMCSFS.dict[tdindex].filename->Buffer, NewFilename.Buffer, NewFilename.Length);
+									Vcb->vde->pdode->KMCSFS.dict[tdindex].filename->Length = NewFilename.Length;
+								}
+							}
+						}
 						UNICODE_STRING SFilename;
 						SFilename.Buffer = Filename.Buffer + 1;
 						SFilename.Length = Filename.Length - sizeof(WCHAR);
