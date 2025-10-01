@@ -297,6 +297,36 @@ static void __stdcall oplock_complete(PVOID Context, PIRP Irp)
 	KeSetEvent(&ctx->event, 0, false);
 }
 
+static unsigned long long find_parent_reparse(UNICODE_STRING fn, KMCSpaceFS* KMCSFS)
+{
+	unsigned long long oldlen = fn.Length;
+
+	while (fn.Length > sizeof(WCHAR))
+	{
+		unsigned long lastslash = 0;
+		for (unsigned long i = 0; i < fn.Length / sizeof(WCHAR); i++)
+		{
+			if (fn.Buffer[i] == *L"/" || fn.Buffer[i] == *L"\\")
+			{
+				lastslash = i;
+			}
+			if (i - lastslash > MAX_PATH - 5)
+			{
+				ERR("file name too long\n");
+				return 0;
+			}
+		}
+		fn.Length = lastslash * sizeof(WCHAR);
+		unsigned long long index = get_filename_index(fn, KMCSFS);
+		unsigned long winattrs = chwinattrs(index, 0, *KMCSFS);
+		if (winattrs & FILE_ATTRIBUTE_REPARSE_POINT)
+		{
+			return oldlen - fn.Length;
+		}
+	}
+	return 0;
+}
+
 static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Curr_->tree_lock) device_extension* Vcb, PIRP Irp, oplock_context** opctx)
 {
 	PFILE_OBJECT FileObject = NULL;
@@ -313,6 +343,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	bool has_parent_perm = false;
 	unsigned long long index = 0;
 	unsigned long long dindex = 0;
+	unsigned long long parent_reparse_diff = 0;
 
 	Irp->IoStatus.Information = 0;
 
@@ -751,7 +782,16 @@ open:
 		}
 		else
 		{
-			Status = STATUS_OBJECT_NAME_NOT_FOUND;
+			parent_reparse_diff = find_parent_reparse(fn, &Vcb->vde->pdode->KMCSFS);
+			if (parent_reparse_diff)
+			{
+				fn.Length -= parent_reparse_diff;
+				goto open;
+			}
+			else
+			{
+				Status = STATUS_OBJECT_NAME_NOT_FOUND;
+			}
 		}
 	}
 	else if (RequestedDisposition == FILE_OVERWRITE || RequestedDisposition == FILE_OVERWRITE_IF || RequestedDisposition == FILE_SUPERSEDE)
@@ -963,7 +1003,16 @@ open:
 		}
 		else
 		{
-			Status = STATUS_OBJECT_NAME_NOT_FOUND;
+			parent_reparse_diff = find_parent_reparse(fn, &Vcb->vde->pdode->KMCSFS);
+			if (parent_reparse_diff)
+			{
+				fn.Length -= parent_reparse_diff;
+				goto open;
+			}
+			else
+			{
+				Status = STATUS_OBJECT_NAME_NOT_FOUND;
+			}
 		}
 	}
 
@@ -971,7 +1020,7 @@ loaded:
 	if (Status == STATUS_REPARSE)
 	{
 		unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-		REPARSE_DATA_BUFFER* data = ExAllocatePoolWithTag(pool_type, filesize, ALLOC_TAG);
+		REPARSE_DATA_BUFFER* data = ExAllocatePoolWithTag(pool_type, filesize + parent_reparse_diff * 2, ALLOC_TAG);
 		if (!data)
 		{
 			ERR("out of memory\n");
@@ -999,6 +1048,34 @@ loaded:
 		}
 		free_fcb(fcb);
 		reap_fcb(fcb);
+
+		if (parent_reparse_diff)
+		{
+			data->ReparseDataLength += parent_reparse_diff * 2;
+			for (unsigned long i = 0; i < data->SymbolicLinkReparseBuffer.SubstituteNameLength / sizeof(WCHAR); i++)
+			{
+				data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength + parent_reparse_diff) / sizeof(WCHAR) - i - 1] = data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength) / sizeof(WCHAR) - i - 1];
+			}
+			if (data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength + parent_reparse_diff) / sizeof(WCHAR) - 2] == '\\' && data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength + parent_reparse_diff) / sizeof(WCHAR) - 1] == '.')
+			{
+				data->SymbolicLinkReparseBuffer.SubstituteNameLength -= sizeof(WCHAR) * 2;
+			}
+			for (unsigned long i = 0; i < parent_reparse_diff / sizeof(WCHAR); i++)
+			{
+				data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength + parent_reparse_diff) / sizeof(WCHAR) + i] = fn.Buffer[fn.Length / sizeof(WCHAR) + i];
+			}
+			data->SymbolicLinkReparseBuffer.SubstituteNameOffset += parent_reparse_diff;
+			data->SymbolicLinkReparseBuffer.SubstituteNameLength += parent_reparse_diff;
+			if (data->SymbolicLinkReparseBuffer.PathBuffer[data->SymbolicLinkReparseBuffer.PrintNameLength / sizeof(WCHAR) - 2] == '\\' && data->SymbolicLinkReparseBuffer.PathBuffer[data->SymbolicLinkReparseBuffer.PrintNameLength / sizeof(WCHAR) - 1] == '.')
+			{
+				data->SymbolicLinkReparseBuffer.PrintNameLength -= sizeof(WCHAR) * 2;
+			}
+			for (unsigned long i = 0; i < parent_reparse_diff / sizeof(WCHAR); i++)
+			{
+				data->SymbolicLinkReparseBuffer.PathBuffer[data->SymbolicLinkReparseBuffer.PrintNameLength / sizeof(WCHAR) + i] = fn.Buffer[fn.Length / sizeof(WCHAR) + i];
+			}
+			data->SymbolicLinkReparseBuffer.PrintNameLength += parent_reparse_diff;
+		}
 
 		RtlCopyMemory(&Irp->IoStatus.Information, data, sizeof(ULONG));
 		Irp->Tail.Overlay.AuxiliaryBuffer = (void*)data;
