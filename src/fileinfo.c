@@ -1703,7 +1703,7 @@ NTSTATUS __stdcall QueryInformation(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	bool top_level;
 
 	FsRtlEnterFileSystem();
-	ExAcquireResourceExclusiveLite(&op_lock, true);
+	ExAcquireResourceSharedLite(&op_lock, true);
 
 	top_level = is_top_level(Irp);
 

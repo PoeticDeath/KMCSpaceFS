@@ -2316,7 +2316,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 	bool top_level;
 
 	FsRtlEnterFileSystem();
-	ExAcquireResourceExclusiveLite(&op_lock, true);
+	ExAcquireResourceSharedLite(&op_lock, true);
 
 	TRACE("query volume information\n");
 	top_level = is_top_level(Irp);

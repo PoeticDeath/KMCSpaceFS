@@ -3298,7 +3298,7 @@ NTSTATUS __stdcall QuerySecurity(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	ccb* ccb = FileObject ? FileObject->FsContext2 : NULL;
 
 	FsRtlEnterFileSystem();
-	ExAcquireResourceExclusiveLite(&op_lock, true);
+	ExAcquireResourceSharedLite(&op_lock, true);
 
 	TRACE("query security\n");
 

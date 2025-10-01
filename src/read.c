@@ -106,7 +106,7 @@ NTSTATUS __stdcall Read(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	bool acquired_fcb_lock = false, wait;
 
 	FsRtlEnterFileSystem();
-	ExAcquireResourceExclusiveLite(&op_lock, true);
+	ExAcquireResourceSharedLite(&op_lock, true);
 
 	top_level = is_top_level(Irp);
 

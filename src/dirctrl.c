@@ -768,7 +768,7 @@ NTSTATUS __stdcall DirectoryControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	device_extension* Vcb = DeviceObject->DeviceExtension;
 
 	FsRtlEnterFileSystem();
-	ExAcquireResourceExclusiveLite(&op_lock, true);
+	ExAcquireResourceSharedLite(&op_lock, true);
 
 	TRACE("directory control\n");
 
