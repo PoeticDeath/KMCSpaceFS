@@ -14,10 +14,13 @@ static BOOLEAN __stdcall fast_query_basic_info(PFILE_OBJECT FileObject, BOOLEAN 
 
     FsRtlEnterFileSystem();
 
+    ExAcquireResourceSharedLite(&op_lock, true);
+
     TRACE("(%p, %u, %p, %p, %p)\n", FileObject, wait, fbi, IoStatus, DeviceObject);
 
     if (!FileObject)
     {
+		ExReleaseResourceLite(&op_lock);
         FsRtlExitFileSystem();
         return false;
     }
@@ -26,6 +29,7 @@ static BOOLEAN __stdcall fast_query_basic_info(PFILE_OBJECT FileObject, BOOLEAN 
 
     if (!fcb)
     {
+		ExReleaseResourceLite(&op_lock);
         FsRtlExitFileSystem();
         return false;
     }
@@ -34,18 +38,21 @@ static BOOLEAN __stdcall fast_query_basic_info(PFILE_OBJECT FileObject, BOOLEAN 
 
     if (!ccb)
     {
+		ExReleaseResourceLite(&op_lock);
         FsRtlExitFileSystem();
         return false;
     }
 
     if (!(ccb->access & (FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES)))
     {
+		ExReleaseResourceLite(&op_lock);
         FsRtlExitFileSystem();
         return false;
     }
 
     if (!ExAcquireResourceSharedLite(fcb->Header.Resource, wait))
     {
+		ExReleaseResourceLite(&op_lock);
         FsRtlExitFileSystem();
         return false;
     }
@@ -79,6 +86,7 @@ static BOOLEAN __stdcall fast_query_basic_info(PFILE_OBJECT FileObject, BOOLEAN 
     IoStatus->Information = sizeof(FILE_BASIC_INFORMATION);
 
     ExReleaseResourceLite(fcb->Header.Resource);
+	ExReleaseResourceLite(&op_lock);
 
     FsRtlExitFileSystem();
 
@@ -95,10 +103,13 @@ static BOOLEAN __stdcall fast_query_standard_info(PFILE_OBJECT FileObject, BOOLE
 
     FsRtlEnterFileSystem();
 
+    ExAcquireResourceSharedLite(&op_lock, true);
+
     TRACE("(%p, %u, %p, %p, %p)\n", FileObject, wait, fsi, IoStatus, DeviceObject);
 
     if (!FileObject)
     {
+		ExReleaseResourceLite(&op_lock);
         FsRtlExitFileSystem();
         return false;
     }
@@ -108,12 +119,14 @@ static BOOLEAN __stdcall fast_query_standard_info(PFILE_OBJECT FileObject, BOOLE
 
     if (!fcb)
     {
+		ExReleaseResourceLite(&op_lock);
         FsRtlExitFileSystem();
         return false;
     }
 
     if (!ExAcquireResourceSharedLite(fcb->Header.Resource, wait))
     {
+		ExReleaseResourceLite(&op_lock);
         FsRtlExitFileSystem();
         return false;
     }
@@ -131,6 +144,7 @@ static BOOLEAN __stdcall fast_query_standard_info(PFILE_OBJECT FileObject, BOOLE
     IoStatus->Information = sizeof(FILE_STANDARD_INFORMATION);
 
     ExReleaseResourceLite(fcb->Header.Resource);
+	ExReleaseResourceLite(&op_lock);
 
     FsRtlExitFileSystem();
 
@@ -150,12 +164,18 @@ static BOOLEAN __stdcall fast_io_check_if_possible(PFILE_OBJECT FileObject, PLAR
 
     len2.QuadPart = Length;
 
+    FsRtlEnterFileSystem();
+
+    ExAcquireResourceSharedLite(&op_lock, true);
+
     unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
 
     if (CheckForReadOperation)
     {
         if (FsRtlFastCheckLockForRead(&fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].lock, FileOffset, &len2, LockKey, FileObject, PsGetCurrentProcess()))
         {
+            ExReleaseResourceLite(&op_lock);
+            FsRtlExitFileSystem();
             return true;
         }
     }
@@ -163,9 +183,15 @@ static BOOLEAN __stdcall fast_io_check_if_possible(PFILE_OBJECT FileObject, PLAR
     {
         if (!fcb->Vcb->readonly && FsRtlFastCheckLockForWrite(&fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].lock, FileOffset, &len2, LockKey, FileObject, PsGetCurrentProcess()))
         {
+            ExReleaseResourceLite(&op_lock);
+            FsRtlExitFileSystem();
             return true;
         }
     }
+
+    ExReleaseResourceLite(&op_lock);
+
+    FsRtlExitFileSystem();
 
     return false;
 }
@@ -182,6 +208,8 @@ static BOOLEAN __stdcall fast_io_query_network_open_info(PFILE_OBJECT FileObject
 
     FsRtlEnterFileSystem();
 
+	ExAcquireResourceSharedLite(&op_lock, true);
+
     TRACE("(%p, %u, %p, %p, %p)\n", FileObject, Wait, fnoi, IoStatus, DeviceObject);
 
     RtlZeroMemory(fnoi, sizeof(FILE_NETWORK_OPEN_INFORMATION));
@@ -190,6 +218,7 @@ static BOOLEAN __stdcall fast_io_query_network_open_info(PFILE_OBJECT FileObject
 
     if (!fcb || fcb == fcb->Vcb->volume_fcb)
     {
+		ExReleaseResourceLite(&op_lock);
         FsRtlExitFileSystem();
         return false;
     }
@@ -198,6 +227,7 @@ static BOOLEAN __stdcall fast_io_query_network_open_info(PFILE_OBJECT FileObject
 
     if (!ccb)
     {
+		ExReleaseResourceLite(&op_lock);
         FsRtlExitFileSystem();
         return false;
     }
@@ -231,6 +261,8 @@ static BOOLEAN __stdcall fast_io_query_network_open_info(PFILE_OBJECT FileObject
 	unsigned long winattrs = chwinattrs(nostream_index, 0, fcb->Vcb->vde->pdode->KMCSFS);
     fnoi->FileAttributes = !winattrs ? FILE_ATTRIBUTE_NORMAL : winattrs;
 
+    ExReleaseResourceLite(&op_lock);
+
     FsRtlExitFileSystem();
 
     return true;
@@ -253,16 +285,24 @@ static NTSTATUS __stdcall fast_io_acquire_for_mod_write(PFILE_OBJECT FileObject,
         return STATUS_INVALID_PARAMETER;
     }
 
+    FsRtlEnterFileSystem();
+
+    ExAcquireResourceExclusiveLite(&op_lock, true);
+
     // Make sure we don't get interrupted by the flush thread, which can cause a deadlock
 
     if (!ExAcquireResourceSharedLite(&fcb->Vcb->tree_lock, false))
     {
+		ExReleaseResourceLite(&op_lock);
+        FsRtlExitFileSystem();
         return STATUS_CANT_WAIT;
     }
 
     if (!ExAcquireResourceExclusiveLite(fcb->Header.Resource, false))
     {
+		ExReleaseResourceLite(&op_lock);
         ExReleaseResourceLite(&fcb->Vcb->tree_lock);
+		FsRtlExitFileSystem();
         TRACE("returning STATUS_CANT_WAIT\n");
         return STATUS_CANT_WAIT;
     }
@@ -273,6 +313,10 @@ static NTSTATUS __stdcall fast_io_acquire_for_mod_write(PFILE_OBJECT FileObject,
     *ResourceToRelease = fcb->Header.Resource;
 
     TRACE("returning STATUS_SUCCESS\n");
+
+    ExReleaseResourceLite(&op_lock);
+
+	FsRtlExitFileSystem();
 
     return STATUS_SUCCESS;
 }
@@ -288,9 +332,17 @@ static NTSTATUS __stdcall fast_io_release_for_mod_write(PFILE_OBJECT FileObject,
 
     fcb = FileObject->FsContext;
 
+    FsRtlEnterFileSystem();
+
+    ExAcquireResourceExclusiveLite(&op_lock, true);
+
     ExReleaseResourceLite(ResourceToRelease);
 
     ExReleaseResourceLite(&fcb->Vcb->tree_lock);
+
+	ExReleaseResourceLite(&op_lock);
+
+	FsRtlExitFileSystem();
 
     return STATUS_SUCCESS;
 }
@@ -328,8 +380,11 @@ static BOOLEAN __stdcall fast_io_write(PFILE_OBJECT FileObject, PLARGE_INTEGER F
 
     FsRtlEnterFileSystem();
 
+    ExAcquireResourceExclusiveLite(&op_lock, true);
+
     if (!ExAcquireResourceSharedLite(&fcb->Vcb->tree_lock, Wait))
     {
+		ExReleaseResourceLite(&op_lock);
         FsRtlExitFileSystem();
         return false;
     }
@@ -337,6 +392,7 @@ static BOOLEAN __stdcall fast_io_write(PFILE_OBJECT FileObject, PLARGE_INTEGER F
     ret = FsRtlCopyWrite(FileObject, FileOffset, Length, Wait, LockKey, Buffer, IoStatus, DeviceObject);
 
     ExReleaseResourceLite(&fcb->Vcb->tree_lock);
+	ExReleaseResourceLite(&op_lock);
 
     FsRtlExitFileSystem();
 
@@ -352,6 +408,10 @@ static BOOLEAN __stdcall fast_io_lock(PFILE_OBJECT FileObject, PLARGE_INTEGER Fi
 
     UNUSED(DeviceObject);
 
+    FsRtlEnterFileSystem();
+
+    ExAcquireResourceExclusiveLite(&op_lock, true);
+
     TRACE("(%p, %I64x, %I64x, %p, %lx, %u, %u, %p, %p)\n", FileObject, FileOffset ? FileOffset->QuadPart : 0, Length ? Length->QuadPart : 0, ProcessId, Key, FailImmediately, ExclusiveLock, IoStatus, DeviceObject);
 
 	unsigned long long index = get_filename_index(*ccb->filename, &fcb->Vcb->vde->pdode->KMCSFS);
@@ -359,19 +419,21 @@ static BOOLEAN __stdcall fast_io_lock(PFILE_OBJECT FileObject, PLARGE_INTEGER Fi
 
     if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
     {
+        ExReleaseResourceLite(&op_lock);
+        FsRtlExitFileSystem();
         WARN("can only lock files\n");
         IoStatus->Status = STATUS_INVALID_PARAMETER;
         IoStatus->Information = 0;
         return true;
     }
 
-    FsRtlEnterFileSystem();
     ExAcquireResourceSharedLite(fcb->Header.Resource, true);
 
 	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
     ret = FsRtlFastLock(&fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].lock, FileObject, FileOffset, Length, ProcessId, Key, FailImmediately, ExclusiveLock, IoStatus, NULL, false);
 
     ExReleaseResourceLite(fcb->Header.Resource);
+	ExReleaseResourceLite(&op_lock);
     FsRtlExitFileSystem();
 
     return ret;
@@ -385,6 +447,10 @@ static BOOLEAN __stdcall fast_io_unlock_single(PFILE_OBJECT FileObject, PLARGE_I
 
     UNUSED(DeviceObject);
 
+    FsRtlEnterFileSystem();
+
+    ExAcquireResourceExclusiveLite(&op_lock, true);
+
     TRACE("(%p, %I64x, %I64x, %p, %lx, %p, %p)\n", FileObject, FileOffset ? FileOffset->QuadPart : 0, Length ? Length->QuadPart : 0, ProcessId, Key, IoStatus, DeviceObject);
 
     IoStatus->Information = 0;
@@ -394,17 +460,19 @@ static BOOLEAN __stdcall fast_io_unlock_single(PFILE_OBJECT FileObject, PLARGE_I
 
     if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
     {
+		ExReleaseResourceLite(&op_lock);
+        FsRtlExitFileSystem();
         WARN("can only lock files\n");
         IoStatus->Status = STATUS_INVALID_PARAMETER;
         return true;
     }
 
-    FsRtlEnterFileSystem();
-
 	unsigned long long dindex = FindDictEntry(fcb->Vcb->vde->pdode->KMCSFS.dict, fcb->Vcb->vde->pdode->KMCSFS.table, fcb->Vcb->vde->pdode->KMCSFS.tableend, fcb->Vcb->vde->pdode->KMCSFS.DictSize, ccb->filename->Buffer, ccb->filename->Length / sizeof(WCHAR));
     IoStatus->Status = FsRtlFastUnlockSingle(&fcb->Vcb->vde->pdode->KMCSFS.dict[dindex].lock, FileObject, FileOffset, Length, ProcessId, Key, NULL, false);
 
     fcb->Header.IsFastIoPossible = fcb->Vcb->readonly ? FastIoIsNotPossible : FastIoIsPossible;
+
+    ExReleaseResourceLite(&op_lock);
 
     FsRtlExitFileSystem();
 
@@ -419,6 +487,10 @@ static BOOLEAN __stdcall fast_io_unlock_all(PFILE_OBJECT FileObject, PEPROCESS P
 
     UNUSED(DeviceObject);
 
+    FsRtlEnterFileSystem();
+
+    ExAcquireResourceExclusiveLite(&op_lock, true);
+
     TRACE("(%p, %p, %p, %p)\n", FileObject, ProcessId, IoStatus, DeviceObject);
 
     IoStatus->Information = 0;
@@ -428,12 +500,12 @@ static BOOLEAN __stdcall fast_io_unlock_all(PFILE_OBJECT FileObject, PEPROCESS P
 
     if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
     {
+        ExReleaseResourceLite(&op_lock);
+        FsRtlExitFileSystem();
         WARN("can only lock files\n");
         IoStatus->Status = STATUS_INVALID_PARAMETER;
         return true;
     }
-
-    FsRtlEnterFileSystem();
 
     ExAcquireResourceSharedLite(fcb->Header.Resource, true);
 
@@ -443,6 +515,7 @@ static BOOLEAN __stdcall fast_io_unlock_all(PFILE_OBJECT FileObject, PEPROCESS P
 	fcb->Header.IsFastIoPossible = fcb->Vcb->readonly ? FastIoIsNotPossible : FastIoIsPossible;
 
     ExReleaseResourceLite(fcb->Header.Resource);
+	ExReleaseResourceLite(&op_lock);
 
     FsRtlExitFileSystem();
 
@@ -457,6 +530,10 @@ static BOOLEAN __stdcall fast_io_unlock_all_by_key(PFILE_OBJECT FileObject, PVOI
 
     UNUSED(DeviceObject);
 
+    FsRtlEnterFileSystem();
+
+    ExAcquireResourceExclusiveLite(&op_lock, true);
+
     TRACE("(%p, %p, %lx, %p, %p)\n", FileObject, ProcessId, Key, IoStatus, DeviceObject);
 
     IoStatus->Information = 0;
@@ -466,12 +543,12 @@ static BOOLEAN __stdcall fast_io_unlock_all_by_key(PFILE_OBJECT FileObject, PVOI
 
     if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
     {
+		ExReleaseResourceLite(&op_lock);
+        FsRtlExitFileSystem();
         WARN("can only lock files\n");
         IoStatus->Status = STATUS_INVALID_PARAMETER;
         return true;
     }
-
-    FsRtlEnterFileSystem();
 
     ExAcquireResourceSharedLite(fcb->Header.Resource, true);
 
@@ -481,6 +558,7 @@ static BOOLEAN __stdcall fast_io_unlock_all_by_key(PFILE_OBJECT FileObject, PVOI
 	fcb->Header.IsFastIoPossible = fcb->Vcb->readonly ? FastIoIsNotPossible : FastIoIsPossible;
 
     ExReleaseResourceLite(fcb->Header.Resource);
+	ExReleaseResourceLite(&op_lock);
 
     FsRtlExitFileSystem();
 
@@ -505,8 +583,14 @@ static void __stdcall fast_io_acquire_for_create_section(_In_ PFILE_OBJECT FileO
         return;
     }
 
+    FsRtlEnterFileSystem();
+
+    ExAcquireResourceExclusiveLite(&op_lock, true);
     ExAcquireResourceSharedLite(&fcb->Vcb->tree_lock, true);
     ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
+	ExReleaseResourceLite(&op_lock);
+
+    FsRtlExitFileSystem();
 }
 
 static void __stdcall fast_io_release_for_create_section(_In_ PFILE_OBJECT FileObject)
@@ -527,8 +611,14 @@ static void __stdcall fast_io_release_for_create_section(_In_ PFILE_OBJECT FileO
         return;
     }
 
+    FsRtlEnterFileSystem();
+
+    ExAcquireResourceExclusiveLite(&op_lock, true);
     ExReleaseResourceLite(fcb->Header.Resource);
     ExReleaseResourceLite(&fcb->Vcb->tree_lock);
+	ExReleaseResourceLite(&op_lock);
+
+	FsRtlExitFileSystem();
 }
 
 void init_fast_io_dispatch(FAST_IO_DISPATCH** fiod)
