@@ -344,6 +344,8 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	unsigned long long index = 0;
 	unsigned long long dindex = 0;
 	unsigned long long parent_reparse_diff = 0;
+	unsigned long long dotdotadd = 0;
+	bool dotdot = false;
 
 	Irp->IoStatus.Information = 0;
 
@@ -1020,7 +1022,7 @@ loaded:
 	if (Status == STATUS_REPARSE)
 	{
 		unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-		REPARSE_DATA_BUFFER* data = ExAllocatePoolWithTag(pool_type, filesize + parent_reparse_diff * 2, ALLOC_TAG);
+		REPARSE_DATA_BUFFER* data = ExAllocatePoolWithTag(pool_type, filesize + parent_reparse_diff * 2 + dotdotadd * sizeof(WCHAR) * 6, ALLOC_TAG);
 		if (!data)
 		{
 			ERR("out of memory\n");
@@ -1051,10 +1053,21 @@ loaded:
 
 		if (parent_reparse_diff)
 		{
-			data->ReparseDataLength += parent_reparse_diff * 2;
+			data->ReparseDataLength += parent_reparse_diff * 2 + dotdotadd * sizeof(WCHAR) * 6;
 			for (unsigned long i = 0; i < data->SymbolicLinkReparseBuffer.SubstituteNameLength / sizeof(WCHAR); i++)
 			{
-				data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength + parent_reparse_diff) / sizeof(WCHAR) - i - 1] = data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength) / sizeof(WCHAR) - i - 1];
+				data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength + parent_reparse_diff) / sizeof(WCHAR) + dotdotadd * 3 * 2 - i - 1] = data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength) / sizeof(WCHAR) - i - 1];
+			}
+			if (dotdot)
+			{
+				data->SymbolicLinkReparseBuffer.SubstituteNameOffset += dotdotadd * sizeof(WCHAR) * 3;
+				for (unsigned long i = 0; i < dotdotadd; i++)
+				{
+					data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + parent_reparse_diff) / sizeof(WCHAR) + i * 3] = '.';
+					data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + parent_reparse_diff) / sizeof(WCHAR) + i * 3 + 1] = '.';
+					data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + parent_reparse_diff) / sizeof(WCHAR) + i * 3 + 2] = '\\';
+				}
+				data->SymbolicLinkReparseBuffer.SubstituteNameLength += dotdotadd * sizeof(WCHAR) * 3;
 			}
 			if (data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength + parent_reparse_diff) / sizeof(WCHAR) - 2] == '\\' && data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength + parent_reparse_diff) / sizeof(WCHAR) - 1] == '.')
 			{
@@ -1063,9 +1076,33 @@ loaded:
 			for (unsigned long i = 0; i < parent_reparse_diff / sizeof(WCHAR); i++)
 			{
 				data->SymbolicLinkReparseBuffer.PathBuffer[(data->SymbolicLinkReparseBuffer.SubstituteNameOffset + data->SymbolicLinkReparseBuffer.SubstituteNameLength + parent_reparse_diff) / sizeof(WCHAR) + i] = fn.Buffer[fn.Length / sizeof(WCHAR) + i];
+				if (!dotdot && fn.Buffer[fn.Length / sizeof(WCHAR) + i] == '\\')
+				{
+					dotdotadd += 1;
+				}
 			}
 			data->SymbolicLinkReparseBuffer.SubstituteNameOffset += parent_reparse_diff;
 			data->SymbolicLinkReparseBuffer.SubstituteNameLength += parent_reparse_diff;
+			if (!dotdot && dotdotadd && !((data->SymbolicLinkReparseBuffer.PathBuffer[0] == '\\' && data->SymbolicLinkReparseBuffer.PathBuffer[1] == '\\') || data->SymbolicLinkReparseBuffer.PathBuffer[1] == ':'))
+			{
+				dotdot = true;
+				ExFreePool(data);
+				goto loaded;
+			}
+			if (dotdot)
+			{
+				for (unsigned long i = 0; i < data->SymbolicLinkReparseBuffer.PrintNameLength / sizeof(WCHAR); i++)
+				{
+					data->SymbolicLinkReparseBuffer.PathBuffer[data->SymbolicLinkReparseBuffer.PrintNameLength / sizeof(WCHAR) + dotdotadd * 3 - i - 1] = data->SymbolicLinkReparseBuffer.PathBuffer[data->SymbolicLinkReparseBuffer.PrintNameLength / sizeof(WCHAR) - i - 1];
+				}
+				for (unsigned long i = 0; i < dotdotadd; i++)
+				{
+					data->SymbolicLinkReparseBuffer.PathBuffer[i * 3] = '.';
+					data->SymbolicLinkReparseBuffer.PathBuffer[i * 3 + 1] = '.';
+					data->SymbolicLinkReparseBuffer.PathBuffer[i * 3 + 2] = '\\';
+				}
+				data->SymbolicLinkReparseBuffer.PrintNameLength += dotdotadd * sizeof(WCHAR) * 3;
+			}
 			if (data->SymbolicLinkReparseBuffer.PathBuffer[data->SymbolicLinkReparseBuffer.PrintNameLength / sizeof(WCHAR) - 2] == '\\' && data->SymbolicLinkReparseBuffer.PathBuffer[data->SymbolicLinkReparseBuffer.PrintNameLength / sizeof(WCHAR) - 1] == '.')
 			{
 				data->SymbolicLinkReparseBuffer.PrintNameLength -= sizeof(WCHAR) * 2;
