@@ -1083,7 +1083,7 @@ loaded:
 			}
 			data->SymbolicLinkReparseBuffer.SubstituteNameOffset += parent_reparse_diff;
 			data->SymbolicLinkReparseBuffer.SubstituteNameLength += parent_reparse_diff;
-			if (!dotdot && dotdotadd && !((data->SymbolicLinkReparseBuffer.PathBuffer[0] == '\\' && data->SymbolicLinkReparseBuffer.PathBuffer[1] == '\\') || data->SymbolicLinkReparseBuffer.PathBuffer[1] == ':'))
+			if (!dotdot && dotdotadd && !(data->SymbolicLinkReparseBuffer.PathBuffer[0] == '\\' || data->SymbolicLinkReparseBuffer.PathBuffer[1] == ':'))
 			{
 				dotdot = true;
 				ExFreePool(data);
