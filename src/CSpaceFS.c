@@ -170,6 +170,10 @@ unsigned long long get_filename_index(UNICODE_STRING FileName, KMCSpaceFS* KMCSF
 					j = 0;
 				}
 			}
+			else
+			{
+				j++;
+			}
 		}
 	}
 	return 0;
