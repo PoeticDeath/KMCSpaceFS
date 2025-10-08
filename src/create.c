@@ -785,7 +785,7 @@ open:
 		else
 		{
 			parent_reparse_diff = find_parent_reparse(fn, &Vcb->vde->pdode->KMCSFS);
-			if (parent_reparse_diff)
+			if (parent_reparse_diff && !(options & FILE_OPEN_REPARSE_POINT && RequestedDisposition != FILE_CREATE))
 			{
 				fn.Length -= parent_reparse_diff;
 				goto open;
@@ -1006,7 +1006,7 @@ open:
 		else
 		{
 			parent_reparse_diff = find_parent_reparse(fn, &Vcb->vde->pdode->KMCSFS);
-			if (parent_reparse_diff)
+			if (parent_reparse_diff && !(options & FILE_OPEN_REPARSE_POINT))
 			{
 				fn.Length -= parent_reparse_diff;
 				goto open;
