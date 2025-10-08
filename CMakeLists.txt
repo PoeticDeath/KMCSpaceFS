@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(KMCSpaceFS VERSION 0.0.1)
+project(KMCSpaceFS VERSION 1.0.0)
 
 # KMCSpaceFS.sys
 
