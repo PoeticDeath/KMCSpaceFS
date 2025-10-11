@@ -1506,6 +1506,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 										o -= strsize;
 										break;
 									}
+									o--;
 								}
 								cur = 0;
 								int0 = 0;
