@@ -55,6 +55,7 @@ NTSTATUS query_directory(PIRP Irp)
 	device_extension* Vcb = fcb ? fcb->Vcb : NULL;
 	NTSTATUS Status = STATUS_INVALID_PARAMETER;
 	LONG len = IrpSp->Parameters.QueryDirectory.Length;
+	WCHAR* filename = NULL;
 	bool first = true;
 	void* buf;
 
@@ -114,7 +115,7 @@ NTSTATUS query_directory(PIRP Irp)
 	Irp->IoStatus.Information = 0;
 	unsigned long old_offset = 0;
 
-	WCHAR* filename = ExAllocatePoolWithTag(fcb->pool_type, 65536 * sizeof(WCHAR), ALLOC_TAG);
+	filename = ExAllocatePoolWithTag(fcb->pool_type, 65536 * sizeof(WCHAR), ALLOC_TAG);
 	if (!filename)
 	{
 		ERR("out of memory\n");

@@ -9,6 +9,7 @@
 Signature   = "$Windows NT$"
 Class       = Volume
 ClassGuid   = {71a27cdd-812a-11d0-bec7-08002be2092f}
+PnpLockdown = 1
 Provider    = %Me%
 DriverVer   = 10/07/2025,1.0.0.0
 CatalogFile = KMCSpaceFS.cat
@@ -26,31 +27,7 @@ OptionDesc = %ServiceDescription%
 CopyFiles  = KMCSpaceFS.DriverFiles,KMCSpaceFS.DllFiles
 CopyINF    = KMCSpaceFS-VOL.inf
 
-[DefaultInstall.NTx86]
-OptionDesc = %ServiceDescription%
-CopyFiles  = KMCSpaceFS.DriverFiles,KMCSpaceFS.DllFiles
-CopyINF    = KMCSpaceFS-VOL.inf
-
-[DefaultInstall.NTarm]
-OptionDesc = %ServiceDescription%
-CopyFiles  = KMCSpaceFS.DriverFiles,KMCSpaceFS.DllFiles
-CopyINF    = KMCSpaceFS-VOL.inf
-
-[DefaultInstall.NTarm64]
-OptionDesc = %ServiceDescription%
-CopyFiles  = KMCSpaceFS.DriverFiles,KMCSpaceFS.DllFiles
-CopyINF    = KMCSpaceFS-VOL.inf
-
 [DefaultInstall.NTamd64.Services]
-AddService = %ServiceName%,0x802,KMCSpaceFS.Service
-
-[DefaultInstall.NTx86.Services]
-AddService = %ServiceName%,0x802,KMCSpaceFS.Service
-
-[DefaultInstall.NTarm.Services]
-AddService = %ServiceName%,0x802,KMCSpaceFS.Service
-
-[DefaultInstall.NTarm64.Services]
 AddService = %ServiceName%,0x802,KMCSpaceFS.Service
 
 ;
@@ -78,17 +55,8 @@ LoadOrderGroup = "File System"
 [SourceDisksFiles]
 KMCSpaceFS.sys = 1,,
 
-[SourceDisksNames.x86]
-1 = %DiskId1%,,,\x86
-
 [SourceDisksNames.amd64]
-1 = %DiskId1%,,,\x64
-
-[SourceDisksNames.arm]
-1 = %DiskId1%,,,\arm
-
-[SourceDisksNames.arm64]
-1 = %DiskId1%,,,\aarch64
+1 = %DiskId1%,,,
 
 ;;
 ;; String Section

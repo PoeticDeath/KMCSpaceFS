@@ -11,8 +11,15 @@
 #define _NO_CRT_STDIO_INLINE
 
 #ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4163)
+#pragma warning(disable:4311)
+#pragma warning(disable:4312)
 #define funcname __FUNCTION__
 #else
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-compare"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
 #define funcname __func__
 #endif
 
@@ -244,6 +251,14 @@ typedef struct pdo_device_extension
 
 	LIST_ENTRY list_entry;
 } pdo_device_extension;
+
+NTSYSAPI NTSTATUS NTAPI ZwQueryInformationProcess(
+    IN HANDLE ProcessHandle,
+    IN ULONG ProcessInformationClass,
+    OUT PVOID ProcessInformation,
+    IN ULONG ProcessInformationLength,
+    OUT PULONG ReturnLength OPTIONAL
+);
 
 static __inline void* map_user_buffer(PIRP Irp, ULONG priority)
 {

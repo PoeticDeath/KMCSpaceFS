@@ -18,21 +18,9 @@ PnpLockdown = 1
 KMCSpaceFS.DriverFiles = 12 ;%windir%\system32\drivers
 
 [Manufacturer]
-%Me% = Standard,NTamd64,NTx86,NTarm,NTarm64
+%Me% = Standard,NTamd64
 
 [Standard.NTamd64]
-%VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
-%ControllerName% = KMCSpaceFS_Install, ROOT\CSpaceFS
-
-[Standard.NTx86]
-%VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
-%ControllerName% = KMCSpaceFS_Install, ROOT\CSpaceFS
-
-[Standard.NTarm]
-%VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
-%ControllerName% = KMCSpaceFS_Install, ROOT\CSpaceFS
-
-[Standard.NTarm64]
 %VolumeName%     = KMCSpaceFS_Install, KMCSpaceFSVolume
 %ControllerName% = KMCSpaceFS_Install, ROOT\CSpaceFS
 
@@ -66,17 +54,8 @@ LoadOrderGroup = "File System"
 [SourceDisksFiles]
 KMCSpaceFS.sys = 1,,
 
-[SourceDisksNames.x86]
-1 = %DiskId1%,,,\x86
-
 [SourceDisksNames.amd64]
-1 = %DiskId1%,,,\x64
-
-[SourceDisksNames.arm]
-1 = %DiskId1%,,,\arm
-
-[SourceDisksNames.arm64]
-1 = %DiskId1%,,,\aarch64
+1 = %DiskId1%,,,
 
 ;;
 ;; String Section
