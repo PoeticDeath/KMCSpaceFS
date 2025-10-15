@@ -2791,7 +2791,7 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 	IrpSp->Parameters.Write.Length = RLength + (512 - RLength % 512) % 512;
 	IrpSp->Parameters.Write.ByteOffset = Offset;
 
-	PUCHAR RBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, IrpSp->Parameters.Write.Length + 512, ALLOC_TAG);
+	PUCHAR RBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, IrpSp->Parameters.Write.Length, ALLOC_TAG);
 	if (!RBuffer)
 	{
 		ERR("out of memory\n");
@@ -2811,7 +2811,7 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 
 	if (DeviceObject->Flags & DO_BUFFERED_IO)
 	{
-		Irp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, IrpSp->Parameters.Write.Length + 512, ALLOC_TAG);
+		Irp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, IrpSp->Parameters.Write.Length, ALLOC_TAG);
 		if (!Irp->AssociatedIrp.SystemBuffer)
 		{
 			ERR("out of memory\n");
@@ -2825,7 +2825,7 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 	}
 	else if (DeviceObject->Flags & DO_DIRECT_IO)
 	{
-		Irp->MdlAddress = IoAllocateMdl(RBuffer, IrpSp->Parameters.Write.Length + 512, false, false, NULL);
+		Irp->MdlAddress = IoAllocateMdl(RBuffer, IrpSp->Parameters.Write.Length, false, false, NULL);
 		if (!Irp->MdlAddress)
 		{
 			ERR("IoAllocateMdl failed\n");
