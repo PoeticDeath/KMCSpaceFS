@@ -314,8 +314,6 @@ static NTSTATUS __stdcall fast_io_acquire_for_mod_write(PFILE_OBJECT FileObject,
 
     TRACE("returning STATUS_SUCCESS\n");
 
-    ExReleaseResourceLite(&op_lock);
-
 	FsRtlExitFileSystem();
 
     return STATUS_SUCCESS;
@@ -333,8 +331,6 @@ static NTSTATUS __stdcall fast_io_release_for_mod_write(PFILE_OBJECT FileObject,
     fcb = FileObject->FsContext;
 
     FsRtlEnterFileSystem();
-
-    ExAcquireResourceExclusiveLite(&op_lock, true);
 
     ExReleaseResourceLite(ResourceToRelease);
 
@@ -588,7 +584,6 @@ static void __stdcall fast_io_acquire_for_create_section(_In_ PFILE_OBJECT FileO
     ExAcquireResourceExclusiveLite(&op_lock, true);
     ExAcquireResourceSharedLite(&fcb->Vcb->tree_lock, true);
     ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
-	ExReleaseResourceLite(&op_lock);
 
     FsRtlExitFileSystem();
 }
@@ -613,7 +608,6 @@ static void __stdcall fast_io_release_for_create_section(_In_ PFILE_OBJECT FileO
 
     FsRtlEnterFileSystem();
 
-    ExAcquireResourceExclusiveLite(&op_lock, true);
     ExReleaseResourceLite(fcb->Header.Resource);
     ExReleaseResourceLite(&fcb->Vcb->tree_lock);
 	ExReleaseResourceLite(&op_lock);
