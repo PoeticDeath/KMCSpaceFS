@@ -349,6 +349,7 @@ static NTSTATUS __stdcall fast_io_acquire_for_ccflush(PFILE_OBJECT FileObject, P
     UNUSED(FileObject);
     UNUSED(DeviceObject);
 
+	ExAcquireResourceExclusiveLite(&op_lock, true);
     IoSetTopLevelIrp((PIRP)FSRTL_CACHE_TOP_LEVEL_IRP);
 
     return STATUS_SUCCESS;
@@ -363,6 +364,7 @@ static NTSTATUS __stdcall fast_io_release_for_ccflush(PFILE_OBJECT FileObject, P
     if (IoGetTopLevelIrp() == (PIRP)FSRTL_CACHE_TOP_LEVEL_IRP)
     {
         IoSetTopLevelIrp(NULL);
+		ExReleaseResourceLite(&op_lock);
     }
 
     return STATUS_SUCCESS;
