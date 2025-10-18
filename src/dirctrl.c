@@ -99,6 +99,8 @@ NTSTATUS query_directory(PIRP Irp)
 		goto end;
 	}
 
+	RtlZeroMemory(buf, len);
+
 	if (IrpSp->Flags & SL_RESTART_SCAN)
 	{
 		ccb->query_dir_offset = 0;
@@ -397,7 +399,7 @@ NTSTATUS query_directory(PIRP Irp)
 			{
 				FILE_BOTH_DIR_INFORMATION* fbdi = (void*)((uint8_t*)buf + Irp->IoStatus.Information);
 
-				needed = offsetof(FILE_BOTH_DIR_INFORMATION, FileName) + FNL;
+				needed = sector_align(offsetof(FILE_BOTH_DIR_INFORMATION, FileName) + FNL, 8);
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
@@ -429,7 +431,7 @@ NTSTATUS query_directory(PIRP Irp)
 			{
 				FILE_DIRECTORY_INFORMATION* fdi = (void*)((uint8_t*)buf + Irp->IoStatus.Information);
 
-				needed = offsetof(FILE_DIRECTORY_INFORMATION, FileName) + FNL;
+				needed = sector_align(offsetof(FILE_DIRECTORY_INFORMATION, FileName) + FNL, 8);
 				if (len < sizeof(FILE_DIRECTORY_INFORMATION) * first + needed * !first)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
@@ -469,7 +471,7 @@ NTSTATUS query_directory(PIRP Irp)
 			{
 				FILE_FULL_DIR_INFORMATION* ffdi = (void*)((uint8_t*)buf + Irp->IoStatus.Information);
 
-				needed = offsetof(FILE_FULL_DIR_INFORMATION, FileName) + FNL;
+				needed = sector_align(offsetof(FILE_FULL_DIR_INFORMATION, FileName) + FNL, 8);
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
@@ -500,7 +502,7 @@ NTSTATUS query_directory(PIRP Irp)
 			{
 				FILE_ID_BOTH_DIR_INFORMATION* fibdi = (void*)((uint8_t*)buf + Irp->IoStatus.Information);
 
-				needed = offsetof(FILE_ID_BOTH_DIR_INFORMATION, FileName) + FNL;
+				needed = sector_align(offsetof(FILE_ID_BOTH_DIR_INFORMATION, FileName) + FNL, 8);
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
@@ -522,7 +524,7 @@ NTSTATUS query_directory(PIRP Irp)
 				fibdi->FileNameLength = FNL;
 				fibdi->EaSize = EA;
 				fibdi->ShortNameLength = 0;
-				fibdi->FileId.QuadPart = index;
+				fibdi->FileId.QuadPart = 0;
 
 				RtlCopyMemory(fibdi->FileName, Filename.Buffer + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2), FNL);
 
@@ -537,7 +539,7 @@ NTSTATUS query_directory(PIRP Irp)
 			{
 				FILE_ID_EXTD_DIR_INFORMATION* fiedi = (void*)((uint8_t*)buf + Irp->IoStatus.Information);
 
-				needed = offsetof(FILE_ID_EXTD_DIR_INFORMATION, FileName) + FNL;
+				needed = sector_align(offsetof(FILE_ID_EXTD_DIR_INFORMATION, FileName) + FNL, 8);
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
@@ -559,15 +561,7 @@ NTSTATUS query_directory(PIRP Irp)
 				fiedi->FileNameLength = FNL;
 				fiedi->EaSize = EALEN;
 				fiedi->ReparsePointTag = RPT;
-				RtlCopyMemory(&fiedi->FileId.Identifier, &index, 8);
-				fiedi->FileId.Identifier[8] = 0;
-				fiedi->FileId.Identifier[9] = 0;
-				fiedi->FileId.Identifier[10] = 0;
-				fiedi->FileId.Identifier[11] = 0;
-				fiedi->FileId.Identifier[12] = 0;
-				fiedi->FileId.Identifier[13] = 0;
-				fiedi->FileId.Identifier[14] = 0;
-				fiedi->FileId.Identifier[15] = 0;
+				RtlZeroMemory(&fiedi->FileId.Identifier, 16);
 
 				RtlCopyMemory(fiedi->FileName, Filename.Buffer + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2), FNL);
 
@@ -578,7 +572,7 @@ NTSTATUS query_directory(PIRP Irp)
 			{
 				FILE_ID_EXTD_BOTH_DIR_INFORMATION* fiebdi = (void*)((uint8_t*)buf + Irp->IoStatus.Information);
 
-				needed = offsetof(FILE_ID_EXTD_BOTH_DIR_INFORMATION, FileName) + FNL;
+				needed = sector_align(offsetof(FILE_ID_EXTD_BOTH_DIR_INFORMATION, FileName) + FNL, 8);
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
@@ -600,15 +594,7 @@ NTSTATUS query_directory(PIRP Irp)
 				fiebdi->FileNameLength = FNL;
 				fiebdi->EaSize = EALEN;
 				fiebdi->ReparsePointTag = RPT;
-				RtlCopyMemory(&fiebdi->FileId.Identifier, &index, 8);
-				fiebdi->FileId.Identifier[8] = 0;
-				fiebdi->FileId.Identifier[9] = 0;
-				fiebdi->FileId.Identifier[10] = 0;
-				fiebdi->FileId.Identifier[11] = 0;
-				fiebdi->FileId.Identifier[12] = 0;
-				fiebdi->FileId.Identifier[13] = 0;
-				fiebdi->FileId.Identifier[14] = 0;
-				fiebdi->FileId.Identifier[15] = 0;
+				RtlZeroMemory(&fiebdi->FileId.Identifier, 16);
 				fiebdi->ShortNameLength = 0;
 
 				RtlCopyMemory(fiebdi->FileName, Filename.Buffer + ccb->filename->Length / sizeof(WCHAR) + (ccb->filename->Length > 2), FNL);
@@ -623,7 +609,7 @@ NTSTATUS query_directory(PIRP Irp)
 			{
 				FILE_NAMES_INFORMATION* fni = (void*)((uint8_t*)buf + Irp->IoStatus.Information);
 
-				needed = offsetof(FILE_NAMES_INFORMATION, FileName) + FNL;
+				needed = sector_align(offsetof(FILE_NAMES_INFORMATION, FileName) + FNL, 8);
 				if (len < needed)
 				{
 					TRACE("buffer overflow - %li > %lu\n", needed, len);
