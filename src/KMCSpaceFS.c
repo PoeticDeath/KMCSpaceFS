@@ -2809,51 +2809,41 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 	}
 	RtlCopyMemory(RBuffer + (LONGLONG)StartingOffset % 512, Buffer, Length);
 
+	Irp->MdlAddress = IoAllocateMdl(RBuffer, IrpSp->Parameters.Write.Length, false, false, NULL);
+	if (!Irp->MdlAddress)
+	{
+		ERR("IoAllocateMdl failed\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto exit;
+	}
+
+	Status = STATUS_SUCCESS;
+
+	try
+	{
+		MmProbeAndLockPages(Irp->MdlAddress, KernelMode, IoReadAccess);
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		Status = GetExceptionCode();
+	}
+
+	if (!NT_SUCCESS(Status))
+	{
+		ERR("MmProbeAndLockPages threw exception %08lx\n", Status);
+		IoFreeMdl(Irp->MdlAddress);
+		goto exit;
+	}
+
 	if (DeviceObject->Flags & DO_BUFFERED_IO)
 	{
-		Irp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, IrpSp->Parameters.Write.Length, ALLOC_TAG);
-		if (!Irp->AssociatedIrp.SystemBuffer)
-		{
-			ERR("out of memory\n");
-			Status = STATUS_INSUFFICIENT_RESOURCES;
-			goto exit;
-		}
+		Irp->AssociatedIrp.SystemBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute);
 
-		Irp->Flags |= IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER | IRP_INPUT_OPERATION;
-
-		Irp->UserBuffer = RBuffer;
-	}
-	else if (DeviceObject->Flags & DO_DIRECT_IO)
-	{
-		Irp->MdlAddress = IoAllocateMdl(RBuffer, IrpSp->Parameters.Write.Length, false, false, NULL);
-		if (!Irp->MdlAddress)
-		{
-			ERR("IoAllocateMdl failed\n");
-			Status = STATUS_INSUFFICIENT_RESOURCES;
-			goto exit;
-		}
-
-		Status = STATUS_SUCCESS;
-
-		try
-		{
-			MmProbeAndLockPages(Irp->MdlAddress, KernelMode, IoWriteAccess);
-		}
-		except(EXCEPTION_EXECUTE_HANDLER)
-		{
-			Status = GetExceptionCode();
-		}
-
-		if (!NT_SUCCESS(Status))
-		{
-			ERR("MmProbeAndLockPages threw exception %08lx\n", Status);
-			IoFreeMdl(Irp->MdlAddress);
-			goto exit;
-		}
+		Irp->Flags = IRP_BUFFERED_IO;
 	}
 	else
 	{
-		Irp->UserBuffer = RBuffer;
+		Irp->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute);
 	}
 
 	Irp->UserIosb = &IoStatus;
@@ -2870,11 +2860,8 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 		Status = context.iosb.Status;
 	}
 
-	if (DeviceObject->Flags & DO_DIRECT_IO)
-	{
-		MmUnlockPages(Irp->MdlAddress);
-		IoFreeMdl(Irp->MdlAddress);
-	}
+	MmUnlockPages(Irp->MdlAddress);
+	IoFreeMdl(Irp->MdlAddress);
 
 exit:
 	IoFreeIrp(Irp);
