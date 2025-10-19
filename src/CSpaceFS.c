@@ -1153,6 +1153,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 		unsigned long long endsector = 0;
 		unsigned long long endoffset = 0;
 		unsigned long long endlength = 0;
+		unsigned long long endrlength = 0;
 		bool notzero = false;
 		bool multisector = false;
 		unsigned cur = 0;
@@ -1198,6 +1199,8 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 							endsector = int0;
 							endoffset = int1;
 							endlength = int2 - int1;
+							endrlength = endlength + endoffset % 512;
+							endrlength += (512 - endrlength % 512) % 512;
 						}
 						break;
 					}
@@ -1282,14 +1285,14 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 		{
 			if (cursize % KMCSFS->sectorsize)
 			{ // Last block was part sector
-				tempdata = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS->sectorsize, ALLOC_TAG);
+				tempdata = ExAllocatePoolWithTag(NonPagedPoolNx, endrlength, ALLOC_TAG);
 				if (!tempdata)
 				{
 					ERR("out of memory\n");
 					ExFreePool(used_bytes);
 					return false;
 				}
-				sync_read_phys(FileObject->DeviceObject, FileObject, KMCSFS->size - endsector * KMCSFS->sectorsize - KMCSFS->sectorsize, KMCSFS->sectorsize, tempdata, true);
+				sync_read_phys(FileObject->DeviceObject, FileObject, KMCSFS->size - endsector * KMCSFS->sectorsize - KMCSFS->sectorsize + endoffset - endoffset % 512, endrlength, tempdata, true);
 				dealloc(KMCSFS, index, cursize, cursize - cursize % KMCSFS->sectorsize);
 				used_bytes[endsector] -= cursize % KMCSFS->sectorsize;
 				size += cursize % KMCSFS->sectorsize;
@@ -1675,7 +1678,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 			}
 			if (tempdata)
 			{
-				sync_write_phys(FileObject->DeviceObject, FileObject, KMCSFS->size - cursector * KMCSFS->sectorsize - KMCSFS->sectorsize + newoffset, endlength, tempdata + endoffset, true);
+				sync_write_phys(FileObject->DeviceObject, FileObject, KMCSFS->size - cursector * KMCSFS->sectorsize - KMCSFS->sectorsize + newoffset, endlength, tempdata + endoffset % 512, true);
 				ExFreePool(tempdata);
 				tempdata = NULL;
 			}
