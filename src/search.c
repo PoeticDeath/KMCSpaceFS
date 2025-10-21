@@ -324,10 +324,43 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 				if (!KMCSFS.dict)
 				{
 					ERR("out of memory\n");
+					ExFreePool(KMCSFS.tablestr);
 					found = false;
 					goto deref;
 				}
 				KMCSFS.CurDictSize = KMCSFS.filecount;
+
+				KMCSFS.readbuf = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS.sectorsize, ALLOC_TAG);
+				if (!KMCSFS.readbuf)
+				{
+					ERR("out of memory\n");
+					ExFreePool(KMCSFS.tablestr);
+					ExFreePool(KMCSFS.dict);
+					found = false;
+					goto deref;
+				}
+				KMCSFS.writebuf = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS.sectorsize, ALLOC_TAG);
+				if (!KMCSFS.writebuf)
+				{
+					ERR("out of memory\n");
+					ExFreePool(KMCSFS.tablestr);
+					ExFreePool(KMCSFS.dict);
+					ExFreePool(KMCSFS.readbuf);
+					found = false;
+					goto deref;
+				}
+				KMCSFS.readbuflock = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(ERESOURCE), ALLOC_TAG);
+				if (!KMCSFS.readbuflock)
+				{
+					ERR("out of memory");
+					ExFreePool(KMCSFS.tablestr);
+					ExFreePool(KMCSFS.dict);
+					ExFreePool(KMCSFS.readbuf);
+					ExFreePool(KMCSFS.writebuf);
+					found = false;
+					goto deref;
+				}
+				ExInitializeResourceLite(KMCSFS.readbuflock);
 
 				add_volume_device(KMCSFS, devpath, length, disk_num, part_num);
 			}

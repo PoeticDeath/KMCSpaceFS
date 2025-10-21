@@ -30,4 +30,7 @@ typedef struct
 	unsigned long long CurDictSize;
 	unsigned long long DictSize;
 	Dict* dict;
+	uint8_t* readbuf;
+	PERESOURCE readbuflock;
+	PUCHAR writebuf;
 } KMCSpaceFS;

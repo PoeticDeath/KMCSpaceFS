@@ -2763,6 +2763,7 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 	PIO_STACK_LOCATION IrpSp;
 	NTSTATUS Status;
 	read_context context;
+	fcb* fcb = FileObject->FsContext;
 
 	RtlZeroMemory(&context, sizeof(read_context));
 	KeInitializeEvent(&context.Event, NotificationEvent, false);
@@ -2791,12 +2792,25 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 	IrpSp->Parameters.Write.Length = RLength + (512 - RLength % 512) % 512;
 	IrpSp->Parameters.Write.ByteOffset = Offset;
 
-	PUCHAR RBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, IrpSp->Parameters.Write.Length, ALLOC_TAG);
+	PUCHAR RBuffer = NULL;
+	bool locked = false;
+	if (fcb)
+	{
+		if (IrpSp->Parameters.Write.Length <= fcb->Vcb->vde->pdode->KMCSFS.sectorsize)
+		{
+			locked = true;
+			RBuffer = fcb->Vcb->vde->pdode->KMCSFS.writebuf;
+		}
+	}
 	if (!RBuffer)
 	{
-		ERR("out of memory\n");
-		Status = STATUS_INSUFFICIENT_RESOURCES;
-		goto exit;
+		RBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, IrpSp->Parameters.Write.Length, ALLOC_TAG);
+		if (!RBuffer)
+		{
+			ERR("out of memory\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
 	}
 
 	if (StartingOffset % 512)
@@ -2865,7 +2879,7 @@ NTSTATUS sync_write_phys(_In_ PDEVICE_OBJECT DeviceObject, _In_ PFILE_OBJECT Fil
 
 exit:
 	IoFreeIrp(Irp);
-	if (RBuffer)
+	if (RBuffer && !locked)
 	{
 		ExFreePool(RBuffer);
 	}

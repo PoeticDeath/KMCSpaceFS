@@ -431,11 +431,21 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 		}
 	}
 
+	bool locked = false;
 	uint8_t* buf = ExAllocatePoolWithTag(fcb->pool_type, sector_align(length, fcb->Vcb->vde->pdode->KMCSFS.sectorsize), ALLOC_TAG);
 	if (!buf)
 	{
-		ERR("out of memory\n");
-		return STATUS_INSUFFICIENT_RESOURCES;
+		if (sector_align(length, fcb->Vcb->vde->pdode->KMCSFS.sectorsize) <= fcb->Vcb->vde->pdode->KMCSFS.sectorsize)
+		{
+			locked = true;
+			ExAcquireResourceExclusiveLite(fcb->Vcb->vde->pdode->KMCSFS.readbuflock, true);
+			buf = fcb->Vcb->vde->pdode->KMCSFS.readbuf;
+		}
+		else
+		{
+			ERR("out of memory\n");
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
 	}
 
 	bool init = true;
@@ -528,7 +538,14 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 			}
 			if (*bytes_read == length)
 			{
-				ExFreePool(buf);
+				if (locked)
+				{
+					ExReleaseResourceLite(fcb->Vcb->vde->pdode->KMCSFS.readbuflock);
+				}
+				else
+				{
+					ExFreePool(buf);
+				}
 				return STATUS_SUCCESS;
 			}
 			cur = 0;
@@ -584,7 +601,14 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 			}
 		}
 	}
-	ExFreePool(buf);
+	if (locked)
+	{
+		ExReleaseResourceLite(fcb->Vcb->vde->pdode->KMCSFS.readbuflock);
+	}
+	else
+	{
+		ExFreePool(buf);
+	}
 	return STATUS_SUCCESS;
 }
 
