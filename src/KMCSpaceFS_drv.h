@@ -51,9 +51,34 @@ extern uint32_t no_pnp;
 #define __attribute__(x)
 #endif
 
-#define TRACE(s, ...) DbgPrint("KMCSpaceFS TRACE : %s : " s, funcname, ##__VA_ARGS__)
-#define WARN(s, ...) DbgPrint("KMCSpaceFS WARN : %s : " s, funcname, ##__VA_ARGS__)
-#define ERR(s, ...) DbgPrint("KMCSpaceFS ERR : %s : " s, funcname, ##__VA_ARGS__)
+bool print_trace;
+bool print_warn;
+bool print_err;
+
+#define Print(type, ...)\
+{\
+	bool print = false;\
+	switch (type)\
+	{\
+	case 0:\
+		print = print_trace;\
+		break;\
+	case 1:\
+		print = print_warn;\
+		break;\
+	case 2:\
+		print = print_err;\
+		break;\
+	}\
+	if (print)\
+	{\
+		DbgPrint(__VA_ARGS__);\
+	}\
+}
+
+#define TRACE(s, ...) Print(0, "KMCSpaceFS TRACE : %s : " s, funcname, ##__VA_ARGS__)
+#define WARN(s, ...) Print(1, "KMCSpaceFS WARN : %s : " s, funcname, ##__VA_ARGS__)
+#define ERR(s, ...) Print(2, "KMCSpaceFS ERR : %s : " s, funcname, ##__VA_ARGS__)
 
 #define ALLOC_TAG 0x70534B41 //'AKSp'
 #define KMCSpaceFS_NODE_TYPE_CCB 0x2295

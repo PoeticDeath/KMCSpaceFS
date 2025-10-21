@@ -3187,7 +3187,10 @@ NTSTATUS dev_ioctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ ULONG ControlCode, _In
 
 	Irp = IoBuildDeviceIoControlRequest(ControlCode, DeviceObject, InputBuffer, InputBufferSize, OutputBuffer, OutputBufferSize, false, &Event, &IoStatus);
 
-	if (!Irp) return STATUS_INSUFFICIENT_RESOURCES;
+	if (!Irp)
+	{
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
 
 	if (Override)
 	{
@@ -3408,6 +3411,10 @@ NTSTATUS __stdcall DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_S
 	OBJECT_ATTRIBUTES oa, system_thread_attributes;
 	ULONG dispos;
 	RTL_OSVERSIONINFOW ver;
+
+	print_trace = false;
+	print_warn = false;
+	print_err = false;
 
 	init_maps();
 	if (!emap || !dmap)
