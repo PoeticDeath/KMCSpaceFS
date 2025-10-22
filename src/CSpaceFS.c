@@ -521,7 +521,7 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 						sync_read_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + int1 - int1 % 512, sector_align(int2 - int1 + int1 % 512, 512), buf + int1 - int1 % 512, true);
 						if (init)
 						{
-							RtlCopyMemory(data, buf + ((int1 + start) % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(int2 - int1, length));
+							RtlCopyMemory(data, buf + int1 + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(int2 - int1, length));
 							start += min(int2 - int1, length);
 							*bytes_read += min(int2 - int1, length);
 							init = false;
@@ -700,9 +700,9 @@ NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned 
 					{
 						if (init)
 						{
-							sync_write_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + ((int1 + start) % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(int2 - int1, length), data, true);
-							start += min(int2 - int1, length);
-							bytes_written += min(int2 - int1, length);
+							sync_write_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + int1 + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(int2 - int1 - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length), data, true);
+							start += min(int2 - int1 - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
+							bytes_written += min(int2 - int1 - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
 							init = false;
 						}
 						else
