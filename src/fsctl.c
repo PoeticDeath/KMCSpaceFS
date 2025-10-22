@@ -27,6 +27,9 @@
 #define FSCTL_DUPLICATE_EXTENTS_TO_FILE CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 209, METHOD_BUFFERED, FILE_WRITE_ACCESS)
 #endif
 
+extern LIST_ENTRY VcbList;
+extern ERESOURCE global_loading_lock;
+
 static NTSTATUS is_volume_mounted(device_extension* Vcb, PIRP Irp)
 {
     NTSTATUS Status;
@@ -102,6 +105,160 @@ static NTSTATUS fs_get_statistics(void* buffer, DWORD buflen, ULONG_PTR* retlen)
     *retlen = sizeof(FILESYSTEM_STATISTICS);
 
     return STATUS_SUCCESS;
+}
+
+static void flush_fcb_caches(device_extension* Vcb)
+{
+    for (unsigned long long dindex = 0; dindex < Vcb->vde->pdode->KMCSFS.DictSize; dindex++)
+    {
+        if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb)
+        {
+            if (Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->nonpaged)
+            {
+                IO_STATUS_BLOCK iosb;
+                CcFlushCache(&Vcb->vde->pdode->KMCSFS.dict[dindex].fcb->nonpaged->segment_object, NULL, 0, &iosb);
+            }
+        }
+    }
+}
+
+static NTSTATUS invalidate_volumes(PIRP Irp)
+{
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    LUID TcbPrivilege = {SE_TCB_PRIVILEGE, 0};
+    NTSTATUS Status;
+    HANDLE h;
+    PFILE_OBJECT fileobj;
+    PDEVICE_OBJECT devobj;
+    LIST_ENTRY* le;
+
+    TRACE("FSCTL_INVALIDATE_VOLUMES\n");
+
+    if (!SeSinglePrivilegeCheck(TcbPrivilege, Irp->RequestorMode))
+    {
+        return STATUS_PRIVILEGE_NOT_HELD;
+    }
+
+#if defined(_WIN64)
+    if (IoIs32bitProcess(Irp))
+    {
+        if (IrpSp->Parameters.FileSystemControl.InputBufferLength != sizeof(uint32_t))
+        {
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        h = (HANDLE)LongToHandle((*(uint32_t*)Irp->AssociatedIrp.SystemBuffer));
+    }
+    else
+    {
+#endif
+        if (IrpSp->Parameters.FileSystemControl.InputBufferLength != sizeof(HANDLE))
+        {
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        h = *(PHANDLE)Irp->AssociatedIrp.SystemBuffer;
+#if defined(_WIN64)
+    }
+#endif
+
+    Status = ObReferenceObjectByHandle(h, 0, *IoFileObjectType, Irp->RequestorMode, (void**)&fileobj, NULL);
+
+    if (!NT_SUCCESS(Status))
+    {
+        ERR("ObReferenceObjectByHandle returned %08lx\n", Status);
+        return Status;
+    }
+
+    devobj = fileobj->DeviceObject;
+
+    ExAcquireResourceSharedLite(&global_loading_lock, true);
+
+    le = VcbList.Flink;
+
+    while (le != &VcbList)
+    {
+        device_extension* Vcb = CONTAINING_RECORD(le, device_extension, list_entry);
+
+        if (Vcb->Vpb && Vcb->Vpb->RealDevice == devobj)
+        {
+            if (Vcb->Vpb == devobj->Vpb)
+            {
+                KIRQL irql;
+                PVPB newvpb;
+                bool free_newvpb = false;
+
+                newvpb = ExAllocatePoolWithTag(NonPagedPool, sizeof(VPB), ALLOC_TAG);
+                if (!newvpb)
+                {
+                    ERR("out of memory\n");
+                    Status = STATUS_INSUFFICIENT_RESOURCES;
+                    goto end;
+                }
+
+                RtlZeroMemory(newvpb, sizeof(VPB));
+
+                ObReferenceObject(devobj);
+
+                ExAcquireResourceExclusiveLite(&Vcb->tree_lock, true);
+
+                Vcb->removing = true;
+
+                ExReleaseResourceLite(&Vcb->tree_lock);
+
+                CcWaitForCurrentLazyWriterActivity();
+
+                ExAcquireResourceExclusiveLite(&Vcb->tree_lock, true);
+
+                flush_fcb_caches(Vcb);
+
+                ExReleaseResourceLite(&Vcb->tree_lock);
+
+                IoAcquireVpbSpinLock(&irql);
+
+                if (devobj->Vpb->Flags & VPB_MOUNTED)
+                {
+                    newvpb->Type = IO_TYPE_VPB;
+                    newvpb->Size = sizeof(VPB);
+                    newvpb->RealDevice = devobj;
+                    newvpb->Flags = devobj->Vpb->Flags & VPB_REMOVE_PENDING;
+
+                    devobj->Vpb = newvpb;
+                }
+                else
+                {
+                    free_newvpb = true;
+                }
+
+                IoReleaseVpbSpinLock(irql);
+
+                if (free_newvpb)
+                {
+                    ExFreePool(newvpb);
+                }
+
+                if (Vcb->open_files == 0)
+                {
+                    uninit(Vcb);
+                }
+
+                ObDereferenceObject(devobj);
+            }
+
+            break;
+        }
+
+        le = le->Flink;
+    }
+
+    Status = STATUS_SUCCESS;
+
+end:
+    ExReleaseResourceLite(&global_loading_lock);
+
+    ObDereferenceObject(fileobj);
+
+    return Status;
 }
 
 static NTSTATUS fs_control_query_persistent_volume_state(void* buffer, DWORD inbuflen, DWORD outbuflen, ULONG_PTR* retlen)
@@ -562,8 +719,7 @@ NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type)
         break;
 
     case FSCTL_INVALIDATE_VOLUMES:
-        WARN("STUB: FSCTL_INVALIDATE_VOLUMES\n");
-        Status = STATUS_INVALID_DEVICE_REQUEST;
+        Status = invalidate_volumes(Irp);
         break;
 
     case FSCTL_QUERY_FAT_BPB:
@@ -631,17 +787,14 @@ NTSTATUS fsctl_request(PDEVICE_OBJECT DeviceObject, PIRP* Pirp, uint32_t type)
         break;
 
     case FSCTL_SET_REPARSE_POINT:
-        WARN("STUB: FSCTL_SET_REPARSE_POINT\n");
         Status = set_reparse_point(Irp);
         break;
 
     case FSCTL_GET_REPARSE_POINT:
-        WARN("STUB: FSCTL_GET_REPARSE_POINT\n");
         Status = get_reparse_point(IrpSp->FileObject, Irp->AssociatedIrp.SystemBuffer, IrpSp->Parameters.FileSystemControl.OutputBufferLength, &Irp->IoStatus.Information);
         break;
 
     case FSCTL_DELETE_REPARSE_POINT:
-        WARN("STUB: FSCTL_DELETE_REPARSE_POINT\n");
         Status = delete_reparse_point(Irp);
         break;
 

@@ -184,6 +184,12 @@ void uninit(_In_ device_extension* Vcb)
 	if (Vcb->vde && Vcb->vde->mounted_device == Vcb->devobj)
 	{
 		Vcb->vde->mounted_device = NULL;
+		if (Vcb->vde->device->AttachedDevice)
+		{
+			IoDetachDevice(Vcb->vde->device);
+		}
+		IoDeleteDevice(Vcb->vde->device);
+		Vcb->vde->pdode->vde = NULL;
 	}
 
 	IoAcquireVpbSpinLock(&irql);

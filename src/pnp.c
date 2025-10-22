@@ -179,15 +179,11 @@ static NTSTATUS bus_pnp(bus_device_extension* bde, PIRP Irp)
 	switch (IrpSp->MinorFunction)
 	{
 	case IRP_MN_START_DEVICE:
+	case IRP_MN_QUERY_REMOVE_DEVICE:
 	case IRP_MN_CANCEL_REMOVE_DEVICE:
 	case IRP_MN_SURPRISE_REMOVAL:
 	case IRP_MN_REMOVE_DEVICE:
 		Status = STATUS_SUCCESS;
-		handled = true;
-		break;
-
-	case IRP_MN_QUERY_REMOVE_DEVICE:
-		Status = STATUS_UNSUCCESSFUL;
 		handled = true;
 		break;
 
@@ -434,13 +430,11 @@ static NTSTATUS pdo_pnp(PDEVICE_OBJECT pdo, PIRP Irp)
 		return pdo_query_id(pdode, Irp);
 
 	case IRP_MN_START_DEVICE:
+	case IRP_MN_QUERY_REMOVE_DEVICE:
 	case IRP_MN_CANCEL_REMOVE_DEVICE:
 	case IRP_MN_SURPRISE_REMOVAL:
 	case IRP_MN_REMOVE_DEVICE:
 		return STATUS_SUCCESS;
-
-	case IRP_MN_QUERY_REMOVE_DEVICE:
-		return STATUS_UNSUCCESSFUL;
 
 	case IRP_MN_DEVICE_USAGE_NOTIFICATION:
 		return pdo_device_usage_notification(pdode, Irp);
