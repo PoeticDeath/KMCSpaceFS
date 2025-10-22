@@ -207,7 +207,7 @@ unsigned long long FindDictEntry(Dict* dict, char* table, unsigned long long tab
 					filename[j] = table[tableend + dict[o].filenameloc + j] & 0xff;
 				}
 			}
-			if (j == filenamelen - 1 && (table[tableend + dict[o].filenameloc + j + 1] & 0xff == 255 || table[tableend + dict[o].filenameloc + j + 1] & 0xff == 42) && dict[o].hash == hash)
+			if (j == filenamelen - 1 && ((table[tableend + dict[o].filenameloc + j + 1] & 0xff) == 255 || (table[tableend + dict[o].filenameloc + j + 1] & 0xff) == 42) && dict[o].hash == hash)
 			{
 				ExFreePool(Filename);
 				return o;

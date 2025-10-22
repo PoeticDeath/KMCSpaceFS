@@ -1301,7 +1301,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 			}
 		}
 
-		char* tempdata = NULL;
+		PUCHAR tempdata = NULL;
 		unsigned long long newoffset = 0;
 		unsigned long long cursector = 0;
 		unsigned long long blocksneeded = (size + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize;
@@ -1711,14 +1711,14 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 		ExFreePool(used_bytes);
 		if (!size)
 		{
-			unsigned long long extratblesize = 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend + 2 + 35 * KMCSFS->filecount;
-			if (!is_table_expandable(*KMCSFS, extratblesize))
+			unsigned long long extratablesize = 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend + 2 + 35 * KMCSFS->filecount;
+			if (!is_table_expandable(*KMCSFS, extratablesize))
 			{
 				ERR("out of memory - could not write to disk 1\n");
 				return false;
 			}
-			unsigned long long tablesize = (extratblesize + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize - 1;
-			char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, extratblesize, ALLOC_TAG);
+			unsigned long long tablesize = (extratablesize + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize - 1;
+			char* newtable = ExAllocatePoolWithTag(NonPagedPoolNx, extratablesize, ALLOC_TAG);
 			if (!newtable)
 			{
 				ERR("out of memory - could not write to disk 2\n");
@@ -1738,14 +1738,14 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 			newtable[4] = tablesize & 0xff;
 			RtlCopyMemory(newtable + 5, newtablestren, (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2);
 			ExFreePool(newtablestren);
-			RtlCopyMemory(newtable + 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2, KMCSFS->table + KMCSFS->tableend, extratblesize - 5 - (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2);
-			KMCSFS->extratablesize = extratblesize;
+			RtlCopyMemory(newtable + 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2, KMCSFS->table + KMCSFS->tableend, extratablesize - 5 - (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2);
+			KMCSFS->extratablesize = extratablesize;
 			KMCSFS->tablesize = 1 + tablesize;
 			KMCSFS->filenamesend = 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend;
 			KMCSFS->tableend = 5 + (KMCSFS->tablestrlen + KMCSFS->tablestrlen % 2) / 2;
 			ExFreePool(KMCSFS->table);
 			KMCSFS->table = newtable;
-			sync_write_phys(FileObject->DeviceObject, FileObject, 0, extratblesize, newtable, true);
+			sync_write_phys(FileObject->DeviceObject, FileObject, 0, extratablesize, newtable, true);
 		}
 		return true;
 	}

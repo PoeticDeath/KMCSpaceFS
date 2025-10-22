@@ -2483,7 +2483,7 @@ static NTSTATUS __stdcall QueryVolumeInformation(_In_ PDEVICE_OBJECT DeviceObjec
 		labelname_us.Buffer = labelname;
 		unsigned long long index = get_filename_index(labelname_us, &Vcb->vde->pdode->KMCSFS);
 		unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-		char* label = ExAllocatePoolWithTag(NonPagedPoolNx, filesize + 1, ALLOC_TAG);
+		uint8_t* label = ExAllocatePoolWithTag(NonPagedPoolNx, filesize + 1, ALLOC_TAG);
 		if (!label)
 		{
 			ERR("out of memory\n");
@@ -2906,7 +2906,7 @@ static NTSTATUS set_label(_In_ device_extension* Vcb, _In_ FILE_FS_LABEL_INFORMA
 	labelname_us.Buffer = labelname;
 	unsigned long long index = get_filename_index(labelname_us, &Vcb->vde->pdode->KMCSFS);
 	unsigned long long filesize = get_file_size(index, Vcb->vde->pdode->KMCSFS);
-	char* label = ExAllocatePoolWithTag(NonPagedPoolNx, labellen, ALLOC_TAG);
+	uint8_t* label = ExAllocatePoolWithTag(NonPagedPoolNx, labellen, ALLOC_TAG);
 	if (!label)
 	{
 		ERR("out of memory\n");
