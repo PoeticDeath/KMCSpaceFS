@@ -1400,6 +1400,13 @@ static NTSTATUS query_info(device_extension* Vcb, PFILE_OBJECT FileObject, PIRP 
 
 	switch (IrpSp->Parameters.QueryFile.FileInformationClass)
 	{
+	case FileEaInformation:
+	{
+		TRACE("FileEaInformation\n");
+
+		Status = STATUS_SUCCESS;
+		goto exit;
+	}
 	case FileAllInformation:
 	{
 		FILE_ALL_INFORMATION* fai = Irp->AssociatedIrp.SystemBuffer;
