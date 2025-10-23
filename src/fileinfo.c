@@ -474,7 +474,24 @@ static NTSTATUS set_rename_information(device_extension* Vcb, PIRP Irp, PFILE_OB
 	}
 	else
 	{
-		NFileName = tfo->FileName;
+		if (tfo->FileName.Buffer[0] == *L"\\")
+		{
+			NFileName = tfo->FileName;
+		}
+		else
+		{
+			freenfilename = true;
+			NFileName.Length = tfo->FileName.Length + sizeof(WCHAR);
+			NFileName.Buffer = ExAllocatePoolWithTag(fcb->pool_type, NFileName.Length, ALLOC_TAG);
+			if (!NFileName.Buffer)
+			{
+				ERR("out of memory\n");
+				Status = STATUS_INSUFFICIENT_RESOURCES;
+				goto exit;
+			}
+			NFileName.Buffer[0] = *L"\\";
+			RtlCopyMemory(NFileName.Buffer + 1, tfo->FileName.Buffer, tfo->FileName.Length);
+		}
 	}
 
 	UNICODE_STRING newccbfn;
