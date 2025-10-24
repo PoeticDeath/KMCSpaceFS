@@ -1320,6 +1320,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 				dealloc(KMCSFS, index, cursize, cursize - cursize % KMCSFS->sectorsize);
 				used_bytes[endsector] -= cursize % KMCSFS->sectorsize;
 				size += cursize % KMCSFS->sectorsize;
+				blocksneeded = (size + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize;
 				cursize -= cursize % KMCSFS->sectorsize;
 				for (unsigned long long o = 0; o < KMCSFS->tablestrlen; o++)
 				{
