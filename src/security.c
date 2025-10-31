@@ -4497,14 +4497,16 @@ NTSTATUS AccessCheck(PIRP Irp, device_extension* Vcb, UNICODE_STRING* FileName, 
 				if (has_privilege(IrpSp->Parameters.Create.SecurityContext->AccessState, IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, SE_BACKUP_PRIVILEGE) && (IrpSp->Parameters.Create.Options & FILE_OPEN_FOR_BACKUP_INTENT))
 				{
 					Status = STATUS_SUCCESS;
-					*granted_access = READ_CONTROL | ACCESS_SYSTEM_SECURITY | FILE_GENERIC_READ | FILE_TRAVERSE;
+					*granted_access |= READ_CONTROL | ACCESS_SYSTEM_SECURITY | FILE_GENERIC_READ | FILE_TRAVERSE;
 				}
-				else if (has_privilege(IrpSp->Parameters.Create.SecurityContext->AccessState, IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, SE_RESTORE_PRIVILEGE) && IrpSp->Parameters.Create.Options & FILE_OPEN_FOR_BACKUP_INTENT)
+
+				if (has_privilege(IrpSp->Parameters.Create.SecurityContext->AccessState, IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode, SE_RESTORE_PRIVILEGE) && IrpSp->Parameters.Create.Options & FILE_OPEN_FOR_BACKUP_INTENT)
 				{
 					Status = STATUS_SUCCESS;
-					*granted_access = WRITE_DAC | WRITE_OWNER | ACCESS_SYSTEM_SECURITY | FILE_GENERIC_WRITE | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY | DELETE;
+					*granted_access |= WRITE_DAC | WRITE_OWNER | ACCESS_SYSTEM_SECURITY | FILE_GENERIC_WRITE | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY | DELETE;
 				}
-				else
+				
+				if (!NT_SUCCESS(Status))
 				{
 					TRACE("SeAccessCheck failed, returning %08lx\n", Status);
 				}
