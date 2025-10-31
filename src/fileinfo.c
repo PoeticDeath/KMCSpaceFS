@@ -161,13 +161,6 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 
 	ExAcquireResourceExclusiveLite(fcb->Header.Resource, true);
 
-	if (fbi->FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-	{
-		WARN("attempted to set FILE_ATTRIBUTE_DIRECTORY on non-directory\n");
-		Status = STATUS_INVALID_PARAMETER;
-		goto end;
-	}
-
 	unsigned long long index = get_filename_index(*ccb->filename, &Vcb->vde->pdode->KMCSFS);
 
 	UNICODE_STRING nostream_fn;
@@ -236,6 +229,12 @@ static NTSTATUS set_basic_information(device_extension* Vcb, PIRP Irp, PFILE_OBJ
 		if (winattrs & FILE_ATTRIBUTE_DIRECTORY)
 		{
 			fbi->FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+		}
+		else if (fbi->FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			WARN("attempted to set FILE_ATTRIBUTE_DIRECTORY on non-directory\n");
+			Status = STATUS_INVALID_PARAMETER;
+			goto end;
 		}
 		if (winattrs & FILE_ATTRIBUTE_REPARSE_POINT)
 		{

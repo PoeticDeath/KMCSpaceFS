@@ -656,7 +656,7 @@ NTSTATUS query_directory(PIRP Irp)
 	{
 		ccb->query_dir_offset = 0;
 		ccb->query_dir_index = 0;
-		if (filterb && ccb->query_dir_file_count < 3)
+		if (filterb && (ccb->query_dir_file_count < 3 || ccb->filename->Length == 2))
 		{
 			Status = STATUS_NO_SUCH_FILE;
 		}
