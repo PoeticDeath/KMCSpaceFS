@@ -505,8 +505,26 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 	}
 	else
 	{
-		fn.Length = sizeof(WCHAR);
-		fn.Buffer = ExAllocatePoolWithTag(pool_type, fn.Length, ALLOC_TAG);
+		if (FileObject->RelatedFileObject)
+		{
+			if (FileObject->RelatedFileObject->FileName.Length > 2)
+			{
+				fn.Length = FileObject->RelatedFileObject->FileName.Length + sizeof(WCHAR);
+				fn.Buffer = ExAllocatePoolWithTag(pool_type, fn.Length, ALLOC_TAG);
+				if (!fn.Buffer)
+				{
+					ERR("out of memory\n");
+					Status = STATUS_INSUFFICIENT_RESOURCES;
+					goto exit;
+				}
+				RtlCopyMemory(fn.Buffer + 1, FileObject->RelatedFileObject->FileName.Buffer, FileObject->RelatedFileObject->FileName.Length);
+			}
+		}
+		if (!fn.Buffer)
+		{
+			fn.Length = sizeof(WCHAR);
+			fn.Buffer = ExAllocatePoolWithTag(pool_type, fn.Length, ALLOC_TAG);
+		}
 		if (!fn.Buffer)
 		{
 			ERR("out of memory\n");
