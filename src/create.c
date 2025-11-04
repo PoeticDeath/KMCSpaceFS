@@ -509,7 +509,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 		{
 			if (FileObject->RelatedFileObject->FileName.Length > 2)
 			{
-				fn.Length = FileObject->RelatedFileObject->FileName.Length + sizeof(WCHAR);
+				fn.Length = FileObject->RelatedFileObject->FileName.Length + sizeof(WCHAR) * (FileObject->RelatedFileObject->FileName.Buffer[0] != *L"\\");
 				fn.Buffer = ExAllocatePoolWithTag(pool_type, fn.Length, ALLOC_TAG);
 				if (!fn.Buffer)
 				{
@@ -517,7 +517,7 @@ static NTSTATUS open_file(PDEVICE_OBJECT DeviceObject, _Requires_lock_held_(_Cur
 					Status = STATUS_INSUFFICIENT_RESOURCES;
 					goto exit;
 				}
-				RtlCopyMemory(fn.Buffer + 1, FileObject->RelatedFileObject->FileName.Buffer, FileObject->RelatedFileObject->FileName.Length);
+				RtlCopyMemory(fn.Buffer + (FileObject->RelatedFileObject->FileName.Buffer[0] != *L"\\"), FileObject->RelatedFileObject->FileName.Buffer, FileObject->RelatedFileObject->FileName.Length);
 			}
 		}
 		if (!fn.Buffer)
