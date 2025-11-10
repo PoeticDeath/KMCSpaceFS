@@ -1987,6 +1987,7 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn, 
 	if (!is_table_expandable(*KMCSFS, extratablesize))
 	{
 		ERR("table is not expandable\n");
+		ExFreePool(newtable);
 		return STATUS_DISK_FULL;
 	}
 
