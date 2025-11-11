@@ -328,7 +328,6 @@ static bool test_vol(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, PUNIC
 					found = false;
 					goto deref;
 				}
-				KMCSFS.CurDictSize = KMCSFS.filecount;
 
 				KMCSFS.readbuf = ExAllocatePoolWithTag(NonPagedPoolNx, KMCSFS.sectorsize, ALLOC_TAG);
 				if (!KMCSFS.readbuf)
