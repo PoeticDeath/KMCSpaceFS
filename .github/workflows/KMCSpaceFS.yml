@@ -16,6 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: setup-msbuild
+      uses: microsoft/setup-msbuild@v2
     - name: Build Driver
       run: msbuild .\\KMCSpaceFS.vcxproj /p:Configuration="Release" /p:Platform=x64
     - name: Upload driver artifacts
