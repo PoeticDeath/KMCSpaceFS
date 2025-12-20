@@ -20,6 +20,11 @@ jobs:
       uses: microsoft/setup-msbuild@v2
       with:
         msbuild-architecture: "x64"
+    - name: Symlink
+      run: |
+        mkdir "C:\Users\Anthony Kerr\source\repos\PoeticDeath"
+        cd "C:\Users\Anthony Kerr\source\repos\PoeticDeath"
+        mklink /D KMCSpaceFS "D:\a\KMCSpaceFS\KMCSpaceFS"
     - name: Build Driver
       run: msbuild KMCSpaceFS.sln /p:Configuration="Release" /p:Platform=x64
     - name: Upload driver artifacts
