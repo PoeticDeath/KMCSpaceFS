@@ -19,7 +19,7 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
     - name: Build Driver
-      run: msbuild KMCSpaceFS.sln /p:Configuration="Release" /p:Platform=x64
+      run: msbuild KMCSpaceFS.vcxproj /p:Configuration="Release" /p:Platform=x64
     - name: Upload driver artifacts
       uses: actions/upload-artifact@v4
       with:
