@@ -14,9 +14,12 @@ jobs:
   
     runs-on: windows-latest
 
+    env:
+      Solution_Path: KMCSpaceFS.sln
+
     steps:
     - uses: actions/checkout@v4
-    - name: setup-msbuild
+    - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
     - name: Build Driver
       run: msbuild .\\KMCSpaceFS.vcxproj /p:Configuration="Release" /p:Platform=x64
@@ -25,6 +28,6 @@ jobs:
       with:
         name: KMCSpaceFS-Release-x64
         path: |
-          out\build\x64-Release\KMCSpaceFS.sys
+          x64\Release\KMCSpaceFS.sys
           src\KMCSpaceFS.inf
           src\KMCSpaceFS-VOL.inf
