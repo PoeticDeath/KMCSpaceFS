@@ -16,10 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-
     - name: Build Driver
       run: msbuild .\\KMCSpaceFS.vcxproj /p:Configuration="Release" /p:Platform=x64
-
     - name: Upload driver artifacts
       uses: actions/upload-artifact@v4
       with:
