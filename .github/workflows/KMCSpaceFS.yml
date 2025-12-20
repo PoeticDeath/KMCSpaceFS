@@ -1,0 +1,29 @@
+name: KMCSpaceFS
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build Driver
+      run: msbuild .\\KMCSpaceFS.vcxproj /p:Configuration="Release" /p:Platform=x64
+
+    - name: Upload driver artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: KMCSpaceFS-Release-x64
+        path: |
+          out\build\x64-Release\KMCSpaceFS.sys
+          src\KMCSpaceFS.inf
+          src\KMCSpaceFS-VOL.inf
