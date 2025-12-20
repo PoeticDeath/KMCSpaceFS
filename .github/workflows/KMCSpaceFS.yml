@@ -27,11 +27,18 @@ jobs:
         New-Item -ItemType SymbolicLink -Path KMCSpaceFS -Target "D:\a\KMCSpaceFS\KMCSpaceFS"
     - name: Build Driver
       run: msbuild KMCSpaceFS.sln /p:Configuration="Release" /p:Platform=x64
-    - name: Upload driver artifacts
+    - name: KMCSpaceFS.sys
       uses: actions/upload-artifact@v4
       with:
-        name: KMCSpaceFS-Release-x64
-        path: |
-          x64\Release\KMCSpaceFS.sys
-          src\KMCSpaceFS.inf
-          src\KMCSpaceFS-VOL.inf
+        name: KMCSpaceFS.sys
+        path: x64\Release\KMCSpaceFS.sys
+    - name: KMCSpaceFS.inf
+      uses: actions/upload-artifact@v4
+      with:
+        name: KMCSpaceFS.inf
+        path: src\KMCSpaceFS.inf
+    - name: KMCSpaceFS-VOL.inf
+      uses: actions/upload-artifact@v4
+      with:
+        name: KMCSpaceFS-VOL.inf
+        path: src\KMCSpaceFS-VOL.inf
