@@ -1739,8 +1739,9 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 			ExFreePool(KMCSFS->table);
 			KMCSFS->table = newtable;
 			sync_write_phys(FileObject->DeviceObject, FileObject, 0, extratablesize, newtable, true);
+			return true;
 		}
-		return true;
+		return false;
 	}
 	else
 	{
