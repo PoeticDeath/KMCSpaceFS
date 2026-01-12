@@ -432,20 +432,12 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 	}
 
 	bool locked = false;
-	uint8_t* buf = ExAllocatePoolWithTag(fcb->pool_type, sector_align(length, fcb->Vcb->vde->pdode->KMCSFS.sectorsize), ALLOC_TAG);
+	uint8_t* buf = ExAllocatePoolWithTag(fcb->pool_type, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, ALLOC_TAG);
 	if (!buf)
 	{
-		if (sector_align(length, fcb->Vcb->vde->pdode->KMCSFS.sectorsize) <= fcb->Vcb->vde->pdode->KMCSFS.sectorsize)
-		{
-			locked = true;
-			ExAcquireResourceExclusiveLite(fcb->Vcb->vde->pdode->KMCSFS.readbuflock, true);
-			buf = fcb->Vcb->vde->pdode->KMCSFS.readbuf;
-		}
-		else
-		{
-			ERR("out of memory\n");
-			return STATUS_INSUFFICIENT_RESOURCES;
-		}
+		locked = true;
+		ExAcquireResourceExclusiveLite(fcb->Vcb->vde->pdode->KMCSFS.readbuflock, true);
+		buf = fcb->Vcb->vde->pdode->KMCSFS.readbuf;
 	}
 
 	bool init = true;
