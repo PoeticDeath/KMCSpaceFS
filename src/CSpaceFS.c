@@ -1519,7 +1519,15 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 									case 2:
 										for (unsigned long long p = int1; p < int2; p++)
 										{
-											used_sector_bytes[p / sizeof(unsigned long long) / 8] |= ((unsigned long long)1 << (p % (sizeof(unsigned long long) * 8)));
+											if (int2 - p < (sizeof(unsigned long long) * 8) || p % (sizeof(unsigned long long) * 8))
+											{
+												used_sector_bytes[p / sizeof(unsigned long long) / 8] |= ((unsigned long long)1 << (p % (sizeof(unsigned long long) * 8)));
+											}
+											else
+											{
+												used_sector_bytes[p / sizeof(unsigned long long) / 8] = 0xffffffffffffffff;
+												p += sizeof(unsigned long long) * 8 - 1;
+											}
 										}
 										RtlCopyMemory(tablestr + o - strsize, tablestr + o, temptablestrlen - o);
 										temptablestrlen -= strsize;
@@ -1578,7 +1586,18 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 						unsigned long long offset = 0;
 						for (; offset < KMCSFS->sectorsize; offset++)
 						{
-							if (used_sector_bytes[offset / sizeof(unsigned long long) / 8] & ((unsigned long long)1 << (offset % (sizeof(unsigned long long) * 8))))
+							if (!used_sector_bytes[offset / sizeof(unsigned long long) / 8] && !(offset % (sizeof(unsigned long long) * 8)))
+							{
+								freecount += sizeof(unsigned long long) * 8;
+								if (freecount >= size % KMCSFS->sectorsize)
+								{
+									offset += sizeof(unsigned long long) * 8 - (freecount - size % KMCSFS->sectorsize);
+									freecount = size % KMCSFS->sectorsize;
+									break;
+								}
+								offset += sizeof(unsigned long long) * 8 - 1;
+							}
+							else if (used_sector_bytes[offset / sizeof(unsigned long long) / 8] & ((unsigned long long)1 << (offset % (sizeof(unsigned long long) * 8))))
 							{
 								freecount = 0;
 								if (KMCSFS->sectorsize - offset < size % KMCSFS->sectorsize)
