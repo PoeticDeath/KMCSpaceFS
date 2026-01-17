@@ -1910,21 +1910,10 @@ bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long
 		}
 	}
 	unsigned long long loc = KMCSFS->tableend;
-	if (index)
+	unsigned long long dindex = FindDictEntry(KMCSFS->dict, KMCSFS->table, KMCSFS->tableend, KMCSFS->DictSize, filename.Buffer, filename.Length / sizeof(WCHAR));
+	if (index && dindex)
 	{
-		loc = 0;
-		for (unsigned long long i = KMCSFS->tableend; i < KMCSFS->filenamesend + 1; i++)
-		{
-			if (KMCSFS->table[i] == *"\xff")
-			{
-				loc++;
-				if (loc == index + 1)
-				{
-					loc = i;
-					break;
-				}
-			}
-		}
+		loc = KMCSFS->tableend + KMCSFS->dict[dindex].filenameloc - 1;
 	}
 	unsigned long long len = 0;
 	for (unsigned long long i = loc + 1; i < KMCSFS->filenamesend + 1; i++)
@@ -1963,7 +1952,6 @@ bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long
 	RtlCopyMemory(newtable + 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 24 * (KMCSFS->filecount - 1) + 11 * index, KMCSFS->table + KMCSFS->filenamesend + 2 + 24 * KMCSFS->filecount + 11 * (index + 1), 11 * (KMCSFS->filecount - index - 1));
 	sync_write_phys(FileObject->DeviceObject, FileObject, 0, 5 + (tablestrlen + tablestrlen % 2) / 2 + KMCSFS->filenamesend - KMCSFS->tableend - len + 2 + 35 * (KMCSFS->filecount - 1), newtable, true);
 
-	unsigned long long dindex = FindDictEntry(KMCSFS->dict, KMCSFS->table, KMCSFS->tableend, KMCSFS->DictSize, filename.Buffer, filename.Length / sizeof(WCHAR));
 	if (dindex)
 	{
 		RemoveDictEntry(KMCSFS->dict, KMCSFS->DictSize, dindex, filename.Length / sizeof(WCHAR), &KMCSFS->CurDictSize);
@@ -2011,21 +1999,10 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn, 
 	}
 
 	unsigned long long loc = KMCSFS->tableend;
-	if (index)
+	unsigned long long dindex = FindDictEntry(KMCSFS->dict, KMCSFS->table, KMCSFS->tableend, KMCSFS->DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
+	if (index && dindex)
 	{
-		loc = 0;
-		for (unsigned long long i = KMCSFS->tableend; i < KMCSFS->filenamesend + 1; i++)
-		{
-			if (KMCSFS->table[i] == *"\xff")
-			{
-				loc++;
-				if (loc == index + 1)
-				{
-					loc = i;
-					break;
-				}
-			}
-		}
+		loc = KMCSFS->tableend + KMCSFS->dict[dindex].filenameloc - 1;
 	}
 
 	newtable[0] = KMCSFS->table[0];
@@ -2045,7 +2022,6 @@ NTSTATUS rename_file(KMCSpaceFS* KMCSFS, UNICODE_STRING fn, UNICODE_STRING nfn, 
 	}
 	RtlCopyMemory(newtable + loc + 1 + nfn.Length / sizeof(WCHAR), KMCSFS->table + loc + 1 + fn.Length / sizeof(WCHAR), KMCSFS->filenamesend - loc - 1 - fn.Length / sizeof(WCHAR) + 2 + 35 * KMCSFS->filecount);
 
-	unsigned long long dindex = FindDictEntry(KMCSFS->dict, KMCSFS->table, KMCSFS->tableend, KMCSFS->DictSize, fn.Buffer, fn.Length / sizeof(WCHAR));
 	if (dindex)
 	{
 		unsigned long long filenameloc = KMCSFS->dict[dindex].filenameloc;
