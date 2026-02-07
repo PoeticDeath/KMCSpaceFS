@@ -302,7 +302,7 @@ static unsigned toint(unsigned char c)
 	}
 }
 
-unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS)
+unsigned long long get_strloc(unsigned long long index, KMCSpaceFS KMCSFS)
 {
 	unsigned long long loc = 0;
 	if (index)
@@ -320,6 +320,12 @@ unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS)
 			}
 		}
 	}
+	return loc;
+}
+
+unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS)
+{
+	unsigned long long loc = get_strloc(index, KMCSFS);
 
 	bool notzero = false;
 	bool multisector = false;
@@ -414,22 +420,7 @@ unsigned long long get_file_size(unsigned long long index, KMCSpaceFS KMCSFS)
 
 NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long* bytes_read, PFILE_OBJECT file_object)
 {
-	unsigned long long loc = 0;
-	if (index)
-	{
-		for (unsigned long long i = 0; i < fcb->Vcb->vde->pdode->KMCSFS.tablestrlen; i++)
-		{
-			if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] == *".")
-			{
-				loc++;
-				if (loc == index)
-				{
-					loc = i + 1;
-					break;
-				}
-			}
-		}
-	}
+	unsigned long long loc = get_strloc(index, fcb->Vcb->vde->pdode->KMCSFS);
 
 	bool locked = false;
 	uint8_t* buf = ExAllocatePoolWithTag(fcb->pool_type, fcb->Vcb->vde->pdode->KMCSFS.sectorsize, ALLOC_TAG);
@@ -606,22 +597,7 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 
 NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned long long length, unsigned long long index, unsigned long long size, PFILE_OBJECT file_object)
 {
-	unsigned long long loc = 0;
-	if (index)
-	{
-		for (unsigned long long i = 0; i < fcb->Vcb->vde->pdode->KMCSFS.tablestrlen; i++)
-		{
-			if (fcb->Vcb->vde->pdode->KMCSFS.tablestr[i] == *".")
-			{
-				loc++;
-				if (loc == index)
-				{
-					loc = i + 1;
-					break;
-				}
-			}
-		}
-	}
+	unsigned long long loc = get_strloc(index, fcb->Vcb->vde->pdode->KMCSFS);
 
 	bool init = true;
 	bool notzero = false;
@@ -976,22 +952,7 @@ dealloc(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long size, u
 {
 	if (size > newsize)
 	{
-		unsigned long long loc = 0;
-		if (index)
-		{
-			for (unsigned long long i = 0; i < KMCSFS->tablestrlen; i++)
-			{
-				if (KMCSFS->tablestr[i] == *".")
-				{
-					loc++;
-					if (loc == index)
-					{
-						loc = i + 1;
-						break;
-					}
-				}
-			}
-		}
+		unsigned long long loc = get_strloc(index, *KMCSFS);
 
 		bool notzero = false;
 		bool multisector = false;
@@ -1279,18 +1240,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 		unsigned long long loc = 0;
 		if (!(cursize % KMCSFS->sectorsize))
 		{
-			for (unsigned long long i = 0; i < KMCSFS->tablestrlen; i++)
-			{
-				if (KMCSFS->tablestr[i] == *".")
-				{
-					loc++;
-					if (loc == index + 1)
-					{
-						loc = i;
-						break;
-					}
-				}
-			}
+			loc = get_strloc(index + 1, *KMCSFS) - 1;
 		}
 
 		PUCHAR tempdata = NULL;
@@ -1314,18 +1264,7 @@ bool find_block(KMCSpaceFS* KMCSFS, unsigned long long index, unsigned long long
 				size += cursize % KMCSFS->sectorsize;
 				blocksneeded = (size + KMCSFS->sectorsize - 1) / KMCSFS->sectorsize;
 				cursize -= cursize % KMCSFS->sectorsize;
-				for (unsigned long long o = 0; o < KMCSFS->tablestrlen; o++)
-				{
-					if (KMCSFS->tablestr[o] == *".")
-					{
-						loc++;
-						if (loc == index + 1)
-						{
-							loc = o;
-							break;
-						}
-					}
-				}
+				loc = get_strloc(index + 1, *KMCSFS) - 1;
 			}
 			if (!(size % KMCSFS->sectorsize) || i < blocksneeded - 1)
 			{ // Full sector allocation
@@ -1884,22 +1823,7 @@ bool delete_file(KMCSpaceFS* KMCSFS, UNICODE_STRING filename, unsigned long long
 		return false;
 	}
 	RtlZeroMemory(newtablestr, KMCSFS->tablestrlen);
-	unsigned long long tableloc = 0;
-	if (index)
-	{
-		for (unsigned long long i = 0; i < KMCSFS->tablestrlen; i++)
-		{
-			if (KMCSFS->tablestr[i] == *".")
-			{
-				tableloc++;
-				if (tableloc == index)
-				{
-					tableloc = i + 1;
-					break;
-				}
-			}
-		}
-	}
+	unsigned long long tableloc = get_strloc(index, *KMCSFS);
 	unsigned long long tablelen = 0;
 	for (unsigned long long i = tableloc; i < KMCSFS->tablestrlen; i++)
 	{
