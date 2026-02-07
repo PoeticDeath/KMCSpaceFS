@@ -501,9 +501,9 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 					filesize += int2 - int1;
 					if (filesize > start)
 					{
-						sync_read_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + int1 - int1 % 512, sector_align(int2 - int1 + int1 % 512, 512), buf + int1 - int1 % 512, true);
 						if (init)
 						{
+							sync_read_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + int1 - int1 % 512 + start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % 512, sector_align(int2 - int1 + int1 % 512 - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize + start % 512, 512), buf + int1 - int1 % 512 + start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize - start % 512, true);
 							RtlCopyMemory(data, buf + int1 + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(int2 - int1, length));
 							start += min(int2 - int1, length);
 							*bytes_read += min(int2 - int1, length);
@@ -511,6 +511,7 @@ NTSTATUS read_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned l
 						}
 						else
 						{
+							sync_read_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + int1 - int1 % 512, sector_align(int2 - int1 + int1 % 512, 512), buf + int1 - int1 % 512, true);
 							RtlCopyMemory(data + *bytes_read, buf + int1, min(int2 - int1, length - *bytes_read));
 							start += min(int2 - int1, length - *bytes_read);
 							*bytes_read += min(int2 - int1, length - *bytes_read);
