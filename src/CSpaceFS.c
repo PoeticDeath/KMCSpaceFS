@@ -670,8 +670,8 @@ NTSTATUS write_file(fcb* fcb, uint8_t* data, unsigned long long start, unsigned 
 						if (init)
 						{
 							sync_write_phys(file_object->DeviceObject, file_object, fcb->Vcb->vde->pdode->KMCSFS.size - fcb->Vcb->vde->pdode->KMCSFS.sectorsize - int0 * fcb->Vcb->vde->pdode->KMCSFS.sectorsize + int1 + (start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize), min(int2 - int1 - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length), data, true);
-							start += min(int2 - int1 - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
 							bytes_written += min(int2 - int1 - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
+							start += min(int2 - int1 - start % fcb->Vcb->vde->pdode->KMCSFS.sectorsize, length);
 							init = false;
 						}
 						else
