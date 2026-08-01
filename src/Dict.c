@@ -100,7 +100,7 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 		}
 		i++;
 	}
-	while (i > *size - 1)
+	while ((*dict)[i].filenameloc || i > *size - 1)
 	{
 		Dict* tdict = ResizeDict(*dict, *size, size);
 		if (tdict == NULL)
