@@ -41,7 +41,7 @@ startover:
 			{
 				j++;
 			}
-			if (j > *newsize - 1)
+			if (ndict[j].filenameloc || j > *newsize - 1)
 			{
 				ExFreePool(ndict);
 				goto startover;
