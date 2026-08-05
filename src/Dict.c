@@ -143,7 +143,7 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 	(*dict)[i].filenameloc = filenameloc;
 	(*dict)[i].index = index;
 	FsRtlInitializeFileLock(&(*dict)[i].lock, NULL, NULL);
-	if (*cursize * 3 / 4 > *size)
+	if (*cursize > *size * 3 / 4)
 	{
 		Dict* tdict = ResizeDict(*dict, *size, size);
 		if (tdict == NULL)
