@@ -261,6 +261,59 @@ void RemoveDictEntry(Dict* dict, unsigned long long size, unsigned long long din
 			tdict->ndict->pdict = tdict;
 		}
 		tdict->pdict = pdict;
+
+		unsigned long long count = 0;
+		while (tdict->pdict)
+		{
+			tdict = tdict->pdict;
+		}
+		while (tdict->ndict)
+		{
+			count++;
+			tdict = tdict->ndict;
+		}
+		Dict* ldict = CreateDict(count);
+		if (ldict)
+		{
+			unsigned long long i = 0;
+			while (tdict->pdict)
+			{
+				ldict[i] = *tdict;
+				tdict = tdict->pdict;
+				RtlZeroMemory(tdict->ndict, sizeof(Dict));
+				i++;
+			}
+			RtlZeroMemory(tdict, sizeof(Dict));
+			while (i)
+			{
+				i--;
+				unsigned long long ndindex = ldict[i].hash % size;
+				if (!ndindex)
+				{
+					ndindex++;
+				}
+				tdict = dict + ndindex;
+				bool taken = dict[ndindex].filenameloc;
+				while (tdict->ndict)
+				{
+					tdict = tdict->ndict;
+				}
+				while (dict[ndindex].filenameloc && ndindex < size - 1)
+				{
+					ndindex++;
+				}
+				RtlZeroMemory(dict + ndindex, sizeof(Dict));
+				dict[ndindex].hash = ldict[i].hash;
+				dict[ndindex].filenameloc = ldict[i].filenameloc;
+				dict[ndindex].index = ldict[i].index;
+				dict[ndindex].inode = ldict[i].inode;
+				if (taken)
+				{
+					dict[ndindex].pdict = tdict;
+					tdict->ndict = dict + ndindex;
+				}
+			}
+			ExFreePool(ldict);
 	}
 	else if (dict[dindex].pdict)
 	{
