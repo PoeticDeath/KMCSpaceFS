@@ -314,6 +314,7 @@ void RemoveDictEntry(Dict* dict, unsigned long long size, unsigned long long din
 				}
 			}
 			ExFreePool(ldict);
+		}
 	}
 	else if (dict[dindex].pdict)
 	{
