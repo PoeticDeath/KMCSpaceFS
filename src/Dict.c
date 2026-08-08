@@ -20,13 +20,12 @@ Dict* ResizeDict(Dict* dict, unsigned long long oldsize, unsigned long long* new
 	Dict* ndict = NULL;
 startover:
 	*newsize *= 2;
-	ndict = (Dict*)ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(Dict) * *newsize, ALLOC_TAG);
+	ndict = CreateDict(*newsize);
 	if (ndict == NULL)
 	{
 		*newsize = oldsize;
 		return NULL;
 	}
-	RtlZeroMemory(ndict, sizeof(Dict) * *newsize);
 	for (unsigned long long i = 0; i < oldsize; i++)
 	{
 		if (dict[i].filenameloc)
@@ -36,6 +35,12 @@ startover:
 			if (!j)
 			{
 				j++;
+			}
+			Dict* tdict = ndict + j;
+			bool taken = ndict[j].filenameloc;
+			while (tdict->ndict)
+			{
+				tdict = tdict->ndict;
 			}
 			while (ndict[j].filenameloc && j < *newsize - 1)
 			{
@@ -56,6 +61,11 @@ startover:
 			ndict[j].streamdeletecount = dict[i].streamdeletecount;
 			ndict[j].fcb = dict[i].fcb;
 			ndict[j].filename = dict[i].filename;
+			if (taken)
+			{
+				ndict[j].pdict = tdict;
+				tdict->ndict = ndict + j;
+			}
 		}
 	}
 	return ndict;
@@ -88,22 +98,20 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 	{
 		i++;
 	}
+	Dict* tdict = *dict + i;
+	bool taken = (*dict)[i].filenameloc;
+	while (tdict->ndict)
+	{
+		tdict = tdict->ndict;
+	}
 	while ((*dict)[i].filenameloc && i < *size - 1)
 	{
-		if ((*dict)[i].hash == hash)
-		{
-			RtlZeroMemory(*dict + i, sizeof(Dict));
-			(*dict)[i].hash = hash;
-			(*dict)[i].filenameloc = filenameloc;
-			(*dict)[i].index = index;
-			return true;
-		}
 		i++;
 	}
 	while ((*dict)[i].filenameloc || i > *size - 1)
 	{
-		Dict* tdict = ResizeDict(*dict, *size, size);
-		if (tdict == NULL)
+		Dict* ndict = ResizeDict(*dict, *size, size);
+		if (ndict == NULL)
 		{
 			return false;
 		}
@@ -112,12 +120,18 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 		{
 			i++;
 		}
-		while (tdict[i].filenameloc && i < *size - 1)
+		tdict = ndict + i;
+		taken = ndict[i].filenameloc;
+		while (tdict->ndict)
+		{
+			tdict = tdict->ndict;
+		}
+		while (ndict[i].filenameloc && i < *size - 1)
 		{
 			i++;
 		}
 		ExFreePool(*dict);
-		*dict = tdict;
+		*dict = ndict;
 	}
 	(*cursize)++;
 	if (scan)
@@ -142,6 +156,11 @@ bool AddDictEntry(Dict** dict, PWCH filename, unsigned long long filenameloc, un
 	(*dict)[i].hash = hash;
 	(*dict)[i].filenameloc = filenameloc;
 	(*dict)[i].index = index;
+	if (taken)
+	{
+		(*dict)[i].pdict = tdict;
+		tdict->ndict = *dict + i;
+	}
 	FsRtlInitializeFileLock(&(*dict)[i].lock, NULL, NULL);
 	if (*cursize > *size * 3 / 4)
 	{
@@ -213,7 +232,15 @@ unsigned long long FindDictEntry(Dict* dict, char* table, unsigned long long tab
 				return o;
 			}
 		}
-		o++;
+		if (dict[o].ndict)
+		{
+			o = dict[o].ndict - dict;
+		}
+		else
+		{
+			ExFreePool(Filename);
+			return 0;
+		}
 	}
 }
 
@@ -222,7 +249,28 @@ void RemoveDictEntry(Dict* dict, unsigned long long size, unsigned long long din
 	unsigned long long index = dict[dindex].index;
 	unsigned long long filenameloc = dict[dindex].filenameloc;
 	FsRtlUninitializeFileLock(&dict[dindex].lock);
-	RtlZeroMemory(dict + dindex, sizeof(Dict));
+	if (dict[dindex].ndict)
+	{
+		Dict* tdict = dict + dindex;
+		Dict* ndict = tdict->ndict;
+		Dict* pdict = tdict->pdict;
+		RtlCopyMemory(tdict, ndict, sizeof(Dict));
+		RtlZeroMemory(ndict, sizeof(Dict));
+		if (tdict->ndict)
+		{
+			tdict->ndict->pdict = tdict;
+		}
+		tdict->pdict = pdict;
+	}
+	else if (dict[dindex].pdict)
+	{
+		dict[dindex].pdict->ndict = NULL;
+		RtlZeroMemory(dict + dindex, sizeof(Dict));
+	}
+	else
+	{
+		RtlZeroMemory(dict + dindex, sizeof(Dict));
+	}
 	(*cursize)--;
 	for (unsigned long long i = 0; i < size; i++)
 	{
