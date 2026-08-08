@@ -306,7 +306,13 @@ void RemoveDictEntry(Dict* dict, unsigned long long size, unsigned long long din
 				dict[ndindex].hash = ldict[i].hash;
 				dict[ndindex].filenameloc = ldict[i].filenameloc;
 				dict[ndindex].index = ldict[i].index;
-				dict[ndindex].inode = ldict[i].inode;
+				dict[ndindex].opencount = ldict[i].opencount;
+				dict[ndindex].shareaccess = ldict[i].shareaccess;
+				dict[ndindex].lock = ldict[i].lock;
+				dict[ndindex].flags = ldict[i].flags;
+				dict[ndindex].streamdeletecount = ldict[i].streamdeletecount;
+				dict[ndindex].fcb = ldict[i].fcb;
+				dict[ndindex].filename = ldict[i].filename;
 				if (taken)
 				{
 					dict[ndindex].pdict = tdict;
