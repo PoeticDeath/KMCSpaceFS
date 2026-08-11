@@ -251,39 +251,27 @@ void RemoveDictEntry(Dict* dict, unsigned long long size, unsigned long long din
 	FsRtlUninitializeFileLock(&dict[dindex].lock);
 	if (dict[dindex].ndict)
 	{
-		Dict* tdict = dict + dindex;
-		Dict* ndict = tdict->ndict;
-		Dict* pdict = tdict->pdict;
-		RtlCopyMemory(tdict, ndict, sizeof(Dict));
-		RtlZeroMemory(ndict, sizeof(Dict));
-		if (tdict->ndict)
+		Dict* tdict = dict[dindex].ndict;
+		if (tdict->pdict->pdict)
 		{
-			tdict->ndict->pdict = tdict;
+			tdict = tdict->pdict->pdict->ndict = NULL;
 		}
-		tdict->pdict = pdict;
+		tdict->pdict = NULL;
+		RtlZeroMemory(dict + dindex, sizeof(Dict));
 
-		unsigned long long count = 0;
-		while (tdict->pdict)
-		{
-			tdict = tdict->pdict;
-		}
-		while (tdict->ndict)
-		{
-			count++;
-			tdict = tdict->ndict;
-		}
+		unsigned long long count = 1;
 		Dict* ldict = CreateDict(count);
 		if (ldict)
 		{
 			unsigned long long i = 0;
-			while (tdict->pdict)
+			while (tdict)
 			{
 				ldict[i] = *tdict;
-				tdict = tdict->pdict;
-				RtlZeroMemory(tdict->ndict, sizeof(Dict));
+				Dict* ttdict = tdict->pdict;
+				RtlZeroMemory(tdict, sizeof(Dict));
+				tdict = ttdict;
 				i++;
 			}
-			RtlZeroMemory(tdict, sizeof(Dict));
 			while (i)
 			{
 				i--;
