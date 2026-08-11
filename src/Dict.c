@@ -260,6 +260,11 @@ void RemoveDictEntry(Dict* dict, unsigned long long size, unsigned long long din
 		RtlZeroMemory(dict + dindex, sizeof(Dict));
 
 		unsigned long long count = 1;
+		while (tdict->ndict)
+		{
+			count++;
+			tdict = tdict->ndict;
+		}
 		Dict* ldict = CreateDict(count);
 		if (ldict)
 		{
