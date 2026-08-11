@@ -254,7 +254,7 @@ void RemoveDictEntry(Dict* dict, unsigned long long size, unsigned long long din
 		Dict* tdict = dict[dindex].ndict;
 		if (tdict->pdict->pdict)
 		{
-			tdict = tdict->pdict->pdict->ndict = NULL;
+			tdict->pdict->pdict->ndict = NULL;
 		}
 		tdict->pdict = NULL;
 		RtlZeroMemory(dict + dindex, sizeof(Dict));
