@@ -307,6 +307,16 @@ unsigned long long get_strloc(unsigned long long index, KMCSpaceFS KMCSFS)
 	unsigned long long loc = 0;
 	if (index)
 	{
+		if (index > KMCSFS.filecount)
+		{
+			loc = KMCSFS.tablestrlen;
+			while (KMCSFS.tablestr[loc] == *" ")
+			{
+				loc--;
+			}
+			loc++;
+			return loc;
+		}
 		for (unsigned long long i = 0; i < KMCSFS.tablestrlen; i++)
 		{
 			if (KMCSFS.tablestr[i] == *".")
